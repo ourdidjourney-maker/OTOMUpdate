@@ -2666,6 +2666,30 @@
                 const dmin = Math.min(distSeg(px,py,ax,ay,bx,by), distSeg(px,py,bx,by,cx,cy), distSeg(px,py,cx,cy,ax,ay));
                 return dmin < band;
             }
+            // Grouped assets: test against the actual PARTS, not the whole box, so a
+            // group made from a hollow shape (empty circle/square/outline triangle)
+            // stays hollow — you can still grab elements placed inside it.
+            if (image.kind === 'group' && Array.isArray(image.parts) && image.parts.length) {
+                const pad = 14 / camera.zoom;   // allow the outline band just outside the box
+                if (Math.abs(rotatedX) > image.width / 2 + pad || Math.abs(rotatedY) > image.height / 2 + pad) return false;
+                const gcos = Math.cos(image.rotation || 0), gsin = Math.sin(image.rotation || 0);
+                for (const p of image.parts) {
+                    // world position of this part
+                    const pox = p.ox || 0, poy = p.oy || 0;
+                    const pwx = image.x + (pox * gcos - poy * gsin);
+                    const pwy = image.y + (pox * gsin + poy * gcos);
+                    const partEl = {
+                        kind: p.kind || (p.isDot ? 'dot' : 'image'),
+                        isDot: p.isDot,
+                        x: pwx, y: pwy,
+                        width: p.width, height: p.height,
+                        rotation: (image.rotation || 0) + (p.rotation || 0),
+                        thickness: p.thickness, triStyle: p.triStyle, dashStyle: p.dashStyle
+                    };
+                    if (isPointInImage(x, y, partEl)) return true;
+                }
+                return false;
+            }
             return insideBox;
         }
 
