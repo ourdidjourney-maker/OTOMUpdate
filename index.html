@@ -452,7 +452,7 @@
         }
         #radialMenu .rm-sub.show .rm-seg { opacity:1; transform:scale(1); }
         @keyframes lassoHue { 0%{color:#E53935} 20%{color:#8E24AA} 40%{color:#1E88E5} 60%{color:#00897B} 80%{color:#F4511E} 100%{color:#E53935} }
-        #lassoLabel { position:fixed; z-index:99998; pointer-events:none; display:none; font:800 14px Arial; text-shadow:0 1px 3px rgba(0,0,0,.4); animation:lassoHue 3s linear infinite; white-space:nowrap; }
+        #modeLabel { position:fixed; z-index:99998; pointer-events:none; display:none; font:800 14px Arial; text-shadow:0 1px 3px rgba(0,0,0,.4); animation:lassoHue 3s linear infinite; white-space:nowrap; }
     </style>
 </head>
 <body>
@@ -827,7 +827,7 @@
 
     <div id="uiTip" style="position:fixed; pointer-events:none; z-index:5000; display:none; max-width:280px; background:#1c2128; color:#e6edf3; border:1px solid #3d4450; border-left:3px solid #58a6ff; border-radius:8px; box-shadow:0 8px 26px rgba(0,0,0,.45); padding:7px 11px; font:12px Arial; line-height:1.45;"></div>
 
-    <div id="lassoLabel">Lasso Mode</div>
+    <div id="modeLabel">Mode</div>
     <div id="radialMenu"><div class="rm-hub">⊚</div></div>
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
@@ -1237,9 +1237,29 @@
         let _lastCanvasMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, over: false };
         let _altDown = false;
         container.addEventListener('mousemove', (e) => { _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true };
-            const ll = document.getElementById('lassoLabel');
-            if (ll && ll.style.display === 'block') { ll.style.left = (e.clientX + 16) + 'px'; ll.style.top = (e.clientY + 16) + 'px'; }
+            const ll = document.getElementById('modeLabel');
+            if (ll) {
+                const t = currentModeLabel();
+                if (t) { ll.textContent = t; ll.style.display = 'block'; ll.style.left = (e.clientX + 16) + 'px'; ll.style.top = (e.clientY + 16) + 'px'; }
+                else ll.style.display = 'none';
+            }
         });
+        // The single source of truth for the pulsing cursor label: whatever mode is on.
+        function currentModeLabel() {
+            if (typeof lassoMode !== 'undefined' && lassoMode) return 'Lasso Mode';
+            if (typeof connectMode !== 'undefined' && connectMode) return 'Connect Mode';
+            if (typeof lineMode !== 'undefined' && lineMode) return 'Datum Line Mode';
+            if (typeof rectMode !== 'undefined' && rectMode) return 'Square Mode';
+            if (typeof circleMode !== 'undefined' && circleMode) return 'Circle Mode';
+            if (typeof arrowMode !== 'undefined' && arrowMode) return 'Arrow Mode';
+            if (typeof textMode !== 'undefined' && textMode) return 'Text Mode';
+            if (typeof cartridgeMode !== 'undefined' && cartridgeMode) return 'Data Cartridge Mode';
+            if (typeof collectMode !== 'undefined' && collectMode) return 'Collect Data Mode';
+            if (typeof socketMode !== 'undefined' && socketMode) return 'Socket Mode';
+            if (typeof bgMoveMode !== 'undefined' && bgMoveMode) return 'Move Background Mode';
+            if (typeof flagsMode !== 'undefined' && flagsMode) return 'Flags Mode';
+            return '';
+        }
         container.addEventListener('mouseleave', () => { _lastCanvasMouse.over = false; });
 
         // Open the radial only when ALT and a mouse press happen together on the canvas.
@@ -8279,7 +8299,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             b.style.background = lassoMode ? '#F44336' : '#6A1B9A';
             b.textContent = lassoMode ? '⬚ Cancel Lasso' : '⬚ Lasso';
             container.style.cursor = lassoMode ? 'crosshair' : 'grab';
-            document.getElementById('lassoLabel').style.display = lassoMode ? 'block' : 'none';
+            if (!lassoMode) { const ml = document.getElementById('modeLabel'); if (ml) ml.style.display = 'none'; }
             if (lassoMode) selectedGroup = [];
             draw();
         }
@@ -8564,7 +8584,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         // Break a grouped asset back into its individual elements
         function ungroupAsset(gp) {
-            if (gp && gp.welded) { alert('This is a welded asset — it is permanent and cannot be deconstructed.'); return; }
+            if (gp && gp.welded) { showConfirm({title:'⊕ Welded Asset', body:'This is a welded asset — it is permanent and cannot be deconstructed.', okText:'OK', danger:false, hideCancel:true}); return; }
             const parts = gp.parts || [];
             const c2 = Math.cos(gp.rotation || 0), s2 = Math.sin(gp.rotation || 0);
             const idMap = new Map();
@@ -8637,18 +8657,19 @@ ctx.fillText(conn.number.toString(), midX, midY);
             draw();
         }
         function saveAssetsFile() {
-            if (!savedAssets.length) { alert('No assets to save yet.'); return; }
+            if (!savedAssets.length) { showConfirm({title:'Asset Library', body:'No assets to save yet — lasso some elements and Make Asset first.', okText:'OK', danger:false, hideCancel:true}); return; }
             const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSETS', version: 1, assets: savedAssets }, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url; link.download = 'otom_assets_' + Date.now() + '.json';
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(url);
+            showConfirm({title:'⇪ Library Exported', body:'Exported all ' + savedAssets.length + ' asset(s) to a portable file.', okText:'Done', danger:false, hideCancel:true});
         }
 
         // Export a SINGLE asset (or the selected one) as its own portable file
         function exportAsset(i) {
-            if (!savedAssets.length) { alert('No assets to export yet.'); return; }
+            if (!savedAssets.length) { showConfirm({title:'Asset Library', body:'No assets to export yet.', okText:'OK', danger:false, hideCancel:true}); return; }
             const a = (i === undefined) ? savedAssets[savedAssets.length - 1] : savedAssets[i];
             if (!a) return;
             const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSET', version: 1, assets: [a] }, null, 2)], { type: 'application/json' });
@@ -8658,6 +8679,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             link.download = 'asset_' + (a.name || 'untitled').replace(/[^\w\-]+/g, '_') + '.json';
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(url);
+            showConfirm({title:'⇪ Asset Exported', body:'Exported "' + (a.name || 'untitled') + '" to a portable file.', okText:'Done', danger:false, hideCancel:true});
         }
 
         document.getElementById('assetLoadInput').addEventListener('change', function (e) {
@@ -8669,8 +8691,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (!d.assets) throw new Error('Not an OTOM asset file');
                     savedAssets = savedAssets.concat(d.assets);
                     renderAssetDrawer();
-                    alert('✅ Loaded ' + d.assets.length + ' asset(s)');
-                } catch (err) { alert('❌ ' + err.message); }
+                    showConfirm({title:'✅ Assets Loaded', body:'Loaded ' + d.assets.length + ' asset(s) into the drawer.', okText:'Nice', danger:false, hideCancel:true});
+                } catch (err) { showConfirm({title:'❌ Load Failed', body:err.message, okText:'OK', danger:true, hideCancel:true}); }
             };
             r.readAsText(f); e.target.value = '';
         });
@@ -10237,7 +10259,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
         // ============================================================
         function weldSocket() {
             const socks = images.filter(im => isSocket(im) && (im.socketLinks || []).length > 0);
-            if (!socks.length) { alert('Plug at least one mesh or asset into a socket first, then Weld.'); return; }
+            if (!socks.length) { showConfirm({title:'⊕ Weld', body:'Plug at least one mesh or asset into a socket first, then Weld.', okText:'OK', danger:false, hideCancel:true}); return; }
             let sock = socks[0];
             if (selectedImage && isSocket(selectedImage) && (selectedImage.socketLinks || []).length) sock = selectedImage;
             else socks.forEach(s => { if ((s.socketLinks || []).length > (sock.socketLinks || []).length) sock = s; });
