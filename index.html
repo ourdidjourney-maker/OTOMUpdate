@@ -451,6 +451,8 @@
             opacity:0; transform:scale(0.3);
         }
         #radialMenu .rm-sub.show .rm-seg { opacity:1; transform:scale(1); }
+        @keyframes lassoHue { 0%{color:#E53935} 20%{color:#8E24AA} 40%{color:#1E88E5} 60%{color:#00897B} 80%{color:#F4511E} 100%{color:#E53935} }
+        #lassoLabel { position:fixed; z-index:99998; pointer-events:none; display:none; font:800 14px Arial; text-shadow:0 1px 3px rgba(0,0,0,.4); animation:lassoHue 3s linear infinite; white-space:nowrap; }
     </style>
 </head>
 <body>
@@ -628,7 +630,7 @@
             <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:#FF6F00; color:#fff;">
                 <span style="font-weight:bold; font-size:13px; flex:1;">▤ ASSET DRAWER</span>
                 <button onclick="regroupToAsset()" title="Save the current selection over its source asset (or create a new one)" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">💾 Save Asset</button>
-                <button onclick="exportAsset()" title="Export the whole library as one portable file" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">⇪ Export Asset</button>
+                <button onclick="saveAssetsFile()" title="Export the whole library as one portable file" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">⇪ Export Asset</button>
                 <button onclick="document.getElementById('assetLoadInput').click()" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">📂 Load Asset</button>
                 <input type="file" id="assetLoadInput" accept=".json" style="display:none;">
                 <button onclick="toggleAssetDrawer()" style="margin:0; padding:4px 9px; font-size:12px; background:rgba(255,255,255,.25); border-radius:5px;">✕</button>
@@ -825,6 +827,7 @@
 
     <div id="uiTip" style="position:fixed; pointer-events:none; z-index:5000; display:none; max-width:280px; background:#1c2128; color:#e6edf3; border:1px solid #3d4450; border-left:3px solid #58a6ff; border-radius:8px; box-shadow:0 8px 26px rgba(0,0,0,.45); padding:7px 11px; font:12px Arial; line-height:1.45;"></div>
 
+    <div id="lassoLabel">Lasso Mode</div>
     <div id="radialMenu"><div class="rm-hub">⊚</div></div>
     <div id="canvasContainer">
         <canvas id="canvas"></canvas>
@@ -1232,22 +1235,34 @@
         }
 
         let _lastCanvasMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, over: false };
-        container.addEventListener('mousemove', (e) => { _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true }; });
+        let _altDown = false;
+        container.addEventListener('mousemove', (e) => { _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true };
+            const ll = document.getElementById('lassoLabel');
+            if (ll && ll.style.display === 'block') { ll.style.left = (e.clientX + 16) + 'px'; ll.style.top = (e.clientY + 16) + 'px'; }
+        });
         container.addEventListener('mouseleave', () => { _lastCanvasMouse.over = false; });
 
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'AltLeft' && !radialOpen && _lastCanvasMouse.over &&
+        // Open the radial only when ALT and a mouse press happen together on the canvas.
+        container.addEventListener('mousedown', (e) => {
+            if (_altDown && !radialOpen &&
                 !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '')) {
-                e.preventDefault();
-                openRadial(_lastCanvasMouse.x, _lastCanvasMouse.y);
+                e.preventDefault(); e.stopPropagation();
+                openRadial(e.clientX, e.clientY);
             }
+        }, true);   // capture so it beats the canvas drawing handlers
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'AltLeft') { _altDown = true; e.preventDefault(); }
             if (e.key === 'Escape' && radialOpen) closeRadial();
         });
         window.addEventListener('keyup', (e) => {
-            if (e.code === 'AltLeft' && radialOpen) {
-                const hov = document.querySelector('#radialMenu .rm-sub-seg:hover') ||
-                            document.querySelector('#radialMenu .rm-seg:hover');
-                if (hov && !hov.classList.contains('rm-has-sub')) hov.click(); else closeRadial();
+            if (e.code === 'AltLeft') {
+                _altDown = false;
+                if (radialOpen) {
+                    const hov = document.querySelector('#radialMenu .rm-sub-seg:hover') ||
+                                document.querySelector('#radialMenu .rm-seg:hover');
+                    if (hov && !hov.classList.contains('rm-has-sub')) hov.click(); else closeRadial();
+                }
             }
         });
         const fileInput = document.getElementById('fileInput');
@@ -2978,7 +2993,7 @@
                     }
                     if (image.pinned) { draw(); return; }
 
-                    if (e.altKey) {
+                    if (e.ctrlKey) {
                         isDuplicating = true;
                         duplicateSource = image;
                         dragStart = { x: pos.x - image.x, y: pos.y - image.y };
@@ -3249,18 +3264,21 @@
                 if (!cursorSet) {
                     const hoveredImage = getImageAtPoint(pos.x, pos.y);
                     if (hoveredImage) {
-                        container.style.cursor = e.altKey ? 'copy' : 'grab';
-                        showGrabHint(e.altKey ? 'Copy' : 'Grab', e.clientX, e.clientY);
+                        container.style.cursor = e.ctrlKey ? 'copy' : 'grab';
+                        showGrabHint(e.ctrlKey ? 'Copy' : 'Grab', e.clientX, e.clientY);
                         cursorSet = true;
                     }
                 }
 
                 if (!cursorSet) {
-                    if (connectMode) {
-                        container.style.cursor = 'crosshair';
-                    } else {
-                        container.style.cursor = 'grab';
-                    }
+                    if (connectMode) container.style.cursor = 'crosshair';
+                    else if (typeof lassoMode !== 'undefined' && lassoMode) container.style.cursor = 'crosshair';
+                    else if (lineMode || rectMode || arrowMode || circleMode) container.style.cursor = 'crosshair';
+                    else if (textMode) container.style.cursor = 'text';
+                    else if (typeof cartridgeMode !== 'undefined' && cartridgeMode) container.style.cursor = 'copy';
+                    else if (typeof collectMode !== 'undefined' && collectMode) container.style.cursor = 'crosshair';
+                    else if (typeof bgMoveMode !== 'undefined' && bgMoveMode) container.style.cursor = 'move';
+                    else container.style.cursor = 'grab';
                 }
             }
             layoutCursorOverlays(e.clientX, e.clientY);
@@ -8261,6 +8279,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             b.style.background = lassoMode ? '#F44336' : '#6A1B9A';
             b.textContent = lassoMode ? '⬚ Cancel Lasso' : '⬚ Lasso';
             container.style.cursor = lassoMode ? 'crosshair' : 'grab';
+            document.getElementById('lassoLabel').style.display = lassoMode ? 'block' : 'none';
             if (lassoMode) selectedGroup = [];
             draw();
         }
