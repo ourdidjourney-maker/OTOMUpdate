@@ -469,6 +469,8 @@
 <button title="Draw a straight datum line — inert geometry, not a logic step" id="lineBtn" onclick="toggleLineMode()" style="background: #795548;">Draw Datum Line</button>
         <button title="Place a text element on the canvas" id="textBtn" onclick="toggleTextMode()" style="background: #795548;">Add Text</button>
         <button title="Data Cartridge mode: double-click the canvas to place a data cartridge" id="cartridgeBtn" onclick="toggleCartridgeMode()" style="background: #795548;">▤ Data Cartridge</button>
+        <button title="Edit Cartridge mode: double-click a cartridge to change its allowed elements" id="cartEditBtn" onclick="toggleCartEditMode()" style="background: #795548;">✎ Edit Cartridge</button>
+        <button title="Edit Port mode: double-click a port to change its allowed elements" id="portEditBtn" onclick="togglePortEditMode()" style="background: #795548;">✎ Edit Port</button>
         <button title="Collect Data: click a cartridge, then click an element to load it in" id="collectBtn" onclick="toggleCollectMode()" style="background: #795548;">⇥ Collect Data</button>
         <button title="Data Branch: show pulsing web lines from each cartridge to its collected elements" id="branchBtn" onclick="toggleBranchMode()" style="background: #795548;">🕸 Data Branch</button>
         <button title="Show a triangle trail from each cartridge to the elements it holds" id="cartLinksBtn" onclick="toggleCartLinks()" style="background: #795548;">▸▸ Show Links</button>
@@ -937,6 +939,7 @@
 
     <!-- Data Cartridge contents list (empty for now) -->
     <!-- Data Cartridge configuration — two-folder view: allowed types + loaded list -->
+    <input type="file" id="cartLoadInput" accept="application/json,.json" style="display:none;">
     <div id="cartridgeConfigModal" style="display:none; position:fixed; inset:0; z-index:100000; background:rgba(10,14,20,0.55); align-items:center; justify-content:center;">
         <div style="width:640px; max-width:94vw; background:#ffffff; border-radius:14px; box-shadow:0 18px 50px rgba(0,0,0,0.35); overflow:hidden; font-family:Arial, sans-serif;">
             <div style="background:linear-gradient(90deg,#37474F,#546E7A); color:#fff; padding:14px 18px; font-weight:700; font-size:15px; display:flex; justify-content:space-between; align-items:center;"><span>▤ Data Cartridge — allowed contents</span><span id="cartCfgCloseX" style="cursor:pointer; font-size:20px; line-height:1; opacity:.9;">✕</span></div>
@@ -950,9 +953,18 @@
                     <div id="cartCfgLoaded" style="color:#90A4AE; font-size:13px; max-height:52vh; overflow-y:auto; padding-right:6px;"></div>
                 </div>
             </div>
-            <div style="display:flex; justify-content:flex-end; gap:10px; padding:12px 18px 18px;">
-                <button id="cartCfgCancel" style="margin:0; padding:8px 16px; font-size:13px; background:#ECEFF1; color:#455A64; border-radius:8px;">Cancel</button>
-                <button id="cartCfgCreate" style="margin:0; padding:8px 18px; font-size:13px; font-weight:700; background:#2E7D32; color:#fff; border-radius:8px;">Create Cartridge</button>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 18px 18px;">
+                <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#37474F; cursor:pointer;">
+                    <input type="checkbox" id="cartCfgReadOnly" style="width:16px; height:16px; cursor:pointer;">
+                    <span>Read only <span style="color:#90A4AE; font-size:11px;">(locked when loaded by others)</span></span>
+                </label>
+                <div style="display:flex; gap:10px;">
+                    <button id="cartCfgCancel" style="margin:0; padding:8px 16px; font-size:13px; background:#ECEFF1; color:#455A64; border-radius:8px;">Cancel</button>
+                    <button id="cartCfgLoad" style="margin:0; padding:8px 16px; font-size:13px; font-weight:700; background:#00838F; color:#fff; border-radius:8px;">Load Cartridge</button>
+                    <button id="cartCfgPort" style="display:none; margin:0; padding:8px 16px; font-size:13px; font-weight:700; background:#5E35B1; color:#fff; border-radius:8px;">⎔ Create Port</button>
+                    <button id="cartCfgExport" style="margin:0; padding:8px 16px; font-size:13px; font-weight:700; background:#546E7A; color:#fff; border-radius:8px;">Export</button>
+                    <button id="cartCfgCreate" style="margin:0; padding:8px 18px; font-size:13px; font-weight:700; background:#2E7D32; color:#fff; border-radius:8px;">Create Cartridge</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1133,6 +1145,8 @@
                 { ico: '⇥', label: 'Collect', accent: '#546E7A', run: () => toggleCollectMode() },
                 { ico: '🕸', label: 'Branch',  accent: '#546E7A', run: () => toggleBranchMode() },
                 { ico: '▸▸', label: 'Links',   accent: '#546E7A', run: () => toggleCartLinks() },
+                { ico: '✎', label: 'Edit Cart', accent: '#546E7A', run: () => toggleCartEditMode() },
+                { ico: '✎', label: 'Edit Port', accent: '#546E7A', run: () => togglePortEditMode() },
             ]},
             { ico: '⬚', label: 'Select', accent: '#7B1FA2', sub: [
                 { ico: '⬚', label: 'Lasso',   accent: '#7B1FA2', run: () => toggleLasso() },
@@ -1788,15 +1802,16 @@
                 return;
             }
 
-            const distinct = [...new Set(connections.map(c => c.number))].sort((a, b) => a - b);
+            const numbered = connections.filter(c => !c.portLink);
+            const distinct = [...new Set(numbered.map(c => c.number))].sort((a, b) => a - b);
             const rankMap = new Map();
             distinct.forEach((num, i) => rankMap.set(num, i + 1));
-            connections.forEach(c => { c.number = rankMap.get(c.number); });
+            numbered.forEach(c => { c.number = rankMap.get(c.number); });
             connectionCounter = distinct.length + 1;
 
             const counts = {};
-            connections.forEach(c => { counts[c.number] = (counts[c.number] || 0) + 1; });
-            connections.forEach(c => { c.simultaneous = counts[c.number] > 1; });
+            numbered.forEach(c => { counts[c.number] = (counts[c.number] || 0) + 1; });
+            numbered.forEach(c => { c.simultaneous = counts[c.number] > 1; });
 
             stepColors = {};
             const simulSteps = Object.keys(counts)
@@ -2046,6 +2061,10 @@
         }
 
         function openNameModal(image, cx, cy) {
+            if (image && image.cartLocked) {
+                if (typeof showConfirm === 'function') showConfirm({ title: '🔒 Read Only', body: 'This element came from a read-only cartridge and cannot be edited.', okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
             imageToName = image;
             nameModalHoverMode = false;
             nameModal.style.opacity = '1';
@@ -2482,7 +2501,7 @@
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
-                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts ? img.parts.map(p2 => { const q = {}; for (const k in p2) { if (k === 'img') continue; q[k] = p2[k]; } return q; }) : undefined, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
+                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts ? img.parts.map(p2 => { const q = {}; for (const k in p2) { if (k === 'img') continue; q[k] = p2[k]; } return q; }) : undefined, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
                 })),
                 connections: JSON.parse(JSON.stringify(connections)),
                 connectionCounter: connectionCounter
@@ -2548,7 +2567,7 @@
                         isVector: imgData.isVector, fusable: imgData.fusable,
                         sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType,
                         memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations,
-                        agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch,
+                        agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch,
                         assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines,
                         partConnections: imgData.partConnections
                     };
@@ -2590,7 +2609,7 @@
                             kind: 'image',
                             hidden: imgData.hidden || false,
                             hiddenLevel: imgData.hiddenLevel || 0,
-                            sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
+                            sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
                         });
                         loadedCount++;
                         if (loadedCount === state.images.length) {
@@ -2728,6 +2747,7 @@
 
         function getConnectionCircleAtPoint(x, y) {
             for (const conn of connections) {
+                if (conn.portLink) continue;   // port links are static straight lines, not draggable
                 const fromImg = images.find(img => img.id === conn.from);
                 const toImg = images.find(img => img.id === conn.to);
                 if (fromImg && toImg) {
@@ -2895,6 +2915,7 @@
 
             if (!connectMode && !simultaneousMode && e.button === 0) {
                 for (const conn of connections) {
+                    if (conn.portLink) continue;
                     const fromImg = images.find(img => img.id === conn.from);
                     const toImg = images.find(img => img.id === conn.to);
                     if (fromImg && toImg) {
@@ -3311,6 +3332,7 @@
                     const _get = id => { if (!_m) _m = new Map(images.map(i => [i.id, i])); return _m.get(id); };
                     const rr2 = (16 / camera.zoom) * (16 / camera.zoom);
                     for (const conn of connections) {
+                        if (conn.portLink) continue;
                         let midX, midY;
                         if (conn.circleX !== undefined && conn.circleX !== null) {
                             midX = conn.circleX; midY = conn.circleY;
@@ -3595,8 +3617,20 @@
 
             const clickedImage = getImageAtPoint(pos.x, pos.y);
 
-            if (clickedImage && clickedImage.kind === 'cartridge' && !connectMode) {
-                openCartridge(clickedImage);
+            if (clickedImage && clickedImage.kind === 'cartridge' && typeof cartEditMode !== 'undefined' && cartEditMode && !connectMode) {
+                if (clickedImage.editLocked) {
+                    if (typeof showConfirm === 'function') showConfirm({ title: '🔒 Locked', body: 'This was loaded through a Port and its allowed elements cannot be edited. Only the original creator can change it.', okText: 'OK', danger: false, hideCancel: true });
+                } else {
+                    openCartridgeEditor(clickedImage);
+                }
+                return;
+            }
+            if (clickedImage && clickedImage.kind === 'port' && typeof portEditMode !== 'undefined' && portEditMode && !connectMode) {
+                if (clickedImage.editLocked) {
+                    if (typeof showConfirm === 'function') showConfirm({ title: '🔒 Locked', body: 'This was loaded through a Port and its allowed elements cannot be edited. Only the original creator can change it.', okText: 'OK', danger: false, hideCancel: true });
+                } else {
+                    openCartridgeEditor(clickedImage);
+                }
                 return;
             }
             if (clickedImage && !connectMode) {
@@ -4015,6 +4049,19 @@
                 const toImg = imageMap.get(conn.to);
                 if (fromImg && toImg) {
                     if (!segInView(fromImg.x, fromImg.y, toImg.x, toImg.y)) return;
+                    // Port link: a plain straight line, no step number, no bend, no arrow.
+                    if (conn.portLink) {
+                        ctx.save();
+                        ctx.strokeStyle = TH.line || '#607D8B';
+                        ctx.lineWidth = 2 / camera.zoom;
+                        ctx.setLineDash([]);
+                        ctx.beginPath();
+                        ctx.moveTo(fromImg.x, fromImg.y);
+                        ctx.lineTo(toImg.x, toImg.y);
+                        ctx.stroke();
+                        ctx.restore();
+                        return;
+                    }
                     // Hidden logic line: faded grey dashed ghost, skip normal drawing
                     if (conn.hidden) {
                         const hmx = (conn.circleX ?? (fromImg.x + toImg.x) / 2);
@@ -4097,6 +4144,9 @@
                     ctx.restore();
 
                     const angle = Math.atan2(toImg.y - midY, toImg.x - midX);
+
+            // Port links are plain connectors — no step number, no arrow badge
+            if (conn.portLink) { return; }
 
             // Draw number in a circle at the calculated/stored position
                    const circleRadius = 16 / camera.zoom;
@@ -5554,7 +5604,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
-                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
+                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
                 })),
                 connections: connections.map(conn => ({
                     from: conn.from,
@@ -5562,7 +5612,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     number: conn.number,
                     simultaneous: conn.simultaneous || false,
                     hidden: conn.hidden || false,
-                    curved: conn.curved || false
+                    curved: conn.curved || false,
+                    portLink: conn.portLink || false
                 })),
                 connectionCounter: connectionCounter,
                 // canvas notations (thought bubbles) — were missing from the payload
@@ -5678,7 +5729,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId,
                                 sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType,
                                 memSize: imgData.memSize, filePath: imgData.filePath,
-                                numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor,
+                                numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked,
                                 lastEdited: imgData.lastEdited,
                                 meshRow: imgData.meshRow, meshCol: imgData.meshCol,
                                 assetName: imgData.assetName, thumb: imgData.thumb,
@@ -5728,7 +5779,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                     isDot: false,
                                     hidden: imgData.hidden || false,
                                     hiddenLevel: imgData.hiddenLevel || 0,
-                                    sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
+                                    sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
                                 };
                                 images.push(newImage);
 
@@ -5818,6 +5869,34 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         function drawShape(im) {
             const k = elKind(im);
+            if (k === 'port') {
+                const w = im.width, h = im.height;
+                const cc = im.cartColor || (inkColor(im.color) || '#37474F');
+                ctx.fillStyle = TH.box || '#ffffff';
+                ctx.strokeStyle = cc;
+                ctx.lineWidth = 2 / camera.zoom;
+                ctx.beginPath();
+                ctx.arc(0, 0, Math.min(w, h) / 2, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+                // inner ring
+                ctx.beginPath();
+                ctx.arc(0, 0, Math.min(w, h) / 2 - 7 / camera.zoom, 0, Math.PI * 2);
+                ctx.lineWidth = 1.4 / camera.zoom; ctx.stroke();
+                // four connector prongs
+                const r = Math.min(w, h) / 2;
+                ctx.lineWidth = 3 / camera.zoom;
+                for (let a = 0; a < 4; a++) {
+                    const ang = a * Math.PI / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(Math.cos(ang) * (r - 10 / camera.zoom), Math.sin(ang) * (r - 10 / camera.zoom));
+                    ctx.lineTo(Math.cos(ang) * (r + 6 / camera.zoom), Math.sin(ang) * (r + 6 / camera.zoom));
+                    ctx.stroke();
+                }
+                // centre dot
+                ctx.fillStyle = cc;
+                ctx.beginPath(); ctx.arc(0, 0, 4 / camera.zoom, 0, Math.PI * 2); ctx.fill();
+                return;
+            }
             if (k === 'cartridge') {
                 const w = im.width, h = im.height;
                 const cc = im.cartColor || (inkColor(im.color) || '#37474F');
@@ -6289,10 +6368,14 @@ ctx.fillText(conn.number.toString(), midX, midY);
         }
 
         let _cartPendingPos = null;
+        let _cartLoadedPkg = null;   // an incoming OTOM_CARTRIDGE package to place alongside
         let _cartCfgChecked = {};   // key -> bool
         function openCartridgeConfig(x, y) {
             _cartPendingPos = { x: x, y: y };
             _cartCfgChecked = {};
+            _cartLoadedPkg = null;
+            const _portBtn0 = document.getElementById('cartCfgPort'); if (_portBtn0) _portBtn0.style.display = 'none';
+            const _roChk = document.getElementById('cartCfgReadOnly'); if (_roChk) _roChk.checked = false;
             const m = document.getElementById('cartridgeConfigModal');
             const allowedBox = document.getElementById('cartCfgAllowed');
             const loadedBox = document.getElementById('cartCfgLoaded');
@@ -6316,8 +6399,29 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
             renderCartLoaded();
             function renderCartLoaded() {
-                // RIGHT — every canvas element, marked allowed (awaiting) or disallowed
                 const chosen = Object.keys(_cartCfgChecked).filter(k => _cartCfgChecked[k]);
+                // If an external cartridge was loaded, show ITS contents (filtered by allow-list)
+                if (_cartLoadedPkg && Array.isArray(_cartLoadedPkg.elements)) {
+                    const els = _cartLoadedPkg.elements;
+                    // tally by category
+                    const tally = {};
+                    els.forEach(src => { const cat = cartCategoryOf(src) || 'other'; tally[cat] = (tally[cat] || 0) + 1; });
+                    const tallyStr = Object.keys(tally).map(k => tally[k] + ' ' + ((CART_CATEGORIES.find(c => c.key === k) || {}).label || k)).join(' · ');
+                    let html = '<div style="font-size:11px; color:#546E7A; font-weight:700; margin-bottom:8px;">LOADED CARTRIDGE · ' + els.length + ' element(s)</div>' +
+                               '<div style="font-size:11px; color:#90A4AE; margin-bottom:10px;">' + (tallyStr || '—') + '</div>';
+                    html += els.map(src => {
+                        const cat = cartCategoryOf(src);
+                        const shown = cat && chosen.indexOf(cat) >= 0;
+                        const catLabel = (CART_CATEGORIES.find(c => c.key === cat) || {}).label || 'other';
+                        const nm = (src.name || catLabel) + (src.numDesignation ? ' #' + src.numDesignation : '');
+                        const tag = shown ? '<span style="color:#2E7D32; font-weight:700;">✓ shown</span>' : '<span style="color:#B0BEC5;">filtered out</span>';
+                        return '<div style="display:flex; justify-content:space-between; gap:10px; padding:4px 0; border-bottom:1px solid #eee;">' +
+                               '<span style="color:' + (shown ? '#37474F' : '#B0BEC5') + ';">' + String(nm).replace(/</g,'&lt;') + ' <span style="color:#B0BEC5; font-size:11px;">(' + catLabel + ')</span></span>' + tag + '</div>';
+                    }).join('');
+                    loadedBox.innerHTML = html;
+                    return;
+                }
+                // Otherwise — every canvas element, marked allowed (awaiting) or disallowed
                 const candidates = images.filter(e => elKind(e) !== 'cartridge');
                 if (!candidates.length) { loadedBox.innerHTML = '<div style="font-style:italic;">No elements on canvas.</div>'; return; }
                 loadedBox.innerHTML = candidates.map(e => {
@@ -6333,21 +6437,158 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }).join('');
             }
 
-            const close = () => { m.style.display = 'none'; closeX.onclick = cancel.onclick = create.onclick = m.onclick = null; };
+            const close = () => { m.style.display = 'none'; const pb = document.getElementById('cartCfgPort'); if (pb) { pb.style.display = 'none'; pb.onclick = null; } const lb = document.getElementById('cartCfgLoad'); if (lb) { lb.textContent = 'Load Cartridge'; lb.style.background = '#00838F'; } closeX.onclick = cancel.onclick = create.onclick = m.onclick = null; };
             closeX.onclick = cancel.onclick = close;
+            const loadBtn = document.getElementById('cartCfgLoad');
+            if (loadBtn) loadBtn.onclick = () => {
+                const inp = document.getElementById('cartLoadInput');
+                inp.value = '';
+                inp.onchange = (ev) => {
+                    const file = ev.target.files && ev.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (re) => {
+                        try {
+                            const pkg = JSON.parse(re.target.result);
+                            if (pkg.type !== 'OTOM_CARTRIDGE') throw new Error('Not an OTOM cartridge file.');
+                            _cartLoadedPkg = pkg;
+                            loadBtn.textContent = '✓ Loaded (' + (pkg.elements ? pkg.elements.length : 0) + ')';
+                            loadBtn.style.background = '#2E7D32';
+                            renderCartLoaded();
+                            const portBtn = document.getElementById('cartCfgPort');
+                            if (portBtn) portBtn.style.display = '';
+                        } catch (err) {
+                            if (typeof showConfirm === 'function') showConfirm({ title: 'Load Failed', body: err.message, okText: 'OK', danger: true, hideCancel: true });
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+                inp.click();
+            };
+            const portBtn = document.getElementById('cartCfgPort');
+            if (portBtn) portBtn.onclick = () => {
+                if (!_cartLoadedPkg) return;
+                const pkg = _cartLoadedPkg;
+                const allowed = Object.keys(_cartCfgChecked).filter(k => _cartCfgChecked[k]);
+                const roChk = document.getElementById('cartCfgReadOnly');
+                const port = {
+                    id: Date.now() + Math.random(), kind: 'port', isDot: false, img: null,
+                    x: _cartPendingPos.x, y: _cartPendingPos.y, width: 74, height: 74, rotation: 0,
+                    name: 'Port', fullName: '', notations: '', agent: '', priority: '', outline: '',
+                    cartColor: nextCartridgeColor(),
+                    allowed: allowed,
+                    readOnly: !!(roChk && roChk.checked),
+                    contents: []
+                };
+                images.push(port);
+                const loadedCart = {
+                    id: Date.now() + Math.random() + 1, kind: 'cartridge', isDot: false, img: null,
+                    x: _cartPendingPos.x + 220, y: _cartPendingPos.y, width: 90, height: 64, rotation: 0,
+                    name: (pkg.cartridge && pkg.cartridge.name) || 'Loaded Cartridge',
+                    fullName: '', notations: '', agent: '', priority: '', outline: '',
+                    cartColor: (pkg.cartridge && pkg.cartridge.cartColor) || nextCartridgeColor(),
+                    allowed: (pkg.cartridge && pkg.cartridge.allowed) || [],
+                    readOnly: !!(pkg.cartridge && pkg.cartridge.readOnly),
+                    contents: []
+                };
+                const placedIds = [];
+                (pkg.elements || []).forEach((src, si) => {
+                    const cat = cartCategoryOf(src);
+                    if (allowed.indexOf(cat) < 0) return;
+                    const rep = {};
+                    for (const k in src) { if (k === 'img') continue; rep[k] = src[k]; }
+                    rep.id = Date.now() + Math.random() + Math.random();
+                    rep.img = null;
+                    if (src.imageData) { try { const im2 = new Image(); im2.src = src.imageData; rep.img = im2; } catch (e) {} }
+                    rep.cartLocked = loadedCart.readOnly;
+                    rep._portId = port.id;      // which port owns this replica
+                    rep._srcIdx = si;           // index into the stored package
+                    images.push(rep);
+                    placedIds.push(rep.id);
+                });
+                loadedCart.contents = placedIds;
+                loadedCart.cartLocked = loadedCart.readOnly;
+                loadedCart.editLocked = true;   // loaded via a PORT → its allow-list cannot be edited
+                port.contents = placedIds.slice();
+                port._pkg = pkg;                // keep the FULL package so filtered types can be re-materialized
+                port._loadedCartId = loadedCart.id;
+                images.push(loadedCart);
+                if (typeof assignDesignations === 'function') assignDesignations();
+                connections.push({ from: port.id, to: loadedCart.id, number: 0, simultaneous: false, circleX: null, circleY: null, curved: false, portLink: true });
+                selectedImage = port;
+                saveState();
+                updateImageCount(); updateImageList(); draw();
+                close();
+            };
+            const expBtn = document.getElementById('cartCfgExport');
+            if (expBtn) expBtn.onclick = () => {
+                const allowed = Object.keys(_cartCfgChecked).filter(k => _cartCfgChecked[k]);
+                const roChk = document.getElementById('cartCfgReadOnly');
+                // build a transient cartridge from the current dialog settings and export it,
+                // packaging only the allowed-type elements currently on the canvas
+                const tempCart = {
+                    id: Date.now() + Math.random(), kind: 'cartridge',
+                    name: 'Data Cartridge', cartColor: nextCartridgeColor(),
+                    allowed: allowed, readOnly: !!(roChk && roChk.checked),
+                    contents: images.filter(e => elKind(e) !== 'cartridge' && allowed.indexOf(cartCategoryOf(e)) >= 0).map(e => e.id)
+                };
+                exportCartridge(tempCart);
+                close();
+            };
             m.onclick = (e) => { if (e.target === m) close(); };
             create.onclick = () => {
                 const allowed = Object.keys(_cartCfgChecked).filter(k => _cartCfgChecked[k]);
+                const roChk = document.getElementById('cartCfgReadOnly');
                 const cart = {
                     id: Date.now() + Math.random(), kind: 'cartridge', isDot: false, img: null,
                     x: _cartPendingPos.x, y: _cartPendingPos.y, width: 90, height: 64, rotation: 0,
                     name: 'Data Cartridge', fullName: '', notations: '', agent: '', priority: '', outline: '',
                     cartColor: nextCartridgeColor(),
                     allowed: allowed,     // element-type keys this cartridge accepts
+                    readOnly: !!(roChk && roChk.checked),
                     contents: []          // ids of loaded elements (empty at creation)
                 };
                 images.push(cart);
                 if (typeof assignDesignations === 'function') assignDesignations();
+
+                // If an external cartridge package was loaded, materialize it too: place a
+                // second cartridge, replicate its elements EXACTLY (position + all metadata),
+                // but ONLY the types THIS cartridge allows — filtered types simply don't appear.
+                if (_cartLoadedPkg) {
+                    const pkg = _cartLoadedPkg;
+                    const loadedCart = {
+                        id: Date.now() + Math.random() + 1, kind: 'cartridge', isDot: false, img: null,
+                        x: _cartPendingPos.x + 220, y: _cartPendingPos.y, width: 90, height: 64, rotation: 0,
+                        name: (pkg.cartridge && pkg.cartridge.name) || 'Loaded Cartridge',
+                        fullName: '', notations: '', agent: '', priority: '', outline: '',
+                        cartColor: (pkg.cartridge && pkg.cartridge.cartColor) || nextCartridgeColor(),
+                        allowed: (pkg.cartridge && pkg.cartridge.allowed) || [],
+                        readOnly: !!(pkg.cartridge && pkg.cartridge.readOnly),
+                        contents: []
+                    };
+                    // replicate elements filtered by THIS cartridge's allow-list
+                    const placedIds = [];
+                    (pkg.elements || []).forEach(src => {
+                        const cat = cartCategoryOf(src);
+                        if (allowed.indexOf(cat) < 0) return;   // this cartridge disallows the type → don't display
+                        const rep = {};
+                        for (const k in src) { if (k === 'img') continue; rep[k] = src[k]; }
+                        rep.id = Date.now() + Math.random() + Math.random();
+                        rep.img = null;
+                        // rebuild image bitmap from imageData if present
+                        if (src.imageData) { try { const im2 = new Image(); im2.src = src.imageData; rep.img = im2; } catch (e) {} }
+                        rep.cartLocked = loadedCart.readOnly;   // read-only lock flag on replicas
+                        images.push(rep);
+                        placedIds.push(rep.id);
+                    });
+                    loadedCart.contents = placedIds;
+                    loadedCart.cartLocked = loadedCart.readOnly;
+                    images.push(loadedCart);
+                    if (typeof assignDesignations === 'function') assignDesignations();
+                    // connect the two cartridges with a line
+                    connections.push({ from: cart.id, to: loadedCart.id, number: connectionCounter++, simultaneous: false, circleX: null, circleY: null, curved: false });
+                }
+
                 selectedImage = cart;
                 saveState();
                 updateImageCount(); updateImageList(); draw();
@@ -6355,6 +6596,52 @@ ctx.fillText(conn.number.toString(), midX, midY);
             };
             m.style.display = 'flex';
         }
+        // Serialize one canvas element with ALL its data + metadata for cartridge export.
+        function serializeElementFull(img) {
+            const o = {};
+            for (const k in img) {
+                if (k === 'img' || k === '_glow' || k === '_bAlpha' || k === '_pOrder' || k === '_pOrderN' || k === '_weldFlash' || k === '_srcId' || k === '_logged') continue;
+                o[k] = img[k];
+            }
+            o.imageData = (img.img && img.img.src) ? img.img.src : (img.imageData || null);
+            if (img.parts) o.parts = img.parts.map(p => { const q = {}; for (const k in p) { if (k === 'img') continue; q[k] = p[k]; } return q; });
+            return o;
+        }
+
+        // Export a Data Cartridge as a portable package: its settings + every element it
+        // carries, with full geometry + metadata. Only allowed-type elements are included.
+        function exportCartridge(cart) {
+            const allowed = cart.allowed || [];
+            const ids = new Set(cart.contents || []);
+            const contentEls = images.filter(e => elKind(e) !== 'cartridge' && ids.has(e.id) && allowed.indexOf(cartCategoryOf(e)) >= 0);
+            const pkg = {
+                type: 'OTOM_CARTRIDGE',
+                version: 1,
+                exported: Date.now(),
+                cartridge: {
+                    name: cart.name || 'Data Cartridge',
+                    cartColor: cart.cartColor || '#546E7A',
+                    allowed: allowed,
+                    readOnly: !!cart.readOnly
+                },
+                elements: contentEls.map(serializeElementFull)
+            };
+            const json = JSON.stringify(pkg, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'cartridge_' + (cart.name || 'data').replace(/[^\w\-]+/g, '_') + '.json';
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            const allowLabels = allowed.map(k => (CART_CATEGORIES.find(c => c.key === k) || {}).label || k);
+            if (typeof showConfirm === 'function') showConfirm({
+                title: 'Cartridge Exported',
+                body: 'Package written with ' + contentEls.length + ' element(s).\nAccepts: ' + (allowLabels.join(', ') || 'none') + '.\nRead only: ' + (cart.readOnly ? 'yes' : 'no') + '.',
+                okText: 'OK', danger: false, hideCancel: true
+            });
+        }
+
         function openCartridge(cart) {
             const m = document.getElementById('cartridgeModal');
             const body = document.getElementById('cartridgeBody');
@@ -6363,7 +6650,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
             const items = (cart && cart.contents) ? cart.contents : [];
             const allowedLabels = allowed.map(k => (CART_CATEGORIES.find(c => c.key === k) || {}).label || k);
             let html = '<div style="margin-bottom:10px; font-size:12px; color:#78909C;">Accepts: ' +
-                       (allowedLabels.length ? allowedLabels.join(', ') : '<span style="font-style:italic;">nothing selected</span>') + '</div>';
+                       (allowedLabels.length ? allowedLabels.join(', ') : '<span style="font-style:italic;">nothing selected</span>') +
+                       (cart && cart.readOnly ? ' <span style="color:#C62828; font-weight:700;">· 🔒 READ ONLY</span>' : '') + '</div>';
             if (!items.length) {
                 html += '<div style="color:#90A4AE; font-style:italic; padding:10px 0;">This cartridge is empty.</div>';
             } else {
@@ -6373,7 +6661,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     return '<div style="padding:6px 0; border-bottom:1px solid #eee;">' + String(nm).replace(/</g,'&lt;') + '</div>';
                 }).join('');
             }
+            html += '<div style="display:flex; justify-content:flex-end; margin-top:14px;"><button id="cartEjectBtn" style="margin:0; padding:8px 16px; font-size:13px; font-weight:700; background:#546E7A; color:#fff; border-radius:8px; cursor:pointer;">⏏ Eject / Export</button></div>';
             body.innerHTML = html;
+            const ejectBtn = document.getElementById('cartEjectBtn');
+            if (ejectBtn) ejectBtn.onclick = () => exportCartridge(cart);
             m.style.display = 'flex';
             const close = function () { m.style.display = 'none'; m.onclick = null; if (closeX) closeX.onclick = null; };
             if (closeX) closeX.onclick = close;
@@ -6385,6 +6676,134 @@ ctx.fillText(conn.number.toString(), midX, midY);
             b.style.background = cartridgeMode ? '#F44336' : '#795548';
             b.textContent = cartridgeMode ? 'Cancel Cartridge' : '▤ Data Cartridge';
             container.style.cursor = cartridgeMode ? 'copy' : 'grab';
+        }
+
+        var cartEditMode = false;
+        function toggleCartEditMode() {
+            cartEditMode = !cartEditMode;
+            const b = document.getElementById('cartEditBtn');
+            b.style.background = cartEditMode ? '#F44336' : '#795548';
+            b.textContent = cartEditMode ? 'Cancel Edit' : '✎ Edit Cartridge';
+        }
+
+        var portEditMode = false;
+        function togglePortEditMode() {
+            portEditMode = !portEditMode;
+            const b = document.getElementById('portEditBtn');
+            b.style.background = portEditMode ? '#F44336' : '#795548';
+            b.textContent = portEditMode ? 'Cancel Port Edit' : '✎ Edit Port';
+        }
+
+        // Reopen an existing cartridge's allow-list editor and apply changes back to it.
+        // Re-filters its currently loaded contents so newly-disallowed types are hidden
+        // and newly-allowed ones can be shown.
+        function openCartridgeEditor(cart) {
+            const m = document.getElementById('cartridgeConfigModal');
+            const g1 = document.getElementById('cartCfgAllowed');
+            const g2 = document.getElementById('cartCfgLoaded');
+            const cancel = document.getElementById('cartCfgCancel');
+            const closeX = document.getElementById('cartCfgCloseX');
+            const create = document.getElementById('cartCfgCreate');
+            const roChk = document.getElementById('cartCfgReadOnly');
+            const loadBtn = document.getElementById('cartCfgLoad');
+            const expBtn = document.getElementById('cartCfgExport');
+            // seed checkboxes from the cartridge's current allow-list
+            _cartCfgChecked = {};
+            (cart.allowed || []).forEach(k => { _cartCfgChecked[k] = true; });
+            if (roChk) roChk.checked = !!cart.readOnly;
+            if (loadBtn) loadBtn.style.display = 'none';   // editing existing → no load/export here
+            if (expBtn) expBtn.style.display = 'none';
+            create.textContent = 'Apply Changes';
+
+            const rebuild = () => {
+                g1.innerHTML = '';
+                CART_CATEGORIES.forEach(c => {
+                    const row = document.createElement('label');
+                    row.style.cssText = 'display:flex; align-items:center; gap:9px; padding:6px 4px; cursor:pointer; font-size:14px; color:#37474F;';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox'; cb.style.cssText = 'width:16px; height:16px; cursor:pointer;';
+                    cb.checked = !!_cartCfgChecked[c.key];
+                    cb.onchange = () => { _cartCfgChecked[c.key] = cb.checked; };
+                    row.appendChild(cb);
+                    const txt = document.createElement('span'); txt.textContent = c.label; row.appendChild(txt);
+                    g1.appendChild(row);
+                });
+                const loaded = (cart.contents || []).map(id => images.find(im => im.id === id)).filter(Boolean);
+                g2.innerHTML = loaded.length ? loaded.map(e => {
+                    const cat = cartCategoryOf(e);
+                    const on = _cartCfgChecked[cat];
+                    const lbl = (CART_CATEGORIES.find(c => c.key === cat) || {}).label || 'other';
+                    return '<div style="display:flex; justify-content:space-between; gap:10px; padding:4px 0; border-bottom:1px solid #eee;">' +
+                           '<span style="color:' + (on ? '#37474F' : '#B0BEC5') + ';">' + ((e.name || lbl)) + '</span>' +
+                           (on ? '<span style="color:#2E7D32; font-weight:700;">shown</span>' : '<span style="color:#B0BEC5;">hidden</span>') + '</div>';
+                }).join('') : '<div style="font-style:italic;">No contents loaded.</div>';
+            };
+            rebuild();
+
+            const close = () => {
+                m.style.display = 'none';
+                if (loadBtn) loadBtn.style.display = '';
+                if (expBtn) expBtn.style.display = '';
+                create.textContent = 'Create Cartridge';
+                closeX.onclick = cancel.onclick = create.onclick = m.onclick = null;
+            };
+            closeX.onclick = cancel.onclick = close;
+            m.onclick = (e) => { if (e.target === m) close(); };
+            create.onclick = () => {
+                cart.allowed = Object.keys(_cartCfgChecked).filter(k => _cartCfgChecked[k]);
+                if (roChk) cart.readOnly = !!roChk.checked;
+
+                // If this is a PORT with a stored package, reconcile the canvas against the
+                // full package: disallowed types are removed, newly-allowed types re-appear.
+                if (cart._pkg && Array.isArray(cart._pkg.elements)) {
+                    const pkg = cart._pkg;
+                    const loadedCart = images.find(im => im.id === cart._loadedCartId);
+                    // remove ALL current replicas of this port
+                    const existing = images.filter(im => im._portId === cart.id);
+                    existing.forEach(el => { const ix = images.indexOf(el); if (ix >= 0) images.splice(ix, 1); });
+                    // re-materialize only allowed types from the stored package
+                    const placedIds = [];
+                    pkg.elements.forEach((src, si) => {
+                        const c = cartCategoryOf(src);
+                        if (cart.allowed.indexOf(c) < 0) return;
+                        const rep = {};
+                        for (const k in src) { if (k === 'img') continue; rep[k] = src[k]; }
+                        rep.id = Date.now() + Math.random() + Math.random() + si;
+                        rep.img = null;
+                        if (src.imageData) { try { const im2 = new Image(); im2.src = src.imageData; rep.img = im2; } catch (e) {} }
+                        rep.cartLocked = !!(pkg.cartridge && pkg.cartridge.readOnly);
+                        rep._portId = cart.id;
+                        rep._srcIdx = si;
+                        images.push(rep);
+                        placedIds.push(rep.id);
+                    });
+                    cart.contents = placedIds.slice();
+                    if (loadedCart) loadedCart.contents = placedIds.slice();
+                    if (typeof assignDesignations === 'function') assignDesignations();
+                    saveState(); updateImageCount(); updateImageList(); draw();
+                    close();
+                    return;
+                }
+
+                // Plain cartridge (no stored package): remove disallowed loaded contents.
+                const keep = [];
+                (cart.contents || []).forEach(id => {
+                    const el = images.find(im => im.id === id);
+                    if (!el) return;
+                    const cat = cartCategoryOf(el);
+                    if (cart.allowed.indexOf(cat) < 0) {
+                        const ix = images.indexOf(el);
+                        if (ix >= 0) images.splice(ix, 1);
+                    } else {
+                        el.hidden = false;
+                        keep.push(id);
+                    }
+                });
+                cart.contents = keep;
+                saveState(); updateImageCount(); updateImageList(); draw();
+                close();
+            };
+            m.style.display = 'flex';
         }
 
         function toggleRadarEdge() {
