@@ -566,6 +566,8 @@
         <span class="gsep" data-grp="FILE"></span>
 <button title="Write the whole canvas out to a .json engine file" onclick="saveEngine()" style="background: #9C27B0;">Save Engine</button>
         <button title="Restore a canvas from a saved .json engine file" onclick="document.getElementById('loadInput').click()" style="background: #00BCD4;">Load Engine</button>
+        <button title="Panic-save the ENTIRE engine instantly to a timestamped file" onclick="takeSnapshot()" style="background: #FF6D00;">⚡ Snapshot</button>
+        <button title="Restore a previously taken snapshot" onclick="loadSnapshot()" style="background: #FF8F00;">⤺ Load Snapshot</button>
         <button title="Open the Asset Manager — every element and its data" onclick="openAssetBrowser()" style="background: #673AB7;">🗂 Assets</button>
         <button title="Wipe the canvas and start over" onclick="resetEngine()" style="background: #F44336;">🔄 Reset Engine</button>
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
@@ -579,6 +581,7 @@
         <button id="toggleInfoBtn" onclick="toggleInfoSection()" style="float: right; font-size: 16px; padding: 4px 10px; background: #607D8B; margin-top: 5px;" title="Show/Hide Info">▼</button>
         <button onclick="toggleVerticalUI()" style="float: right; font-size: 16px; padding: 4px 10px; background: #37474F; margin-top: 5px;" title="Collapse into a draggable vertical toolbar">⋮</button>
         <input type="file" id="loadInput" accept=".json" style="display: none;">
+        <input type="file" id="snapshotInput" accept=".json" style="display: none;">
         <div style="margin-top: 10px; font-size: 12px; color: #333; display: flex; align-items: center; gap: 8px;">
             <span title="How close the mouse must get before hidden objects glow">🔦 Glow Radius</span>
             <input type="range" id="glowRadiusSlider" min="80" max="700" value="320" step="10"
@@ -3870,7 +3873,10 @@
 
             ctx.setTransform(camera.zoom, 0, 0, camera.zoom, camera.x, camera.y);
 
-            const imageMap = new Map(images.map(img => [img.id, img]));
+            // imageMap is only used for connection endpoint lookups — skip building
+            // this Map entirely on frames where there are no connections (common while
+            // drawing/panning), which avoids a full allocation every frame.
+            const imageMap = connections.length ? new Map(images.map(img => [img.id, img])) : null;
             resetFlagRects();
 
             // ========================================
@@ -3936,9 +3942,19 @@
                         const dist = Math.hypot(dx, dy);
                         if (dist < 1) return;
                         const ux = dx / dist, uy = dy / dist;
-                        // start at element edge, stop at cartridge edge
-                        const elR = Math.max(el.width, el.height) / 2;
-                        const cartR = Math.max(cart.width, cart.height) / 2;
+                        // distance from an element's centre to its edge along a unit direction
+                        const edgeDist = (im, dirx, diry) => {
+                            const k = im.kind || (im.isDot ? 'dot' : 'image');
+                            if (k === 'dot' || k === 'circle') return Math.max(im.width, im.height) / 2;
+                            // rect / square / triangle / image / cartridge / port → box edge along the ray
+                            const hw = im.width / 2, hh = im.height / 2;
+                            const ax = Math.abs(dirx), ay = Math.abs(diry);
+                            const tx = ax > 1e-6 ? hw / ax : Infinity;
+                            const ty = ay > 1e-6 ? hh / ay : Infinity;
+                            return Math.min(tx, ty);
+                        };
+                        const elR = edgeDist(el, ux, uy);
+                        const cartR = edgeDist(cart, -ux, -uy);
                         const startD = elR + 4 / camera.zoom;
                         const endD = dist - cartR - 4 / camera.zoom;
                         if (endD <= startD) return;
@@ -5580,8 +5596,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
         })();
 
         // Save Engine Function
-        function saveEngine() {
-            const engineData = {
+        function buildEnginePayload() {
+            return {
                 version: "1.1",
                 timestamp: new Date().toISOString(),
                 camera: {
@@ -5604,7 +5620,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
-                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
+                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, _pkg: img._pkg, _portId: img._portId, _srcIdx: img._srcIdx, _loadedCartId: img._loadedCartId, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
                 })),
                 connections: connections.map(conn => ({
                     from: conn.from,
@@ -5616,18 +5632,65 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     portLink: conn.portLink || false
                 })),
                 connectionCounter: connectionCounter,
-                // canvas notations (thought bubbles) — were missing from the payload
                 canvasNotes: canvasNotes.map(n => ({
                     id: n.id, x: n.x, y: n.y, text: n.text, kind: 'notation',
                     name: n.name || '', fullName: n.fullName || '', notations: n.notations || '',
                     agent: n.agent || '', priority: n.priority || '', numDesignation: n.numDesignation,
                     width: n.width || 40, height: n.height || 40, rotation: n.rotation || 0
                 })),
-                // engine messages — notes written for the reader itself
                 engineMessages: engineMessages.map(m => ({ id: m.id, text: m.text, agent: m.agent || '', ts: m.ts, snapshot: m.snapshot || null })),
                 formulaLibrary: formulaLibrary.map(f => ({ id: f.id, title: f.title || '', text: f.text, notations: f.notations || '', agent: f.agent || '', ts: f.ts })),
-                flagDrag: flagDrag
+                flagDrag: flagDrag,
+                savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
+                grid: (typeof showGrid !== 'undefined') ? showGrid : true,
+                background: (typeof background !== 'undefined' && background && background.src) ? {
+                    src: background.src, x: background.x, y: background.y, width: background.width, height: background.height, opacity: (typeof bgOpacity !== 'undefined' ? bgOpacity : 1)
+                } : null,
+                // ── SESSION / UI STATE: open windows, widgets, positions, opacities ──
+                session: (function () {
+                    const pos = (id) => { const el = document.getElementById(id); if (!el) return null; return { display: el.style.display, left: el.style.left, top: el.style.top, right: el.style.right, width: el.style.width, height: el.style.height, opacity: el.style.opacity, transform: el.style.transform }; };
+                    const s = {
+                        darkMode: (typeof darkMode !== 'undefined') ? darkMode : false,
+                        verticalUI: (typeof verticalUI !== 'undefined') ? verticalUI : false,
+                        infoCollapsed: (function () { const is = document.getElementById('infoSection'); return is ? (is.style.display === 'none') : false; })(),
+                        vpanelOpacity: (function () { const v = document.getElementById('vpanel'); return v ? v.style.opacity : null; })(),
+                        blockPanel: (function () { const el = document.getElementById('imageList'); return el ? { left: el.style.left, top: el.style.top, right: el.style.right } : null; })(),
+                        assetDrawerOpen: (typeof assetDrawerOpen !== 'undefined') ? assetDrawerOpen : false,
+                        notesReaderOpen: (typeof notesReaderOpen !== 'undefined') ? notesReaderOpen : false,
+                        healthOn: (typeof healthOn !== 'undefined') ? healthOn : false,
+                        clockOn: (typeof clockOn !== 'undefined') ? clockOn : false,
+                        perfOn: (typeof perfOn !== 'undefined') ? perfOn : false,
+                        parserOpen: (function () { const p = document.getElementById('parserPanel'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
+                        primerOpen: (function () { const p = document.getElementById('primerDock'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
+                        dataPanelOpen: (function () { const p = document.getElementById('dataPanel'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
+                        assetPanelOpen: (function () { const p = document.getElementById('assetPanel'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
+                        // stopwatch
+                        swRunning: (typeof swRunning !== 'undefined') ? swRunning : false,
+                        swElapsed: (typeof swElapsed !== 'undefined') ? (swElapsed + (swRunning ? performance.now() - swStart : 0)) : 0,
+                        alarmTime: (function () { const a = document.getElementById('alarmTime'); return a ? a.value : ''; })(),
+                        // panel geometry
+                        panels: {
+                            clockPanel: pos('clockPanel'), perfPanel: pos('perfPanel'),
+                            assetDrawer: pos('assetDrawer'), notesReader: pos('notesReader'),
+                            parserPanel: pos('parserPanel'), primerDock: pos('primerDock'),
+                            dataPanel: pos('dataPanel'), healthTab: pos('healthTab'),
+                            assetPanel: pos('assetPanel'),
+                            vpanel: pos('vpanel')
+                        },
+                        // media players (YouTube URLs + geometry)
+                        media: (typeof mediaPlayers !== 'undefined' ? mediaPlayers : []).map(mp => {
+                            const el = mp.el; if (!el) return null;
+                            const urlInp = el.querySelector('.mpUrl');
+                            return { url: urlInp ? urlInp.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
+                        }).filter(Boolean)
+                    };
+                    return s;
+                })()
             };
+        }
+
+        function saveEngine() {
+            const engineData = buildEnginePayload();
 
             const jsonString = JSON.stringify(engineData, null, 2);
 
@@ -5641,11 +5704,186 @@ ctx.fillText(conn.number.toString(), midX, midY);
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            alert('✅ Engine saved successfully!');
+            if (typeof showConfirm === 'function') showConfirm({ title: 'Engine Saved', body: 'The full engine state was written to a file.', okText: 'OK', danger: false, hideCancel: true });
+        }
+
+        // ⚡ SNAPSHOT — one-click panic save: capture the ENTIRE engine state and
+        // auto-download instantly. No dialog, no naming, timestamped filename.
+        function takeSnapshot() {
+            const payload = buildEnginePayload();
+            payload.snapshot = true;
+            const d = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+            const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'OTOM_snapshot_' + stamp + '.json';
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            // brief non-blocking flash so it's clear it fired, without slowing the escape
+            const flash = document.createElement('div');
+            flash.textContent = '⚡ Snapshot saved';
+            flash.style.cssText = 'position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:200000; background:#2E7D32; color:#fff; font:700 13px Arial; padding:8px 16px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.35); pointer-events:none; opacity:0; transition:opacity .15s;';
+            document.body.appendChild(flash);
+            requestAnimationFrame(() => flash.style.opacity = '1');
+            setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 200); }, 1400);
+        }
+        function loadSnapshot() { document.getElementById('snapshotInput').click(); }
+
+        // Restore open windows, widgets, positions, opacities from a saved session block.
+        function restoreSession(data) {
+            const s = data && data.session;
+            // grid + dark are handled generally
+            if (data && typeof data.grid !== 'undefined' && typeof showGrid !== 'undefined') {
+                showGrid = data.grid;
+                const gb = document.getElementById('gridBtn');
+                if (gb) { gb.textContent = showGrid ? '▦ Grid: ON' : '▦ Grid: OFF'; gb.style.background = showGrid ? '#607D8B' : '#9e9e9e'; }
+            }
+            if (!s) return;
+            try {
+                if (s.darkMode && typeof darkMode !== 'undefined' && !darkMode) toggleDarkMode();
+                if (!s.darkMode && typeof darkMode !== 'undefined' && darkMode) toggleDarkMode();
+                // vertical UI: only flip if the saved state differs from the current one
+                // toolbar collapse (the ▼/▲ info-section arrow)
+                {
+                    const is = document.getElementById('infoSection'), tb = document.getElementById('toggleInfoBtn');
+                    if (is) {
+                        if (s.infoCollapsed) { is.style.display = 'none'; if (tb) { tb.textContent = '▲'; tb.title = 'Show Info'; } }
+                        else { is.style.display = 'block'; if (tb) { tb.textContent = '▼'; tb.title = 'Hide Info'; } }
+                    }
+                }
+                if (typeof verticalUI !== 'undefined' && typeof toggleVerticalUI === 'function' && !!s.verticalUI !== !!verticalUI) toggleVerticalUI();
+                if (s.vpanelOpacity != null) { const v = document.getElementById('vpanel'); if (v) v.style.opacity = s.vpanelOpacity; }
+                if (s.blockPanel) { const el = document.getElementById('imageList'); if (el) {
+                    if (s.blockPanel.left) { el.style.left = s.blockPanel.left; el.style.right = 'auto'; if (typeof panelPosition !== 'undefined') panelPosition.x = parseInt(s.blockPanel.left, 10) || panelPosition.x; }
+                    if (s.blockPanel.top) { let ty = parseInt(s.blockPanel.top, 10); if (!isNaN(ty)) { ty = Math.max(20, ty); el.style.top = ty + 'px'; if (typeof panelPosition !== 'undefined') panelPosition.y = ty; } }
+                } }
+
+                if (s.assetDrawerOpen && typeof assetDrawerOpen !== 'undefined' && !assetDrawerOpen) toggleAssetDrawer();
+                if (s.assetPanelOpen && typeof openAssetBrowser === 'function') { const p = document.getElementById('assetPanel'); if (p && (!p.style.display || p.style.display === 'none')) openAssetBrowser(); }
+                if (s.notesReaderOpen && typeof notesReaderOpen !== 'undefined' && !notesReaderOpen) toggleNotesReader();
+                if (s.healthOn && typeof healthOn !== 'undefined' && !healthOn) toggleHealth();
+                if (s.clockOn && typeof clockOn !== 'undefined' && !clockOn) toggleClock();
+                if (s.perfOn && typeof perfOn !== 'undefined' && !perfOn) togglePerf();
+                if (s.parserOpen && typeof toggleParser === 'function') { const p = document.getElementById('parserPanel'); if (p && (!p.style.display || p.style.display === 'none')) toggleParser(); }
+                if (s.primerOpen && typeof togglePrimerBoard === 'function') { const p = document.getElementById('primerDock'); if (p && (!p.style.display || p.style.display === 'none')) togglePrimerBoard(); }
+
+                // stopwatch
+                if (typeof swElapsed !== 'undefined' && s.swElapsed) {
+                    swElapsed = s.swElapsed; swRunning = false;
+                    const b = document.getElementById('swBtn'); if (b) { b.textContent = 'Start'; b.style.background = '#00897B'; }
+                }
+                if (s.alarmTime) { const a = document.getElementById('alarmTime'); if (a) a.value = s.alarmTime; }
+
+                // media players
+                if (Array.isArray(s.media) && typeof newMediaPlayer === 'function') {
+                    s.media.forEach(m => {
+                        newMediaPlayer();
+                        const mp = mediaPlayers[mediaPlayers.length - 1];
+                        if (!mp || !mp.el) return;
+                        const el = mp.el;
+                        if (m.left) el.style.left = m.left; if (m.top) el.style.top = m.top;
+                        if (m.width) el.style.width = m.width; if (m.height) el.style.height = m.height;
+                        if (m.opacity) el.style.opacity = m.opacity;
+                        const urlInp = el.querySelector('.mpUrl');
+                        if (urlInp && m.url) { urlInp.value = m.url; const go = el.querySelector('.mpGo'); if (go) go.click(); }
+                    });
+                }
+
+                // panel geometry — applied on the next tick so it overrides any
+                // reanchor/default-position logic that the toggle functions run.
+                if (s.panels) {
+                    setTimeout(() => {
+                        Object.keys(s.panels).forEach(id => {
+                            const p = s.panels[id]; if (!p) return;
+                            const el = document.getElementById(id); if (!el) return;
+                            // never reposition a panel that is currently hidden
+                            if (el.style.display === 'none') return;
+                            if (p.left) { el.style.left = p.left; el.style.right = 'auto'; }
+                            if (p.right && !p.left) el.style.right = p.right;
+                            if (p.top) el.style.top = p.top;
+                            if (p.width) el.style.width = p.width;
+                            if (p.height) el.style.height = p.height;
+                            if (p.opacity) el.style.opacity = p.opacity;
+                            if (p.transform) el.style.transform = p.transform;
+                        });
+                    }, 0);
+                }
+            } catch (e) { /* session restore is best-effort; never block the load */ }
+        }
+
+        // Animated load reveal — a medium-speed overlay that shows what's being restored
+        // as it comes in, instead of a blocking dialog.
+        function runLoadReveal(data, done) {
+            const nImg = (data.images || []).length;
+            const nConn = (data.connections || []).length;
+            const nNote = (data.canvasNotes || []).length;
+            const nMsg = (data.engineMessages || []).length;
+            const nAsset = (data.savedAssets || []).length;
+            const s = data.session || {};
+            const wins = [];
+            if (s.assetDrawerOpen) wins.push('Asset Drawer');
+            if (s.notesReaderOpen) wins.push('Notes Reader');
+            if (s.clockOn) wins.push('Clock');
+            if (s.perfOn) wins.push('Performance Monitor');
+            if (s.parserOpen) wins.push('Data Parser');
+            if (s.primerOpen) wins.push('Primer Board');
+            if (s.healthOn) wins.push('Health');
+            if (Array.isArray(s.media) && s.media.length) wins.push(s.media.length + ' Media Player' + (s.media.length > 1 ? 's' : ''));
+
+            const steps = [
+                { label: 'Elements', n: nImg, ico: '◆' },
+                { label: 'Connections', n: nConn, ico: '⛓' },
+                { label: 'Canvas Notations', n: nNote, ico: '💭' },
+                { label: 'Notes Reader entries', n: nMsg, ico: '📖' },
+                { label: 'Assets', n: nAsset, ico: '▤' }
+            ].filter(st => st.n > 0);
+            wins.forEach(w => steps.push({ label: w, n: 1, ico: '🪟', win: true }));
+
+            const ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed; inset:0; z-index:300000; display:flex; align-items:center; justify-content:center; background:rgba(8,11,16,0.86); backdrop-filter:blur(3px); opacity:0; transition:opacity .3s;';
+            const card = document.createElement('div');
+            card.style.cssText = 'width:440px; max-width:92vw; background:linear-gradient(160deg,#161d24,#0d1117); border:1px solid #263238; border-radius:16px; box-shadow:0 24px 70px rgba(0,0,0,.6); padding:26px 28px; font-family:Arial,sans-serif; color:#eceff1;';
+            card.innerHTML = '<div style="font-weight:800; font-size:18px; letter-spacing:.3px; display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-size:22px;">⚡</span> Restoring Snapshot</div>' +
+                '<div style="color:#78909C; font-size:12px; margin-bottom:18px;">Rebuilding your session…</div>' +
+                '<div id="lrBar" style="height:6px; background:#1c2530; border-radius:6px; overflow:hidden; margin-bottom:18px;"><div id="lrFill" style="height:100%; width:0%; background:linear-gradient(90deg,#00897B,#26C6DA); transition:width .35s cubic-bezier(.4,.0,.2,1);"></div></div>' +
+                '<div id="lrList" style="display:flex; flex-direction:column; gap:9px; max-height:44vh; overflow:auto;"></div>';
+            ov.appendChild(card); document.body.appendChild(ov);
+            requestAnimationFrame(() => ov.style.opacity = '1');
+            const list = card.querySelector('#lrList');
+            const fill = card.querySelector('#lrFill');
+
+            let i = 0;
+            const total = Math.max(1, steps.length);
+            const tick = () => {
+                if (i >= steps.length) {
+                    fill.style.width = '100%';
+                    setTimeout(() => {
+                        ov.style.opacity = '0';
+                        setTimeout(() => { ov.remove(); if (done) done(); }, 320);
+                    }, 420);
+                    return;
+                }
+                const st = steps[i];
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; background:#131a21; border:1px solid #1f2a33; border-radius:9px; opacity:0; transform:translateY(6px); transition:opacity .28s, transform .28s;';
+                row.innerHTML = '<span style="display:flex; align-items:center; gap:10px; font-size:13px;"><span style="font-size:16px;">' + st.ico + '</span>' + st.label + '</span>' +
+                    '<span style="font-weight:800; color:#26C6DA; font-size:13px;">' + (st.win ? '✓ open' : st.n) + '</span>';
+                list.appendChild(row);
+                requestAnimationFrame(() => { row.style.opacity = '1'; row.style.transform = 'translateY(0)'; });
+                list.scrollTop = list.scrollHeight;
+                i++;
+                fill.style.width = Math.round((i / total) * 100) + '%';
+                setTimeout(tick, 320);   // medium speed
+            };
+            setTimeout(tick, 260);
         }
 
         // Load Engine Function
-        document.getElementById('loadInput').addEventListener('change', function(e) {
+        function handleEngineFileLoad(e) {
+            const _isSnapshot = !!(e && e.target && e.target.id === 'snapshotInput');
             const file = e.target.files[0];
             if (!file) return;
 
@@ -5677,6 +5915,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         id: f.id != null ? f.id : Date.now() + Math.random(),
                         title: f.title || '', text: f.text || '', notations: f.notations || '', agent: f.agent || '', ts: f.ts || Date.now()
                     }));
+                    if (Array.isArray(engineData.savedAssets) && typeof savedAssets !== 'undefined') { savedAssets = engineData.savedAssets; }
+                    if (engineData.background && engineData.background.src) {
+                        const bgi = new Image();
+                        bgi.onload = () => { background = { img: bgi, x: engineData.background.x, y: engineData.background.y, width: engineData.background.width, height: engineData.background.height, opacity: engineData.background.opacity, src: engineData.background.src, scale: 1 }; draw(); };
+                        bgi.src = engineData.background.src;
+                    }
                     selectedImage = null;
 
                     if (engineData.camera) {
@@ -5698,7 +5942,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         updateImageCount();
                         updateConnectionCount();
                         draw();
-                        alert('✅ Engine loaded successfully!');
+                        if (_isSnapshot) { runLoadReveal(engineData, () => { restoreSession(engineData); updateImageList && updateImageList(); refreshParserIfOpen && refreshParserIfOpen(); if (document.getElementById('assetPanel') && document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser(); draw(); }); }
+                        else { updateImageList && updateImageList(); refreshParserIfOpen && refreshParserIfOpen(); draw(); if (typeof showConfirm === 'function') showConfirm({ title: 'Engine Loaded', body: 'The engine was restored from the file.', okText: 'OK', danger: false, hideCancel: true }); }
                         return;
                     }
 
@@ -5761,7 +6006,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 updateImageList();
                                 updateDataString();
                                 draw();
-                                alert('✅ Engine loaded successfully!');
+                                if (_isSnapshot) { runLoadReveal(engineData, () => { restoreSession(engineData); updateImageList && updateImageList(); refreshParserIfOpen && refreshParserIfOpen(); if (document.getElementById('assetPanel') && document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser(); draw(); }); }
+                                else { draw(); }
                             }
                         } else {
                             const img = new Image();
@@ -5791,7 +6037,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                     updateImageList();
                                     updateDataString();
                                     draw();
-                                    alert('✅ Engine loaded successfully!');
+                                    if (_isSnapshot) { runLoadReveal(engineData, () => { restoreSession(engineData); updateImageList && updateImageList(); refreshParserIfOpen && refreshParserIfOpen(); if (document.getElementById('assetPanel') && document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser(); draw(); }); }
+                                    else { draw(); }
                                 }
                             };
                             img.onerror = () => {
@@ -5819,7 +6066,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
             reader.readAsText(file);
 
             e.target.value = '';
-        });
+        }
+        document.getElementById('loadInput').addEventListener('change', handleEngineFileLoad);
+        (function () { const si = document.getElementById('snapshotInput'); if (si) si.addEventListener('change', handleEngineFileLoad); })();
         // ============================================================
         // ✏️  ANNOTATIONS (lines & text) + 🧭 HIDDEN RADAR
         // ============================================================
