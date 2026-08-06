@@ -548,6 +548,7 @@
         <button title="Open the primer board — the execution rail of steps and subroutines" id="primerBtn" onclick="togglePrimerBoard()" style="background: #1B5E20;">▬ Primer Board</button>
         <button onclick="openPrimerControls()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Primer rail controls">⚙ Primer Ctrl</button>
         <button title="Open a media player panel; each click spawns another one" id="mediaBtn" onclick="toggleMedia()" style="background: #C62828;">▶ Media</button>
+        <button title="Open an in-engine browser panel; pinnable, resizable, opacity-controlled" id="browserBtn" onclick="newBrowserPanel()" style="background: #1565C0;">🌐 Browser</button>
         <button title="Open the clock, stopwatch, alarm and timestamp panel" id="clockBtn" onclick="toggleClock()" style="background: #263238;">🕘 Clock</button>
         <span class="gsep" data-grp="SYSTEM"></span>
         <button id="darkBtn" onclick="toggleDarkMode()" style="background: #263238;" title="Dark mode for the whole interface and canvas">🌙 Dark</button>
@@ -1162,6 +1163,7 @@
                 { ico: '▶', label: 'Parser',  accent: '#37474F', run: () => toggleParser() },
                 { ico: '━', label: 'Primer',  accent: '#1B5E20', run: () => togglePrimerBoard() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
+                { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
             ]},
             { ico: '⚙', label: 'Engine', accent: '#9C27B0', sub: [
                 { ico: '💾', label: 'Save',    accent: '#9C27B0', run: () => saveEngine() },
@@ -5680,6 +5682,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         // media players (YouTube URLs + geometry)
                         media: (typeof mediaPlayers !== 'undefined' ? mediaPlayers : []).map(mp => {
                             const el = mp.el; if (!el) return null;
+                            if (mp.isBrowser) {
+                                const bu = el.querySelector('.brUrl');
+                                return { isBrowser: true, url: bu ? bu.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
+                            }
                             const urlInp = el.querySelector('.mpUrl');
                             return { url: urlInp ? urlInp.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
                         }).filter(Boolean)
@@ -5778,17 +5784,23 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (s.alarmTime) { const a = document.getElementById('alarmTime'); if (a) a.value = s.alarmTime; }
 
                 // media players
-                if (Array.isArray(s.media) && typeof newMediaPlayer === 'function') {
+                if (Array.isArray(s.media)) {
                     s.media.forEach(m => {
-                        newMediaPlayer();
-                        const mp = mediaPlayers[mediaPlayers.length - 1];
+                        let mp = null;
+                        if (m.isBrowser && typeof newBrowserPanel === 'function') { mp = newBrowserPanel(); }
+                        else if (typeof newMediaPlayer === 'function') { newMediaPlayer(); mp = mediaPlayers[mediaPlayers.length - 1]; }
                         if (!mp || !mp.el) return;
                         const el = mp.el;
                         if (m.left) el.style.left = m.left; if (m.top) el.style.top = m.top;
                         if (m.width) el.style.width = m.width; if (m.height) el.style.height = m.height;
                         if (m.opacity) el.style.opacity = m.opacity;
-                        const urlInp = el.querySelector('.mpUrl');
-                        if (urlInp && m.url) { urlInp.value = m.url; const go = el.querySelector('.mpGo'); if (go) go.click(); }
+                        if (m.isBrowser) {
+                            const bu = el.querySelector('.brUrl');
+                            if (bu && m.url) { bu.value = m.url; const go = el.querySelector('.brGo'); if (go) go.click(); }
+                        } else {
+                            const urlInp = el.querySelector('.mpUrl');
+                            if (urlInp && m.url) { urlInp.value = m.url; const go = el.querySelector('.mpLoad'); if (go) go.click(); }
+                        }
                     });
                 }
 
@@ -10416,6 +10428,157 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         // The Media button just makes a new player
         function toggleMedia() { newMediaPlayer(); }
+
+        // 🌐 IN-ENGINE BROWSER — same panel architecture as the media player, so it
+        // pins to the canvas, drags, resizes, dims, and is captured by Snapshot.
+        function newBrowserPanel() {
+            const cb = document.getElementById('controls').getBoundingClientRect();
+            const n = mediaPlayers.length;
+            const el = document.createElement('div');
+            el.className = 'mp';
+            el.style.left = (90 + n * 28) + 'px';
+            el.style.top = Math.min(cb.bottom + 16 + n * 28, window.innerHeight - 260) + 'px';
+            el.style.width = '760px';
+            el.style.height = '520px';
+            el.style.minWidth = '260px';
+            el.style.minHeight = '180px';
+            el.style.resize = 'both';
+            el.innerHTML =
+              '<div class="mpHead" style="display:flex;align-items:center;gap:7px;padding:7px 10px;background:#1565C0;color:#fff;cursor:move;user-select:none;">' +
+                '<span style="font-weight:bold;font-size:13px;flex:1;">🌐 BROWSER</span>' +
+                '<button class="mpPin" style="margin:0;padding:4px 11px;font-size:11px;background:rgba(255,255,255,.22);border-radius:5px;">📌 Pin</button>' +
+                '<span style="font-size:10px;opacity:.8;">Op</span>' +
+                '<input class="mpOp" type="range" min="10" max="100" value="100" style="width:60px;">' +
+                '<button class="mpPop" title="Open this page in a real browser tab" style="margin:0;padding:4px 11px;font-size:11px;background:rgba(255,255,255,.22);border-radius:5px;">⇱ Pop Out</button>' +
+                '<button class="mpClose" style="margin:0;padding:4px 9px;font-size:12px;background:rgba(255,255,255,.22);border-radius:5px;">✕</button>' +
+              '</div>' +
+              '<div class="mpBar" style="display:flex;gap:6px;padding:8px;background:#0d1b2a;">' +
+                '<button class="brBack" title="Back" style="margin:0;padding:6px 11px;font-size:12px;background:#37474F;border-radius:6px;">◀</button>' +
+                '<button class="brFwd" title="Forward" style="margin:0;padding:6px 11px;font-size:12px;background:#37474F;border-radius:6px;">▶</button>' +
+                '<button class="brReload" title="Reload" style="margin:0;padding:6px 11px;font-size:12px;background:#37474F;border-radius:6px;">⟳</button>' +
+                '<input class="brUrl" type="text" placeholder="Type a URL or a search…" style="flex:1;padding:6px 9px;font-size:12px;border:1px solid #244;border-radius:6px;background:#08121c;color:#dfe9f3;">' +
+                '<button class="brGo" style="margin:0;padding:6px 13px;font-size:11px;background:#1565C0;border-radius:6px;">Go</button>' +
+              '</div>' +
+              '<div class="mpVid" style="flex:1 1 auto;min-height:0;background:#fff;position:relative;">' +
+                '<div class="brEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#8aa;font-size:13px;gap:8px;background:#0d1b2a;">' +
+                  '<div style="font-size:34px;">🌐</div><div>Enter a URL above to browse inside the engine.</div>' +
+                  '<div style="font-size:11px;color:#567;max-width:80%;text-align:center;">Some sites refuse to be embedded — use <b>⇱ Pop Out</b> for those.</div>' +
+                '</div>' +
+                '<iframe class="brFrame" style="display:none;width:100%;height:100%;border:0;background:#fff;" referrerpolicy="no-referrer"></iframe>' +
+              '</div>';
+            document.body.appendChild(el);
+
+            const rec = { el, pinned: false, isBrowser: true, anchor: { x:0, y:0, w:760, h:520 }, free: { w:760, h:520 } };
+            mediaPlayers.push(rec);
+
+            const q = s => el.querySelector(s);
+            const frame = q('.brFrame'), empty = q('.brEmpty'), urlInp = q('.brUrl');
+            const hist = []; let hIdx = -1;
+
+            const normalize = (raw) => {
+                let v = String(raw || '').trim();
+                if (!v) return '';
+                if (/^https?:\/\//i.test(v)) return v;
+                // looks like a domain → https, otherwise treat as a search
+                if (/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(v)) return 'https://' + v;
+                return 'https://duckduckgo.com/?q=' + encodeURIComponent(v);
+            };
+            const navigate = (raw, push) => {
+                const u = normalize(raw);
+                if (!u) return;
+                urlInp.value = u;
+                empty.style.display = 'none';
+                frame.style.display = 'block';
+                frame.src = u;
+                if (push !== false) { hist.splice(hIdx + 1); hist.push(u); hIdx = hist.length - 1; }
+            };
+            q('.brGo').onclick = () => navigate(urlInp.value, true);
+            urlInp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); navigate(urlInp.value, true); } });
+            q('.brBack').onclick = () => { if (hIdx > 0) { hIdx--; navigate(hist[hIdx], false); } };
+            q('.brFwd').onclick = () => { if (hIdx < hist.length - 1) { hIdx++; navigate(hist[hIdx], false); } };
+            q('.brReload').onclick = () => { if (frame.src) frame.src = frame.src; };
+            q('.mpPop').onclick = () => { const u = normalize(urlInp.value); if (u) window.open(u, '_blank', 'noopener'); };
+            q('.mpOp').oninput = (ev) => { el.style.opacity = ev.target.value / 100; };
+            q('.mpClose').onclick = () => { el.remove(); mediaPlayers = mediaPlayers.filter(x => x !== rec); };
+
+            // Pin / Unpin — anchors the panel into canvas space
+            const pinBtn = q('.mpPin');
+            pinBtn.onclick = () => {
+                const rect = canvas.getBoundingClientRect();
+                const r = el.getBoundingClientRect();
+                if (!rec.pinned) {
+                    rec.free = { w: r.width, h: r.height };
+                    rec.anchor = {
+                        x: (r.left - rect.left - camera.x) / camera.zoom,
+                        y: (r.top  - rect.top  - camera.y) / camera.zoom,
+                        w: r.width / camera.zoom,
+                        h: r.height / camera.zoom
+                    };
+                    rec.pinned = true;
+                    el.style.resize = 'none';
+                    pinBtn.textContent = '📌 Unpin';
+                    pinBtn.style.background = '#FFB300'; pinBtn.style.color = '#000';
+                    q('.mpBar').style.display = 'none';
+                    syncMediaPlayers();
+                    setTimeout(() => { if (rec.pinned) el.classList.add('faded'); }, 600);
+                } else {
+                    rec.pinned = false;
+                    el.classList.remove('faded');
+                    el.style.resize = 'both';
+                    el.style.left = r.left + 'px';
+                    el.style.top = r.top + 'px';
+                    el.style.width = rec.free.w + 'px';
+                    el.style.height = rec.free.h + 'px';
+                    pinBtn.textContent = '📌 Pin';
+                    pinBtn.style.background = 'rgba(255,255,255,.22)'; pinBtn.style.color = '#fff';
+                    q('.mpBar').style.display = 'flex';
+                }
+            };
+
+            // chrome returns on hover while pinned (iframes swallow events, so pad the test)
+            let fadeT = null;
+            const keepChrome = () => { clearTimeout(fadeT); fadeT = null; if (rec.pinned) el.classList.remove('faded'); };
+            const maybeFade = (ev) => {
+                if (!rec.pinned || fadeT) return;
+                fadeT = setTimeout(() => {
+                    fadeT = null;
+                    if (!rec.pinned) return;
+                    const r3 = el.getBoundingClientRect(), pad = 60;
+                    if (ev && ev.clientX >= r3.left - pad && ev.clientX <= r3.right + pad &&
+                        ev.clientY >= r3.top - pad && ev.clientY <= r3.bottom + pad) return;
+                    el.classList.add('faded');
+                }, 900);
+            };
+            el.addEventListener('pointerenter', keepChrome);
+            el.addEventListener('pointermove', keepChrome);
+            el.addEventListener('pointerleave', maybeFade);
+            window.addEventListener('pointermove', (ev) => {
+                if (!rec.pinned) return;
+                const r3 = el.getBoundingClientRect(), pad = 60;
+                const near = ev.clientX >= r3.left - pad && ev.clientX <= r3.right + pad &&
+                             ev.clientY >= r3.top - pad && ev.clientY <= r3.bottom + pad;
+                if (near) keepChrome(); else maybeFade(ev);
+            });
+
+            // drag by header while unpinned
+            const head = q('.mpHead');
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                el.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 140)) + 'px';
+                el.style.top  = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 50)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            head.addEventListener('pointerdown', ev => {
+                if (rec.pinned) return;
+                if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT') return;
+                const r2 = el.getBoundingClientRect();
+                dx = ev.clientX - r2.left; dy = ev.clientY - r2.top;
+                window.addEventListener('pointermove', mv);
+                window.addEventListener('pointerup', up);
+            });
+
+            return rec;
+        }
 
         function newMediaPlayer() {
             const cb = document.getElementById('controls').getBoundingClientRect();
