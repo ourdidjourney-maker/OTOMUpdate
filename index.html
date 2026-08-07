@@ -529,6 +529,8 @@
         <span class="gsep" data-grp="GUIDES"></span>
         <button title="Drop a horizontal ruler guide across the canvas" onclick="addGuide('h')" style="background: #2196F3;">+ H Ruler</button>
         <button title="Drop a vertical ruler guide down the canvas" onclick="addGuide('v')" style="background: #2196F3;">+ V Ruler</button>
+        <button id="rulerLockBtn" title="Anchor all rulers in place — locked rulers cannot be dragged" onclick="toggleRulerLock()" style="background: #455A64; font-size:11px; padding:6px 8px;">🔓 Rulers: Free</button>
+        <button title="Delete every ruler on the canvas" onclick="clearGuides()" style="background: #455A64; font-size:11px; padding:6px 8px;">🗑 Rulers</button>
         <button title="Show spacing between rulers and mark their crossings" id="rulerRadarBtn" onclick="toggleRulerRadar()" style="background: #455A64;">Ruler Radar: OFF</button>
         <button title="Cursor readout of distance to the nearest rulers" id="rulerMouseBtn" onclick="toggleRulerMouse()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Mouse↔Ruler: ON</button>
         <button title="Switch the cursor-to-ruler arrows between 4-way and diagonal 8-way" id="rulerDiagBtn" onclick="toggleRulerDiagonal()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Ruler Arrows: 4-way</button>
@@ -581,6 +583,7 @@
         <button id="darkBtn" onclick="toggleDarkMode()" style="background: #263238;" title="Dark mode for the whole interface and canvas">🌙 Dark</button>
         <button title="Open the performance monitor: FPS, memory and scene breakdown" id="perfBtn" onclick="togglePerf()" style="background: #263238;">📊 Perf</button>
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
+        <button id="pulseBtn" onclick="togglePulse()" style="background: #263238; font-size:11px; padding:6px 9px;" title="Live system pulse — dots blink as CPU, memory and GPU work happens">◉ Pulse</button>
         <span class="gsep" data-grp="HISTORY"></span>
 <button title="Step back through your edit history" onclick="undo()" style="background: #FFC107;">↶ Undo (Ctrl+Z)</button>
         <button title="Step forward again through your edit history" onclick="redo()" style="background: #FFC107;">↷ Redo (Ctrl+Shift+Z)</button>
@@ -658,6 +661,23 @@
             </div>
         </div>
         <!-- ▤ EMBEDDED ASSET DRAWER — drops down inside the UI panel -->
+        <div id="pulseTab" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; box-sizing:border-box; padding:6px 14px; border:2px solid #263238; border-radius:20px; background:#11161b; box-shadow:0 6px 18px rgba(0,0,0,.34); white-space:nowrap; z-index:1700;">
+            <span style="display:inline-flex; align-items:center; gap:11px;">
+                <span style="display:inline-flex; align-items:center; gap:5px;">
+                    <span id="pulseCpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">CPU</span>
+                </span>
+                <span style="display:inline-flex; align-items:center; gap:5px;">
+                    <span id="pulseMem" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">MEM</span>
+                </span>
+                <span style="display:inline-flex; align-items:center; gap:5px;">
+                    <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">GPU</span>
+                </span>
+                <span id="pulseRate" style="font:9px 'Courier New',monospace; color:#37474F; letter-spacing:.5px;"></span>
+            </span>
+        </div>
         <div id="healthTab" style="display:none; position:absolute; top:100%; left:0; margin-top:8px; width:200px; box-sizing:border-box; padding:6px 10px; border:2px solid #2E7D32; border-radius:9px; line-height:1.2; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,.18); font:bold 11px Arial; white-space:nowrap; overflow:hidden;">
             <span id="healthDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3fb950;margin-right:6px;vertical-align:middle;"></span><span id="healthTxt" style="color:#2E7D32;">Engine stable</span>
         </div>
@@ -2924,6 +2944,17 @@
                 return;
             }
 
+            // ✎ note badge: click it to open the note it carries
+            if (e.button === 0 && !flagsMode && _padBadgeHits.length) {
+                for (let i = 0; i < _padBadgeHits.length; i++) {
+                    const b = _padBadgeHits[i];
+                    if (pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) {
+                        padOpenNote(b.el);
+                        return;
+                    }
+                }
+            }
+
             // Ad hoc group: click the ✕ badge to ungroup; click the box to select+drag the group
             if (e.button === 0 && !flagsMode) {
                 for (let i = 0; i < _adhocBadges.length; i++) {
@@ -3023,8 +3054,14 @@
                 const gr = canvas.getBoundingClientRect();
                 const mgx = e.clientX - gr.left, mgy = e.clientY - gr.top;
                 for (const g of guides) {
-                    if (g.axis === 'h') { if (Math.abs(mgy - (g.pos * camera.zoom + camera.y)) < 6) { draggingGuide = g; return; } }
-                    else { if (Math.abs(mgx - (g.pos * camera.zoom + camera.x)) < 6) { draggingGuide = g; return; } }
+                    const near = g.axis === 'h'
+                        ? Math.abs(mgy - (g.pos * camera.zoom + camera.y)) < 10
+                        : Math.abs(mgx - (g.pos * camera.zoom + camera.x)) < 10;
+                    if (!near) continue;
+                    if (g.locked) continue;          // anchored: not grabbable
+                    // Shift-click a ruler to delete it outright
+                    if (e.shiftKey) { guides = guides.filter(x => x !== g); saveState(); draw(); return; }
+                    draggingGuide = g; return;
                 }
             }
 
@@ -3719,9 +3756,12 @@
             const _gdr = canvas.getBoundingClientRect();
             for (let i = 0; i < guides.length; i++) {
                 const g = guides[i];
-                const hit = g.axis === 'h' ? Math.abs((e.clientY - _gdr.top) - (g.pos * camera.zoom + camera.y)) < 6
-                                           : Math.abs((e.clientX - _gdr.left) - (g.pos * camera.zoom + camera.x)) < 6;
-                if (hit) { guides.splice(i, 1); draw(); return; }
+                const hit = g.axis === 'h' ? Math.abs((e.clientY - _gdr.top) - (g.pos * camera.zoom + camera.y)) < 12
+                                           : Math.abs((e.clientX - _gdr.left) - (g.pos * camera.zoom + camera.x)) < 12;
+                if (hit) {
+                    if (g.locked) { g.locked = false; saveState(); draw(); return; }   // unlock first
+                    guides.splice(i, 1); saveState(); draw(); return;
+                }
             }
 
             const clickedConnection = getConnectionCircleAtPoint(pos.x, pos.y);
@@ -4938,10 +4978,29 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 ctx.strokeStyle = '#2196F3';
                 ctx.lineWidth = 1 / camera.zoom;
                 guides.forEach(g => {
+                    ctx.save();
+                    if (g.locked) {
+                        ctx.strokeStyle = '#FFB300';
+                        ctx.setLineDash([9 / camera.zoom, 5 / camera.zoom]);
+                        ctx.lineWidth = 1.6 / camera.zoom;
+                    } else {
+                        ctx.strokeStyle = '#2196F3';
+                        ctx.setLineDash([]);
+                        ctx.lineWidth = 1 / camera.zoom;
+                    }
                     ctx.beginPath();
                     if (g.axis === 'h') { ctx.moveTo(visibleLeft, g.pos); ctx.lineTo(visibleRight, g.pos); }
                     else { ctx.moveTo(g.pos, visibleTop); ctx.lineTo(g.pos, visibleBottom); }
                     ctx.stroke();
+                    if (g.locked) {   // padlock marker at the near edge
+                        ctx.setLineDash([]);
+                        ctx.fillStyle = '#FFB300';
+                        ctx.font = 'bold ' + (12 / camera.zoom) + 'px Arial';
+                        ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+                        if (g.axis === 'h') ctx.fillText('🔒', visibleLeft + 8 / camera.zoom, g.pos);
+                        else { ctx.textAlign = 'center'; ctx.fillText('🔒', g.pos, visibleTop + 14 / camera.zoom); }
+                    }
+                    ctx.restore();
                 });
                 // Per-ruler arrows + distances to nearest PARALLEL rulers (when Ruler Radar is on)
                 if (rulerRadar) {
@@ -5442,14 +5501,17 @@ ctx.fillText(conn.number.toString(), midX, midY);
             // naming that page, so it's obvious on the canvas which note applies.
             {
                 const zn = camera.zoom;
+                _padBadgeHits = [];
                 images.forEach(im => {
                     if (!im.padRefs || !im.padRefs.length || im.hidden || !inView(im, 60)) return;
                     const live = im.padRefs.filter(r => (typeof padPages !== 'undefined') && padPages.some(p => p.id === r.page));
                     if (!live.length) return;
-                    const txt = '✎ ' + live.map(r => {
-                        const p = padPages.find(x => x.id === r.page);
-                        return p ? p.name : r.name;
-                    }).join(', ');
+                    // show the attached WORDS; page name is only a fallback for old links
+                    const first = live.find(r => r.text) || live[0];
+                    let body = first.text || (padPages.find(x => x.id === first.page) || {}).name || first.name || '';
+                    if (body.length > 42) body = body.slice(0, 41) + '…';
+                    const more = live.length > 1 ? '  +' + (live.length - 1) : '';
+                    const txt = '✎ ' + body + more;
                     ctx.save();
                     ctx.setLineDash([]);
                     ctx.font = 'bold ' + (12 / zn) + 'px Arial';
@@ -5462,6 +5524,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (!_poff) { for (let i = 0; i < 30 && rectOccupied(px2 - pd, py2, tw + pd * 2, bh); i++) py2 -= (bh + 2 / zn); }
                     flagOwner(_pkey);
                     claimRect(px2 - pd, py2, tw + pd * 2, bh);
+                    _padBadgeHits.push({ el: im, x: px2 - pd, y: py2, w: tw + pd * 2, h: bh });
                     ctx.fillStyle = '#f4ecdc';
                     ctx.fillRect(px2 - pd, py2, tw + pd * 2, bh);
                     ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.2 / zn;
@@ -5791,6 +5854,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 formulaLibrary: formulaLibrary.map(f => ({ id: f.id, title: f.title || '', text: f.text, notations: f.notations || '', agent: f.agent || '', ts: f.ts })),
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
+                guides: (typeof guides !== 'undefined') ? guides.map(g => ({ axis: g.axis, pos: g.pos, id: g.id, locked: !!g.locked })) : [],
                 grid: (typeof showGrid !== 'undefined') ? showGrid : true,
                 background: (typeof background !== 'undefined' && background && background.src) ? {
                     src: background.src, x: background.x, y: background.y, width: background.width, height: background.height, opacity: (typeof bgOpacity !== 'undefined' ? bgOpacity : 1)
@@ -6150,6 +6214,22 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         text: m.text || '', agent: m.agent || '', ts: m.ts || Date.now(), snapshot: m.snapshot || null
                     }));
                     flagDrag = engineData.flagDrag || {};
+                    if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
+                        setTimeout(() => {
+                            const b = document.getElementById('rulerLockBtn');
+                            if (b && guides.length) {
+                                const allLocked = guides.every(g => g.locked);
+                                b.textContent = allLocked ? '🔒 Rulers: Locked' : '🔓 Rulers: Free';
+                                b.style.background = allLocked ? '#FFB300' : '#455A64';
+                                b.style.color = allLocked ? '#212121' : '#fff';
+                            }
+                        }, 0);
+                        guides = engineData.guides.map(g => ({
+                            axis: g.axis, pos: g.pos,
+                            id: g.id != null ? g.id : Date.now() + Math.random(),
+                            locked: !!g.locked
+                        }));
+                    }
                     formulaLibrary = (engineData.formulaLibrary || []).map(f => ({
                         id: f.id != null ? f.id : Date.now() + Math.random(),
                         title: f.title || '', text: f.text || '', notations: f.notations || '', agent: f.agent || '', ts: f.ts || Date.now()
@@ -6697,8 +6777,33 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function addGuide(axis) {
             const cx = (canvas.width / 2 - camera.x) / camera.zoom;
             const cy = (canvas.height / 2 - camera.y) / camera.zoom;
-            guides.push({ axis, pos: axis === 'h' ? cy : cx, id: Date.now() + Math.random() });
+            guides.push({ axis, pos: axis === 'h' ? cy : cx, id: Date.now() + Math.random(), locked: false });
+            saveState();
             draw();
+        }
+
+        // Anchor every ruler. Locked rulers render amber-dashed with a padlock and
+        // cannot be dragged; double-clicking one unlocks it, a second double-click deletes it.
+        function toggleRulerLock() {
+            const anyFree = guides.some(g => !g.locked);
+            guides.forEach(g => { g.locked = anyFree; });
+            const b = document.getElementById('rulerLockBtn');
+            if (b) {
+                b.textContent = anyFree ? '🔒 Rulers: Locked' : '🔓 Rulers: Free';
+                b.style.background = anyFree ? '#FFB300' : '#455A64';
+                b.style.color = anyFree ? '#212121' : '#fff';
+            }
+            saveState(); draw();
+        }
+
+        function clearGuides() {
+            if (!guides.length) return;
+            const doIt = () => { guides = []; saveState(); draw(); };
+            if (typeof showConfirm === 'function') {
+                showConfirm({ title: '🗑 Delete rulers',
+                    body: 'Remove all ' + guides.length + ' ruler' + (guides.length > 1 ? 's' : '') + ' from the canvas? Undo (Ctrl+Z) still works.',
+                    okText: 'Delete', danger: true, onConfirm: doIt });
+            } else doIt();
         }
 
         function toggleBgMove() {
@@ -8810,6 +8915,48 @@ ctx.fillText(conn.number.toString(), midX, midY);
         }
 
 
+        var _padBadgeHits = [];
+
+        // Clicking an element's ✎ badge opens the Scratch Pad on the page that note
+        // lives on, and highlights the passage — the link works in both directions.
+        function padOpenNote(el) {
+            if (!el || !el.padRefs || !el.padRefs.length) return;
+            const ref = el.padRefs[el.padRefs.length - 1];
+            const idx = padPages.findIndex(p => p.id === ref.page);
+            if (idx < 0) {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '✎ Note', body: ref.text || '(no text)', okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+            if (typeof padOpen !== 'undefined' && !padOpen) togglePad();
+            if (padActive !== idx) {
+                try { padPages[padActive].html = document.getElementById('padPage').innerHTML; } catch (e) {}
+                padActive = idx;
+            }
+            padLoadPage();
+            setTimeout(() => {
+                const page = document.getElementById('padPage'); if (!page) return;
+                const marks = page.querySelectorAll('.padBound');
+                for (let i = 0; i < marks.length; i++) {
+                    if ((marks[i].textContent || '').trim() === (ref.text || '').trim()) {
+                        marks[i].scrollIntoView({ block: 'center' });
+                        const old2 = marks[i].style.background;
+                        marks[i].style.transition = 'background .3s';
+                        marks[i].style.background = '#ffd166';
+                        setTimeout(() => { marks[i].style.background = old2 || '#ffe9a8'; }, 1400);
+                        break;
+                    }
+                }
+            }, 60);
+        }
+
+        function padDetachNote(el) {
+            if (!el) return;
+            el.padRefs = [];
+            if (typeof saveState === 'function') saveState();
+            draw();
+        }
+
         // ── ⚫ ELEMENT CHIPS — a live reference to a canvas element. Clicking a
         // chip flies the camera to that element and selects it, so notes are
         // wired into the model instead of merely describing it.
@@ -8840,12 +8987,30 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     okText: 'OK', danger: false, hideCancel: true });
                 return;
             }
+            // Whatever text you highlighted in the pad becomes the note carried by the
+            // element. No selection = no note; the point is the words, not the page.
+            const selObj = window.getSelection();
+            let noteTxt = selObj ? String(selObj).trim() : '';
+            if (!noteTxt) {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '✎ Select the text first',
+                    body: 'Highlight the words in the Scratch Pad that you want attached to '
+                        + (sel.length > 1 ? 'these elements' : 'this element') + ', then press ⚫ again.\n\n'
+                        + 'That exact text becomes the element\u2019s note — it shows on the canvas and in its data.',
+                    okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+            noteTxt = noteTxt.replace(/\s+/g, ' ');
             const pg = padPages[padActive];
             sel.forEach(el => {
                 el.padRefs = el.padRefs || [];
-                if (!el.padRefs.some(r => r.page === pg.id)) el.padRefs.push({ page: pg.id, name: pg.name });
+                el.padRefs.push({ page: pg.id, name: pg.name, text: noteTxt, ts: Date.now() });
             });
-            padInsert(sel.map(padChipHtml).join(''));
+            // mark the passage in the pad so you can see it is bound to an element
+            const bound = sel.map(e => (e.name || elKind(e)) + (e.numDesignation ? ' #' + e.numDesignation : '')).join(', ');
+            padInsert('<span class="padBound" contenteditable="false" title="Attached to ' + bound.replace(/"/g,'') +
+                '" style="background:#ffe9a8; border-bottom:2px solid #c0392b; padding:0 2px;">' +
+                noteTxt.replace(/</g,'&lt;') + '</span> ' + sel.map(padChipHtml).join(''));
             if (typeof saveState === 'function') saveState();
             draw();
         }
@@ -9569,9 +9734,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (host) add('◎ Plugged into', host.name || 'Socket');
                 }
                 if (im.padRefs && im.padRefs.length && typeof padPages !== 'undefined') {
-                    const nm = im.padRefs.filter(r => padPages.some(p => p.id === r.page))
-                                         .map(r => { const p = padPages.find(x => x.id === r.page); return p ? p.name : r.name; });
-                    if (nm.length) add('✎ Scratch Pad', nm.join(', '));
+                    im.padRefs.filter(r => padPages.some(p => p.id === r.page)).forEach(r => {
+                        const p = padPages.find(x => x.id === r.page);
+                        add('✎ Note', (r.text || '(no text)') + '  —  ' + (p ? p.name : r.name));
+                    });
                 }
                 if (im.pinned) add('State', '📌 Pinned');
                 if (im.hidden) add('State', 'Hidden');
@@ -10168,6 +10334,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     ['Pasted images', padImgs],
                     ['Canvas captures', padCaps],
                     ['Element references', padChips + (dead ? ' (' + dead + ' broken)' : '')],
+                    ['Attached notes', (function () {
+                        let n = 0; images.forEach(im => { if (im.padRefs) n += im.padRefs.length; });
+                        return n ? n + ' on ' + images.filter(im => im.padRefs && im.padRefs.length).length + ' element(s)' : 'none';
+                    })()],
                     ['Solved calculations', padMath],
                     ['Checklist', padBoxes ? (padDone + ' / ' + padBoxes + ' done') : '—'],
                     ['Open', (typeof padOpen !== 'undefined' && padOpen) ? 'yes' : 'no'],
@@ -11134,6 +11304,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             // remember this deconstruction so Escape / Regroup can rebuild it
             deconIds = new Set(freed.map(e => e.id));
             deconName = gp.assetName || gp.name || 'Asset';
+            deconSig = assetSignature(freed);   // what it looked like the moment it was opened
             saveState(); updateImageCount(); updateConnectionCount(); updateImageList(); draw();
         }
 
@@ -11232,6 +11403,25 @@ ctx.fillText(conn.number.toString(), midX, midY);
             });
             ip.addEventListener('blur', commit);
         })();
+
+        // Right-click a single ruler to delete it (locked rulers are unlocked first).
+        // Shift and Alt are already spoken for, so the context menu is the clean gesture.
+        canvas.addEventListener('contextmenu', (e) => {
+            if (!guides.length) return;
+            const r = canvas.getBoundingClientRect();
+            const mx = e.clientX - r.left, my = e.clientY - r.top;
+            for (let i = 0; i < guides.length; i++) {
+                const g = guides[i];
+                const hit = g.axis === 'h'
+                    ? Math.abs(my - (g.pos * camera.zoom + camera.y)) < 12
+                    : Math.abs(mx - (g.pos * camera.zoom + camera.x)) < 12;
+                if (!hit) continue;
+                e.preventDefault();
+                if (g.locked) { g.locked = false; saveState(); draw(); return; }
+                guides.splice(i, 1); saveState(); draw();
+                return;
+            }
+        });
 
         // Stop the browser autoscroll widget on middle-click
         canvas.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
@@ -12460,6 +12650,93 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         // ---- ♥ Engine health tab ----
         let healthOn = false;
+        // ◉ SYSTEM PULSE — three dots that blink on real measured work.
+        // Browsers expose no direct CPU/GPU probe, so each dot is driven by a signal
+        // the engine can actually observe: CPU = frame time spent in draw(),
+        // MEM = JS heap movement between samples, GPU = canvas raster work per frame.
+        var pulseOn = false, _pulseHeap = 0, _pulseDraws = 0, _pulseRAF = null;
+        var _pulseMemHold = 0, _pulseMemMag = 0;
+
+        function togglePulse() {
+            pulseOn = !pulseOn;
+            const pt = document.getElementById('pulseTab');
+            if (pulseOn) {
+                if (typeof verticalUI !== 'undefined' && verticalUI) {
+                    const vp = document.getElementById('vpanel');
+                    const vr = vp ? vp.getBoundingClientRect() : { right: 20, top: 60 };
+                    pt.style.position = 'fixed';
+                    pt.style.left = (vr.right + 14) + 'px';
+                    pt.style.top = (vr.top + 46) + 'px';
+                    pt.style.transform = 'none';
+                    pt.style.marginTop = '0';
+                } else {
+                    pt.style.position = 'absolute';
+                    pt.style.left = '50%';
+                    pt.style.top = '100%';
+                    pt.style.transform = 'translateX(-50%)';
+                    pt.style.marginTop = '8px';
+                }
+                _pulseHeap = (performance.memory ? performance.memory.usedJSHeapSize : 0);
+                _pulseDraws = PERF.draws;
+                pulseLoop();
+            }
+            pt.style.display = pulseOn ? 'block' : 'none';
+            document.getElementById('pulseBtn').style.background = pulseOn ? '#00897B' : '#263238';
+        }
+
+        function pulseFire(id, colour, strength) {
+            const d = document.getElementById(id); if (!d) return;
+            d.style.background = colour;
+            d.style.boxShadow = '0 0 ' + (8 + strength * 10) + 'px ' + colour + ', 0 0 3px ' + colour;
+        }
+        function pulseRest(id) {
+            const d = document.getElementById(id); if (!d) return;
+            d.style.background = '#1b2a33';
+            d.style.boxShadow = 'none';
+        }
+
+        function pulseLoop() {
+            if (!pulseOn) { if (_pulseRAF) cancelAnimationFrame(_pulseRAF); _pulseRAF = null; return; }
+
+            // CPU — time actually spent inside draw() this frame
+            const dt = PERF.lastDrawMs || 0;
+            if (dt > 0.35) {
+                const load = Math.min(1, dt / 16.7);
+                pulseFire('pulseCpu', load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950', load);
+            } else pulseRest('pulseCpu');
+
+            // MEM — heap moved since the last sample
+            const M = performance.memory;
+            if (M) {
+                const now = M.usedJSHeapSize;
+                const delta = Math.abs(now - _pulseHeap);
+                if (delta > 8192) {
+                    // Hold the blink for a few frames. Heap allocation happens on ONE
+                    // frame, so lighting for a single 16ms frame is below the eye's
+                    // flicker threshold — that is why it looked imperceptible.
+                    _pulseMemHold = 7;
+                    _pulseMemMag = Math.min(1, delta / 1048576);
+                    _pulseHeap = now;
+                }
+                if (_pulseMemHold > 0) {
+                    _pulseMemHold--;
+                    pulseFire('pulseMem', _pulseMemMag > 0.6 ? '#FF9100' : '#E040FB', 1);
+                } else pulseRest('pulseMem');
+            } else pulseRest('pulseMem');
+
+            // GPU — canvas raster work: did a real draw land this frame?
+            if (PERF.draws !== _pulseDraws) {
+                const burst = Math.min(1, (PERF.draws - _pulseDraws) / 3);
+                pulseFire('pulseGpu', '#29b6f6', burst);
+                _pulseDraws = PERF.draws;
+            } else pulseRest('pulseGpu');
+
+            const r = document.getElementById('pulseRate');
+            if (r) r.textContent = (PERF.fps || 0) + 'fps · ' + dt.toFixed(1) + 'ms';
+
+            _pulseRAF = requestAnimationFrame(pulseLoop);
+        }
+
         function toggleHealth() {
             healthOn = !healthOn;
             const ht = document.getElementById('healthTab');
@@ -12566,6 +12843,21 @@ ctx.fillText(conn.number.toString(), midX, midY);
         // ============================================================
         let deconIds = null, deconName = '';
 
+        // Fingerprint of a set of elements: geometry + the fields an operator can edit,
+        // order-independent. Two sets with the same signature are the same asset, so
+        // opening a deconstruction and closing it untouched must not spawn a duplicate.
+        var deconSig = '';
+        function assetSignature(els) {
+            const r2 = v => (typeof v === 'number') ? Math.round(v * 100) / 100 : v;
+            return els.map(e => [
+                elKind(e), r2(e.x), r2(e.y), r2(e.width), r2(e.height), r2(e.rotation || 0),
+                e.name || '', e.fullName || '', e.notations || '', e.agent || '',
+                e.priority || '', e.outline || '', e.color || '', e.text || '',
+                e.thickness || '', e.triStyle || '', e.dashStyle || '',
+                e.fusable ? 1 : 0, e.socket ? 1 : 0, e.hidden ? 1 : 0, e.numDesignation || ''
+            ].join('~')).sort().join('|');
+        }
+
         function reconstructAsset() {
             if (!deconIds) { regroupSelection(); return; }   // plain lasso regroup
             // everything that survived the edit, plus anything else lassoed in
@@ -12574,11 +12866,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
             selectedGroup.forEach(im => {
                 if (!seen.has(im.id) && images.indexOf(im) >= 0) { seen.add(im.id); pool.push(im); }
             });
-            if (pool.length < 1) { deconIds = null; deconName = ''; draw(); return; }
+            if (pool.length < 1) { deconIds = null; deconName = ''; deconSig = ''; draw(); return; }
             if (pool.length < 2) {
                 // single element left — just release it as a normal element, clear decon state
                 selectedImage = pool[0]; selectedGroup = [];
-                deconIds = null; deconName = '';
+                deconIds = null; deconName = ''; deconSig = '';
                 if (!assetDrawerOpen) toggleAssetDrawer(); else renderAssetDrawer();
                 updateImageList(); draw();
                 return;
@@ -12588,6 +12880,22 @@ ctx.fillText(conn.number.toString(), midX, midY);
             regroupSelection();                       // builds the grouped element on canvas
             const gp = selectedImage;
             if (!gp || elKind(gp) !== 'group') return;
+
+            // Nothing edited? Then this is the SAME asset — rebuild it on the canvas,
+            // keep its original name, and add nothing to the drawer.
+            const unchanged = deconSig && assetSignature(pool) === deconSig;
+            if (unchanged) {
+                const orig = deconName || gp.name || 'Asset';
+                gp.name = orig; gp.assetName = orig;
+                const src = savedAssets.find(a => a.name === orig);
+                if (src && src.thumb) gp.thumb = src.thumb;
+                else { try { gp.thumb = makeThumb([gp]); } catch (e) {} }
+                deconIds = null; deconName = ''; deconSig = '';
+                if (assetDrawerOpen) renderAssetDrawer();
+                if (document.getElementById('assetPanel').style.display !== 'none') renderAssetBrowser();
+                updateImageList(); draw();
+                return;
+            }
 
             // a NEW asset — never overwrite the one it was deconstructed from
             const base = deconName || gp.name || 'Asset';
@@ -12611,7 +12919,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 connections: JSON.parse(JSON.stringify(gp.partConnections || []))
             });
 
-            deconIds = null; deconName = '';
+            deconIds = null; deconName = ''; deconSig = '';
             if (!assetDrawerOpen) toggleAssetDrawer(); else renderAssetDrawer();
             if (document.getElementById('assetPanel').style.display !== 'none') renderAssetBrowser();
             updateImageList(); draw();
