@@ -179,7 +179,7 @@
             cursor: nwse-resize;
         }
 
-        canvas {
+        #canvasContainer > canvas {
             position: absolute;
             top: 0;
             left: 0;
@@ -456,6 +456,30 @@
     </style>
 </head>
 <body>
+    <div id="chkPanel" style="display:none; position:fixed; top:120px; left:60px; width:392px; box-sizing:border-box; border:1px solid #3E2723; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#1a1310,#120c0a); box-shadow:0 18px 46px rgba(0,0,0,.55); z-index:99500; flex-direction:column; font-family:Arial,sans-serif;">
+            <div id="chkHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#4E342E,#3A241F); color:#D7CCC8; user-select:none; border-bottom:1px solid #3E2723;">
+                <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#FFCC80;">CHECKERS</span>
+                <button id="chkPinBtn" title="Pin to the canvas" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:5px;">📌 Pin</button>
+                <span style="font-size:9px; letter-spacing:1px; color:#A1887F;">OP</span>
+                <input id="chkOp" type="range" min="20" max="100" value="100" style="width:50px;">
+                <button id="chkPopBtn" title="Undock into a floating panel" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:5px;">⇱ Pop Out</button>
+                <button id="chkCollapseBtn" title="Collapse / expand" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:5px;">▼</button>
+                <button onclick="toggleCheckers()" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:5px;">✕</button>
+            </div>
+            <div id="chkBody" style="display:flex; flex-direction:column;">
+                <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:#150e0c; border-bottom:1px solid #2b1c18;">
+                    <span id="chkStatus" style="flex:1; font:600 12px 'Courier New',monospace; color:#FFCC80;">Your move</span>
+                    <select id="chkLevel" title="AI strength" style="font:11px 'Courier New',monospace; padding:4px 6px; border-radius:6px; background:#221715; color:#D7CCC8; border:1px solid #3E2723;">
+                        <option value="2">EASY</option><option value="4" selected>MEDIUM</option><option value="6">HARD</option>
+                    </select>
+                    <button id="chkSound" title="Toggle sound" style="margin:0; padding:5px 9px; font:11px Arial; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:6px;">🔊</button>
+                    <button id="chkHelp" title="How to play" style="margin:0; padding:5px 9px; font:11px Arial; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:6px;">?</button>
+                    <button id="chkNew" style="margin:0; padding:5px 11px; font:700 10px/1 Arial; letter-spacing:1.1px; background:linear-gradient(180deg,#8D6E63,#6D4C41); color:#fff; border-radius:7px;">NEW GAME</button>
+                </div>
+                <canvas id="chkCanvas" width="360" height="360" style="display:block; margin:12px auto; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.5); cursor:pointer;"></canvas>
+                <div id="chkScore" style="padding:0 14px 12px; font:11px 'Courier New',monospace; color:#A1887F; text-align:center;"></div>
+            </div>
+        </div>
     <div id="controls">
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
         <span class="gsep" data-grp="CREATE"></span>
@@ -549,6 +573,9 @@
         <button onclick="openPrimerControls()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Primer rail controls">⚙ Primer Ctrl</button>
         <button title="Open a media player panel; each click spawns another one" id="mediaBtn" onclick="toggleMedia()" style="background: #C62828;">▶ Media</button>
         <button title="Open an in-engine browser panel; pinnable, resizable, opacity-controlled" id="browserBtn" onclick="newBrowserPanel()" style="background: #1565C0;">🌐 Browser</button>
+        <button title="Open the engineering calculator; docks to the toolbar, pops out, pins to canvas" id="calcBtn" onclick="toggleCalculator()" style="background: #00695C;">🧮 Calc</button>
+        <button title="Play checkers against the engine; pinnable, dimmable, collapsible" id="gameBtn" onclick="toggleCheckers()" style="background: #4E342E;">⛃ Checkers</button>
+        <button title="Open the Scratch Pad — notes, images, links, checklists" id="padBtn" onclick="togglePad()" style="background: #455A64;">✎ Scratch Pad</button>
         <button title="Open the clock, stopwatch, alarm and timestamp panel" id="clockBtn" onclick="toggleClock()" style="background: #263238;">🕘 Clock</button>
         <span class="gsep" data-grp="SYSTEM"></span>
         <button id="darkBtn" onclick="toggleDarkMode()" style="background: #263238;" title="Dark mode for the whole interface and canvas">🌙 Dark</button>
@@ -646,6 +673,86 @@
             <div id="assetDrawerBody" style="flex:1 1 auto; overflow-y:auto; padding:12px; display:flex; flex-wrap:wrap; gap:12px; align-content:flex-start; background:#fafafa;"></div>
         </div>
         <!-- 📖 NOTATIONS READER — hangs off the UI like the Asset Drawer -->
+        <div id="calcPanel" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:412px; border:1px solid #0d3a34; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#0b1614,#070f0e); box-shadow:0 18px 46px rgba(0,0,0,.55), inset 0 1px 0 rgba(127,255,212,.07); z-index:1560; flex-direction:column; font-family:Arial,sans-serif;">
+            <div id="calcHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#0e2b27,#0a201d); color:#B2DFDB; user-select:none; border-bottom:1px solid #0d3a34;">
+                <span style="width:7px; height:7px; border-radius:50%; background:#00E5A0; box-shadow:0 0 7px #00E5A0; flex-shrink:0;"></span>
+                <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#7FFFD4;">CALCULATOR</span>
+                <button id="calcPinBtn" title="Pin to the canvas" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(127,255,212,.10); color:#B2DFDB; border-radius:5px;">📌 Pin</button>
+                <span style="font-size:9px; letter-spacing:1px; color:#4DB6AC;">OP</span>
+                <input id="calcOp" type="range" min="20" max="100" value="100" style="width:50px;">
+                <button id="calcPopBtn" title="Undock into a floating panel" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(127,255,212,.10); color:#B2DFDB; border-radius:5px;">⇱ Pop Out</button>
+                <button id="calcCollapseBtn" title="Collapse / expand" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(127,255,212,.10); color:#B2DFDB; border-radius:5px;">▼</button>
+                <button onclick="toggleCalculator()" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(127,255,212,.10); color:#B2DFDB; border-radius:5px;">✕</button>
+            </div>
+            <div id="calcBody" style="display:flex; flex-direction:column;">
+                <!-- READOUT: the hero. Phosphor display with a live echo of the expression. -->
+                <div style="position:relative; padding:14px 16px 12px; background:radial-gradient(120% 90% at 50% 0%, #0a201c 0%, #050c0b 100%); border-bottom:1px solid #0d3a34;">
+                    <div style="position:absolute; inset:0; pointer-events:none; opacity:.5; background:repeating-linear-gradient(180deg, rgba(127,255,212,.045) 0 1px, transparent 1px 3px);"></div>
+                    <input id="calcExpr" type="text" spellcheck="false" placeholder="sin(pi/4)^2 + log(1000) − 5!"
+                        style="position:relative; width:100%; box-sizing:border-box; padding:2px 0 6px; font:500 15px/1.3 'Courier New',monospace; letter-spacing:.6px; background:transparent; color:#4DB6AC; border:none; border-bottom:1px dashed rgba(77,182,172,.32); outline:none;">
+                    <div id="calcOut" style="position:relative; margin-top:10px; min-height:38px; text-align:right; font:700 34px/1 'Courier New',monospace; letter-spacing:-.5px; color:#7FFFD4; text-shadow:0 0 14px rgba(0,229,160,.45), 0 0 34px rgba(0,229,160,.18); word-break:break-all;">0</div>
+                    <div id="calcErr" style="position:relative; min-height:14px; margin-top:4px; text-align:right; font:11px/1.3 'Courier New',monospace; letter-spacing:.4px; color:#FF8A80;"></div>
+                </div>
+                <!-- MODE STRIP -->
+                <div style="display:flex; gap:7px; padding:8px 14px; background:#081311; align-items:center; border-bottom:1px solid #0d2b27;">
+                    <select id="calcAngle" title="Angle unit for trig" style="font:11px 'Courier New',monospace; padding:4px 6px; border-radius:6px; background:#0d211e; color:#80CBC4; border:1px solid #14423c;">
+                        <option value="rad">RAD</option><option value="deg">DEG</option>
+                    </select>
+                    <select id="calcPrec" title="Decimal places" style="font:11px 'Courier New',monospace; padding:4px 6px; border-radius:6px; background:#0d211e; color:#80CBC4; border:1px solid #14423c;">
+                        <option value="auto">AUTO</option><option value="2">2 DP</option><option value="4">4 DP</option><option value="6">6 DP</option><option value="10">10 DP</option>
+                    </select>
+                    <span style="flex:1;"></span>
+                </div>
+                <!-- NOTE: free text that rides along with the calculation into the formula library -->
+                <div style="display:flex; gap:7px; padding:9px 14px 0; background:#081311; align-items:center;">
+                    <span style="font:700 9px/1 Arial; letter-spacing:1.6px; color:#4DB6AC; flex-shrink:0;">NOTE</span>
+                    <input id="calcNote" type="text" spellcheck="false" placeholder="Formula A(:r/S=)   — annotation, not calculated"
+                        style="flex:1; min-width:0; box-sizing:border-box; padding:6px 9px; font:500 12px 'Courier New',monospace; letter-spacing:.4px; background:#0d211e; color:#B2DFDB; border:1px solid #14423c; border-radius:6px; outline:none;">
+                </div>
+                <div style="display:flex; gap:7px; padding:8px 14px; background:#081311; align-items:center; border-bottom:1px solid #0d2b27;">
+                    <button id="calcToFormula" title="Send this calculation to the Notes Reader formula library"
+                        style="margin:0; padding:5px 12px; font:700 10px/1 Arial; letter-spacing:1.2px; background:linear-gradient(180deg,#00A98A,#00806B); color:#02201b; border-radius:7px; box-shadow:0 2px 0 #005247;">SEND TO FORMULA</button>
+                </div>
+                <div id="calcKeys" style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; padding:12px 14px; background:#0a1614;"></div>
+                <div style="padding:0 14px 13px; background:#0a1614;">
+                    <div style="font:700 9px/1 Arial; color:#4DB6AC; letter-spacing:1.8px; margin-bottom:6px;">HISTORY <span style="color:#2b4a45; letter-spacing:.5px; font-weight:400;">· click to reuse</span></div>
+                    <div id="calcHist" style="max-height:118px; overflow:auto; font:12px 'Courier New',monospace; color:#80CBC4;"></div>
+                </div>
+            </div>
+        </div>
+        <div id="padPanel" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:46%; min-width:440px; height:52vh; min-height:260px; z-index:1580; background:#2b2622; border:1px solid #4a4038; border-radius:12px; box-shadow:0 20px 54px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
+        <div id="padHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#3a332c,#2b2622); color:#e8dfd2; user-select:none; border-bottom:1px solid #4a4038;">
+            <span style="font:700 11px/1 Arial; letter-spacing:2.4px; color:#d7c9b0; flex:1;">SCRATCH PAD</span>
+            <span id="padSaved" style="font:10px Arial; color:#7d7264; letter-spacing:.5px;"></span>
+            <button id="padFindBtn" title="Find in page" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⌕</button>
+            <button id="padExportBtn" title="Export this page" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⇩</button>
+            <button id="padPopBtn" title="Undock into a floating window" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⇱ Pop Out</button>
+            <button id="padCollapseBtn" title="Collapse / expand" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">▼</button>
+            <button onclick="togglePad()" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">✕</button>
+        </div>
+        <div id="padBody" style="display:flex; flex-direction:column; flex:1 1 auto; min-height:0;">
+            <div id="padTabs" style="display:flex; align-items:center; gap:4px; padding:6px 9px 0; background:#241f1c; overflow-x:auto;"></div>
+            <div id="padTools" style="display:flex; flex-wrap:wrap; align-items:center; gap:3px; padding:6px 9px; background:#241f1c; border-bottom:1px solid #3a332c;"></div>
+            <div id="padFind" style="display:none; gap:6px; padding:6px 9px; background:#1e1a17; border-bottom:1px solid #3a332c;">
+                <input id="padFindInput" placeholder="find on this page…" style="flex:1; padding:5px 9px; font:12px 'Courier New',monospace; background:#161310; color:#e8dfd2; border:1px solid #4a4038; border-radius:5px; outline:none;">
+                <span id="padFindCount" style="font:11px 'Courier New',monospace; color:#7d7264; align-self:center;"></span>
+            </div>
+            <!-- THE PAGE: warm stock, red margin rule, faint ruling -->
+            <div id="padSheet" style="flex:1 1 auto; min-height:0; overflow:auto; background:#f4ecdc;">
+                <div id="padPage" contenteditable="true" spellcheck="true"
+                     style="min-height:100%; box-sizing:border-box; padding:22px 26px 40px 62px; outline:none;
+                            font:15px/28px 'Courier New', Courier, monospace; color:#2f2a24; caret-color:#c0392b;
+                            background:
+                              linear-gradient(90deg, transparent 46px, rgba(192,57,43,.32) 46px, rgba(192,57,43,.32) 47px, transparent 47px),
+                              repeating-linear-gradient(180deg, transparent 0 27px, rgba(120,100,70,.13) 27px 28px);"></div>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; padding:6px 11px; background:#241f1c; border-top:1px solid #3a332c; font:10px 'Courier New',monospace; color:#7d7264;">
+                <span id="padStats">0 words · 0 chars</span>
+                <span style="flex:1;"></span>
+                <span id="padHint" style="color:#5f564b;">paste images · drop files · type / for a rule</span>
+            </div>
+        </div>
+    </div>
         <div id="notesReader" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:46%; min-width:440px; height:44vh; border:2px solid #0288D1; border-radius:10px; overflow:hidden; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,.2); z-index:1550; flex-direction:column;">
             <div id="notesReaderHead" style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:#0288D1; color:#fff;">
                 <span style="font-weight:bold; font-size:13px; flex:1;">📖 NOTATIONS READER</span>
@@ -1164,6 +1271,9 @@
                 { ico: '━', label: 'Primer',  accent: '#1B5E20', run: () => togglePrimerBoard() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
                 { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
+                { ico: '✎', label: 'Scratch', accent: '#455A64', run: () => togglePad() },
+                { ico: '🧮', label: 'Calc',    accent: '#00695C', run: () => toggleCalculator() },
+                { ico: '⛃', label: 'Checkers', accent: '#4E342E', run: () => toggleCheckers() },
             ]},
             { ico: '⚙', label: 'Engine', accent: '#9C27B0', sub: [
                 { ico: '💾', label: 'Save',    accent: '#9C27B0', run: () => saveEngine() },
@@ -2506,7 +2616,7 @@
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
-                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts ? img.parts.map(p2 => { const q = {}; for (const k in p2) { if (k === 'img') continue; q[k] = p2[k]; } return q; }) : undefined, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
+                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, padRefs: img.padRefs, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts ? img.parts.map(p2 => { const q = {}; for (const k in p2) { if (k === 'img') continue; q[k] = p2[k]; } return q; }) : undefined, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
                 })),
                 connections: JSON.parse(JSON.stringify(connections)),
                 connectionCounter: connectionCounter
@@ -2571,7 +2681,7 @@
                         fusable: imgData.fusable || false, fusable: imgData.fusable || false,
                         isVector: imgData.isVector, fusable: imgData.fusable,
                         sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType,
-                        memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations,
+                        memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, padRefs: imgData.padRefs, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations,
                         agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch,
                         assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines,
                         partConnections: imgData.partConnections
@@ -2614,7 +2724,7 @@
                             kind: 'image',
                             hidden: imgData.hidden || false,
                             hiddenLevel: imgData.hiddenLevel || 0,
-                            sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
+                            sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, padRefs: imgData.padRefs, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
                         });
                         loadedCount++;
                         if (loadedCount === state.images.length) {
@@ -5328,6 +5438,41 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 });
             }
 
+            // ✎ NOTE BADGE — an element referenced by a Scratch Pad page wears a tag
+            // naming that page, so it's obvious on the canvas which note applies.
+            {
+                const zn = camera.zoom;
+                images.forEach(im => {
+                    if (!im.padRefs || !im.padRefs.length || im.hidden || !inView(im, 60)) return;
+                    const live = im.padRefs.filter(r => (typeof padPages !== 'undefined') && padPages.some(p => p.id === r.page));
+                    if (!live.length) return;
+                    const txt = '✎ ' + live.map(r => {
+                        const p = padPages.find(x => x.id === r.page);
+                        return p ? p.name : r.name;
+                    }).join(', ');
+                    ctx.save();
+                    ctx.setLineDash([]);
+                    ctx.font = 'bold ' + (12 / zn) + 'px Arial';
+                    const tw = ctx.measureText(txt).width, pd = 5 / zn, bh = 17 / zn;
+                    const bx = im.x + im.width / 2 + (10 + flagGap) / zn;
+                    const by = im.y - im.height / 2 - bh - (4 + flagGap) / zn;
+                    const _pkey = 'padref:' + im.id;
+                    const _poff = flagOffset(_pkey);
+                    let px2 = bx + (_poff ? _poff.dx : 0), py2 = by + (_poff ? _poff.dy : 0);
+                    if (!_poff) { for (let i = 0; i < 30 && rectOccupied(px2 - pd, py2, tw + pd * 2, bh); i++) py2 -= (bh + 2 / zn); }
+                    flagOwner(_pkey);
+                    claimRect(px2 - pd, py2, tw + pd * 2, bh);
+                    ctx.fillStyle = '#f4ecdc';
+                    ctx.fillRect(px2 - pd, py2, tw + pd * 2, bh);
+                    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1.2 / zn;
+                    ctx.strokeRect(px2 - pd, py2, tw + pd * 2, bh);
+                    ctx.fillStyle = '#7b2d22';
+                    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                    ctx.fillText(txt, px2, py2 + bh / 2);
+                    ctx.restore();
+                });
+            }
+
             // Memory allocation tag on EVERY element (hidden or not), above the element
             if (showMemAlloc) {
                 const z = camera.zoom;
@@ -5592,6 +5737,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
             function tick() {
                 if (typeof mediaPlayers !== 'undefined' && mediaPlayers.length &&
                     mediaPlayers.some(m => m.pinned)) syncMediaPlayers();
+                    if (typeof calcPinned !== 'undefined' && calcPinned) calcSyncPinned();
+                    if (typeof chkPinned !== 'undefined' && chkPinned) chkSyncPinned();
                 requestAnimationFrame(tick);
             }
             requestAnimationFrame(tick);
@@ -5622,7 +5769,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
-                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, _pkg: img._pkg, _portId: img._portId, _srcIdx: img._srcIdx, _loadedCartId: img._loadedCartId, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
+                    sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, filePath: img.filePath, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, padRefs: img.padRefs, birthStamp: img.birthStamp, numUserSet: img.numUserSet, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, allowed: img.allowed, contents: img.contents, cartColor: img.cartColor, readOnly: img.readOnly, cartLocked: img.cartLocked, editLocked: img.editLocked, _pkg: img._pkg, _portId: img._portId, _srcIdx: img._srcIdx, _loadedCartId: img._loadedCartId, lastEdited: img.lastEdited, fusionVector: img.fusionVector, fusionPitch: img.fusionPitch, parts: img.parts, partConnections: img.partConnections, assetName: img.assetName, thumb: img.thumb, isMesh: img.isMesh, welded: img.welded, weldedFrom: img.weldedFrom, baseWidth: img.baseWidth, fusionId: img.fusionId, vFusionId: img.vFusionId, socket: img.socket, socketLinks: img.socketLinks, socketId: img.socketId, meshCols: img.meshCols, meshRows: img.meshRows, meshGap: img.meshGap, meshSockets: img.meshSockets, meshDatumLines: img.meshDatumLines
                 })),
                 connections: connections.map(conn => ({
                     from: conn.from,
@@ -5666,6 +5813,36 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         primerOpen: (function () { const p = document.getElementById('primerDock'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
                         dataPanelOpen: (function () { const p = document.getElementById('dataPanel'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
                         assetPanelOpen: (function () { const p = document.getElementById('assetPanel'); return p ? (p.style.display && p.style.display !== 'none') : false; })(),
+                        pad: (function () {
+                            const p = document.getElementById('padPanel'); if (!p) return null;
+                            try { if (typeof padOpen !== 'undefined' && padOpen && typeof padPages !== 'undefined')
+                                    padPages[padActive].html = document.getElementById('padPage').innerHTML; } catch (e) {}
+                            return {
+                                open: !!(typeof padOpen !== 'undefined' && padOpen),
+                                popped: !!(typeof padPopped !== 'undefined' && padPopped),
+                                collapsed: !!(typeof padCollapsed !== 'undefined' && padCollapsed),
+                                active: (typeof padActive !== 'undefined') ? padActive : 0,
+                                pages: (typeof padPages !== 'undefined') ? padPages : [],
+                                left: p.style.left, top: p.style.top, width: p.style.width,
+                                height: p.style.height, transform: p.style.transform
+                            };
+                        })(),
+                        calc: (function () {
+                            const p = document.getElementById('calcPanel'); if (!p) return null;
+                            const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+                            return {
+                                open: !!(typeof calcOpen !== 'undefined' && calcOpen),
+                                popped: !!(typeof calcPopped !== 'undefined' && calcPopped),
+                                pinned: !!(typeof calcPinned !== 'undefined' && calcPinned),
+                                collapsed: !!(typeof calcCollapsed !== 'undefined' && calcCollapsed),
+                                anchor: (typeof calcAnchor !== 'undefined') ? calcAnchor : null,
+                                memory: (typeof calcMemory !== 'undefined') ? calcMemory : 0,
+                                lastAnswer: (typeof calcLastAnswer !== 'undefined') ? calcLastAnswer : 0,
+                                expr: g('calcExpr'), note: g('calcNote'), angle: g('calcAngle'), prec: g('calcPrec'),
+                                history: (typeof calcHistory !== 'undefined') ? calcHistory.slice(0, 60) : [],
+                                left: p.style.left, top: p.style.top, opacity: p.style.opacity, transform: p.style.transform
+                            };
+                        })(),
                         // stopwatch
                         swRunning: (typeof swRunning !== 'undefined') ? swRunning : false,
                         swElapsed: (typeof swElapsed !== 'undefined') ? (swElapsed + (swRunning ? performance.now() - swStart : 0)) : 0,
@@ -5684,7 +5861,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                             const el = mp.el; if (!el) return null;
                             if (mp.isBrowser) {
                                 const bu = el.querySelector('.brUrl');
-                                return { isBrowser: true, url: bu ? bu.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
+                                return { isBrowser: true, url: bu ? bu.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false, collapsed: !!mp.collapsed };
                             }
                             const urlInp = el.querySelector('.mpUrl');
                             return { url: urlInp ? urlInp.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
@@ -5769,6 +5946,53 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
                 if (s.assetDrawerOpen && typeof assetDrawerOpen !== 'undefined' && !assetDrawerOpen) toggleAssetDrawer();
                 if (s.assetPanelOpen && typeof openAssetBrowser === 'function') { const p = document.getElementById('assetPanel'); if (p && (!p.style.display || p.style.display === 'none')) openAssetBrowser(); }
+
+                // scratch pad: pages, active tab, dock/collapse, geometry
+                if (s.pad && typeof togglePad === 'function') {
+                    const pd = s.pad, pp = document.getElementById('padPanel');
+                    if (Array.isArray(pd.pages) && pd.pages.length && typeof padPages !== 'undefined') {
+                        padPages = pd.pages;
+                        padActive = Math.min(pd.active || 0, padPages.length - 1);
+                    }
+                    if (pd.open && typeof padOpen !== 'undefined' && !padOpen) togglePad();
+                    if (pd.open && pp) {
+                        if (typeof padLoadPage === 'function') padLoadPage();
+                        if (pd.popped && typeof padPopped !== 'undefined' && !padPopped) { const b2 = document.getElementById('padPopBtn'); if (b2) b2.click(); }
+                        if (pd.left) pp.style.left = pd.left;
+                        if (pd.top) pp.style.top = pd.top;
+                        if (pd.width) pp.style.width = pd.width;
+                        if (pd.height) pp.style.height = pd.height;
+                        if (pd.transform) pp.style.transform = pd.transform;
+                        if (pd.collapsed && typeof padCollapsed !== 'undefined' && !padCollapsed) { const c2 = document.getElementById('padCollapseBtn'); if (c2) c2.click(); }
+                    }
+                }
+
+                // calculator: open state, dock/pin/collapse, values, history, memory
+                if (s.calc && typeof toggleCalculator === 'function') {
+                    const c = s.calc, p = document.getElementById('calcPanel');
+                    if (typeof calcMemory !== 'undefined') calcMemory = c.memory || 0;
+                    if (typeof calcLastAnswer !== 'undefined') calcLastAnswer = c.lastAnswer || 0;
+                    if (typeof calcHistory !== 'undefined') calcHistory = Array.isArray(c.history) ? c.history : [];
+                    if (c.open && typeof calcOpen !== 'undefined' && !calcOpen) toggleCalculator();
+                    if (c.open && p) {
+                        const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined) el.value = v; };
+                        set('calcAngle', c.angle); set('calcPrec', c.prec);
+                        set('calcExpr', c.expr); set('calcNote', c.note);
+                        if (typeof calcRenderHistory === 'function') calcRenderHistory();
+                        if (typeof calcRun === 'function') calcRun(false);
+                        if (c.popped && typeof calcPopped !== 'undefined' && !calcPopped) { const pb = document.getElementById('calcPopBtn'); if (pb) pb.click(); }
+                        if (c.left) p.style.left = c.left;
+                        if (c.top) p.style.top = c.top;
+                        if (c.transform) p.style.transform = c.transform;
+                        if (c.opacity) { p.style.opacity = c.opacity; const op = document.getElementById('calcOp'); if (op) op.value = Math.round(parseFloat(c.opacity) * 100); }
+                        if (c.collapsed && typeof calcCollapsed !== 'undefined' && !calcCollapsed) { const cb = document.getElementById('calcCollapseBtn'); if (cb) cb.click(); }
+                        if (c.pinned && c.anchor && typeof calcPinned !== 'undefined' && !calcPinned) {
+                            calcAnchor = c.anchor;
+                            const pin = document.getElementById('calcPinBtn');
+                            if (pin) { pin.click(); calcAnchor = c.anchor; if (typeof calcSyncPinned === 'function') calcSyncPinned(); }
+                        }
+                    }
+                }
                 if (s.notesReaderOpen && typeof notesReaderOpen !== 'undefined' && !notesReaderOpen) toggleNotesReader();
                 if (s.healthOn && typeof healthOn !== 'undefined' && !healthOn) toggleHealth();
                 if (s.clockOn && typeof clockOn !== 'undefined' && !clockOn) toggleClock();
@@ -5796,7 +6020,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         if (m.opacity) el.style.opacity = m.opacity;
                         if (m.isBrowser) {
                             const bu = el.querySelector('.brUrl');
-                            if (bu && m.url) { bu.value = m.url; const go = el.querySelector('.brGo'); if (go) go.click(); }
+                            if (bu && m.url) { bu.value = m.url; }
+                            if (m.collapsed) { const cb2 = el.querySelector('.brCollapse'); if (cb2) cb2.click(); }
                         } else {
                             const urlInp = el.querySelector('.mpUrl');
                             if (urlInp && m.url) { urlInp.value = m.url; const go = el.querySelector('.mpLoad'); if (go) go.click(); }
@@ -5843,6 +6068,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (s.parserOpen) wins.push('Data Parser');
             if (s.primerOpen) wins.push('Primer Board');
             if (s.healthOn) wins.push('Health');
+            if (s.pad && s.pad.open) wins.push('Scratch Pad' + (s.pad.pages && s.pad.pages.length > 1 ? ' (' + s.pad.pages.length + ' pages)' : ''));
+            if (s.calc && s.calc.open) wins.push('Calculator' + (s.calc.history && s.calc.history.length ? ' (' + s.calc.history.length + ' calcs)' : ''));
             if (Array.isArray(s.media) && s.media.length) wins.push(s.media.length + ' Media Player' + (s.media.length > 1 ? 's' : ''));
 
             const steps = [
@@ -5986,7 +6213,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId,
                                 sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType,
                                 memSize: imgData.memSize, filePath: imgData.filePath,
-                                numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked,
+                                numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, padRefs: imgData.padRefs, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked,
                                 lastEdited: imgData.lastEdited,
                                 meshRow: imgData.meshRow, meshCol: imgData.meshCol,
                                 assetName: imgData.assetName, thumb: imgData.thumb,
@@ -6037,7 +6264,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                     isDot: false,
                                     hidden: imgData.hidden || false,
                                     hiddenLevel: imgData.hiddenLevel || 0,
-                                    sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
+                                    sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, padRefs: imgData.padRefs, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
                                 };
                                 images.push(newImage);
 
@@ -6440,7 +6667,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         function updateRulerRadar(cx, cy) {
             const el = document.getElementById('rulerRadarBox');
-            if (!rulerRadar || !rulerMouseRadar || guides.length === 0) { el.style.display = 'none'; return; }
+            // Mouse↔Ruler is its OWN toggle: it must not be gated by Ruler Radar,
+            // which controls the on-rail spacing labels, not the cursor readout.
+            if (!rulerMouseRadar || guides.length === 0) { el.style.display = 'none'; return; }
             const hs = guides.filter(g => g.axis === 'h').map(g => g.pos * camera.zoom + camera.y).sort((a, b) => a - b);
             const vs = guides.filter(g => g.axis === 'v').map(g => g.pos * camera.zoom + camera.x).sort((a, b) => a - b);
             const m = [];
@@ -7471,7 +7700,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -7569,8 +7798,1312 @@ ctx.fillText(conn.number.toString(), midX, midY);
         // ============================================================
         var formulaLibrary = [];
 
-        function addFormula() {
-            const tEl = document.getElementById('formTitle');
+        // ═══════════════════════════════════════════════════════════════════
+        // 🧮 CALCULATOR — a self-contained expression engine. Runs natively on
+        // the CPU: tokenizer → shunting-yard → RPN evaluation. No libraries.
+        // ═══════════════════════════════════════════════════════════════════
+        var calcOpen = false, calcPinned = false, calcPopped = false, calcCollapsed = false;
+        var calcHistory = [];
+        var calcAnchor = { x: 0, y: 0 };
+        var calcMemory = 0;
+        var calcLastAnswer = 0;
+
+        // ── constants & functions the engine understands ──────────────────
+        const CALC_CONSTS = {
+            pi: Math.PI, PI: Math.PI, e: Math.E, E: Math.E,
+            tau: Math.PI * 2, phi: (1 + Math.sqrt(5)) / 2,
+            inf: Infinity
+        };
+        // arity-1 unless noted; deg-aware trig handled at call time
+        const CALC_FUNCS = {
+            sin: 1, cos: 1, tan: 1, asin: 1, acos: 1, atan: 1,
+            sinh: 1, cosh: 1, tanh: 1,
+            ln: 1, log: 1, log2: 1, exp: 1,
+            sqrt: 1, cbrt: 1, abs: 1, sign: 1,
+            floor: 1, ceil: 1, round: 1, trunc: 1,
+            fact: 1, deg: 1, rad: 1,
+            min: -1, max: -1, sum: -1, avg: -1, hypot: -1,   // -1 = variadic
+            pow: 2, root: 2, mod: 2, gcd: 2, lcm: 2, atan2: 2, nCr: 2, nPr: 2
+        };
+        const CALC_OPS = {
+            '+': { p: 2, a: 'L' }, '-': { p: 2, a: 'L' },
+            '*': { p: 3, a: 'L' }, '/': { p: 3, a: 'L' }, '%': { p: 3, a: 'L' },
+            '^': { p: 5, a: 'R' },
+            'u-': { p: 4, a: 'R' }   // unary minus
+        };
+
+        function calcFactorial(n) {
+            if (n < 0 || Math.floor(n) !== n) {
+                // gamma for non-integers (Lanczos)
+                const g = 7, C = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+                    771.32342877765313, -176.61502916214059, 12.507343278686905,
+                    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+                const gamma = (z) => {
+                    if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+                    z -= 1; let x = C[0];
+                    for (let i = 1; i < g + 2; i++) x += C[i] / (z + i);
+                    const t = z + g + 0.5;
+                    return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+                };
+                return gamma(n + 1);
+            }
+            if (n > 170) return Infinity;
+            let r = 1; for (let i = 2; i <= n; i++) r *= i; return r;
+        }
+        function calcGcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a; }
+
+        // ── 1. TOKENIZER ─────────────────────────────────────────────────
+        function calcTokenize(src) {
+            const out = [];
+            let i = 0;
+            const s = String(src)
+                .replace(/−/g, '-').replace(/×/g, '*').replace(/÷/g, '/')
+                .replace(/π/g, 'pi').replace(/√/g, 'sqrt');
+            const isDigit = c => c >= '0' && c <= '9';
+            const isAlpha = c => /[A-Za-z_]/.test(c);
+            while (i < s.length) {
+                const c = s[i];
+                if (c === ' ' || c === '\t' || c === ',') { if (c === ',') out.push({ t: 'sep' }); i++; continue; }
+                if (isDigit(c) || (c === '.' && isDigit(s[i + 1]))) {
+                    let j = i;
+                    while (j < s.length && (isDigit(s[j]) || s[j] === '.')) j++;
+                    // scientific notation
+                    if (s[j] === 'e' || s[j] === 'E') {
+                        let k = j + 1;
+                        if (s[k] === '+' || s[k] === '-') k++;
+                        if (isDigit(s[k])) { while (k < s.length && isDigit(s[k])) k++; j = k; }
+                    }
+                    out.push({ t: 'num', v: parseFloat(s.slice(i, j)) });
+                    i = j; continue;
+                }
+                if (isAlpha(c)) {
+                    let j = i;
+                    while (j < s.length && /[A-Za-z0-9_]/.test(s[j])) j++;
+                    const word = s.slice(i, j);
+                    if (CALC_FUNCS[word] !== undefined) out.push({ t: 'func', v: word });
+                    else if (CALC_CONSTS[word] !== undefined) out.push({ t: 'num', v: CALC_CONSTS[word] });
+                    else if (word === 'ans') out.push({ t: 'num', v: calcLastAnswer });
+                    else if (word === 'mem') out.push({ t: 'num', v: calcMemory });
+                    else throw new Error('Unknown name: ' + word);
+                    i = j; continue;
+                }
+                if (c === '(' || c === ')') { out.push({ t: c }); i++; continue; }
+                if (c === '!') { out.push({ t: 'post', v: '!' }); i++; continue; }
+                if ('+-*/%^'.includes(c)) {
+                    const prev = out[out.length - 1];
+                    const unary = !prev || prev.t === 'op' || prev.t === '(' || prev.t === 'sep';
+                    if (c === '-' && unary) out.push({ t: 'op', v: 'u-' });
+                    else if (c === '+' && unary) { /* leading + is a no-op */ }
+                    else out.push({ t: 'op', v: c });
+                    i++; continue;
+                }
+                throw new Error('Unexpected character: ' + c);
+            }
+            return out;
+        }
+
+        // ── 2. SHUNTING-YARD → RPN ───────────────────────────────────────
+        function calcToRPN(tokens) {
+            const out = [], stack = [], argc = [];
+            tokens.forEach(tk => {
+                if (tk.t === 'num') out.push(tk);
+                else if (tk.t === 'func') { stack.push(tk); argc.push(1); }
+                else if (tk.t === 'sep') {
+                    while (stack.length && stack[stack.length - 1].t !== '(') out.push(stack.pop());
+                    if (argc.length) argc[argc.length - 1]++;
+                }
+                else if (tk.t === 'post') out.push(tk);
+                else if (tk.t === 'op') {
+                    const o1 = CALC_OPS[tk.v];
+                    while (stack.length) {
+                        const top = stack[stack.length - 1];
+                        if (top.t !== 'op') break;
+                        const o2 = CALC_OPS[top.v];
+                        if ((o1.a === 'L' && o1.p <= o2.p) || (o1.a === 'R' && o1.p < o2.p)) out.push(stack.pop());
+                        else break;
+                    }
+                    stack.push(tk);
+                }
+                else if (tk.t === '(') stack.push(tk);
+                else if (tk.t === ')') {
+                    while (stack.length && stack[stack.length - 1].t !== '(') out.push(stack.pop());
+                    if (!stack.length) throw new Error('Mismatched parenthesis');
+                    stack.pop();
+                    if (stack.length && stack[stack.length - 1].t === 'func') {
+                        const f = stack.pop();
+                        f.n = argc.pop() || 1;
+                        out.push(f);
+                    }
+                }
+            });
+            while (stack.length) {
+                const s = stack.pop();
+                if (s.t === '(') throw new Error('Mismatched parenthesis');
+                out.push(s);
+            }
+            return out;
+        }
+
+        // ── 3. RPN EVALUATOR ─────────────────────────────────────────────
+        function calcEvalRPN(rpn, angleMode) {
+            const st = [];
+            const toRad = v => angleMode === 'deg' ? v * Math.PI / 180 : v;
+            const fromRad = v => angleMode === 'deg' ? v * 180 / Math.PI : v;
+            const pop = () => { if (!st.length) throw new Error('Incomplete expression'); return st.pop(); };
+            rpn.forEach(tk => {
+                if (tk.t === 'num') { st.push(tk.v); return; }
+                if (tk.t === 'post') { st.push(calcFactorial(pop())); return; }
+                if (tk.t === 'op') {
+                    if (tk.v === 'u-') { st.push(-pop()); return; }
+                    const b = pop(), a = pop();
+                    switch (tk.v) {
+                        case '+': st.push(a + b); break;
+                        case '-': st.push(a - b); break;
+                        case '*': st.push(a * b); break;
+                        case '/': st.push(a / b); break;
+                        case '%': st.push(a % b); break;
+                        case '^': st.push(Math.pow(a, b)); break;
+                    }
+                    return;
+                }
+                if (tk.t === 'func') {
+                    const n = tk.n || 1;
+                    const args = [];
+                    for (let i = 0; i < n; i++) args.unshift(pop());
+                    const x = args[0], y = args[1];
+                    switch (tk.v) {
+                        case 'sin': st.push(Math.sin(toRad(x))); break;
+                        case 'cos': st.push(Math.cos(toRad(x))); break;
+                        case 'tan': st.push(Math.tan(toRad(x))); break;
+                        case 'asin': st.push(fromRad(Math.asin(x))); break;
+                        case 'acos': st.push(fromRad(Math.acos(x))); break;
+                        case 'atan': st.push(fromRad(Math.atan(x))); break;
+                        case 'atan2': st.push(fromRad(Math.atan2(x, y))); break;
+                        case 'sinh': st.push(Math.sinh(x)); break;
+                        case 'cosh': st.push(Math.cosh(x)); break;
+                        case 'tanh': st.push(Math.tanh(x)); break;
+                        case 'ln': st.push(Math.log(x)); break;
+                        case 'log': st.push(Math.log10(x)); break;
+                        case 'log2': st.push(Math.log2(x)); break;
+                        case 'exp': st.push(Math.exp(x)); break;
+                        case 'sqrt': st.push(Math.sqrt(x)); break;
+                        case 'cbrt': st.push(Math.cbrt(x)); break;
+                        case 'abs': st.push(Math.abs(x)); break;
+                        case 'sign': st.push(Math.sign(x)); break;
+                        case 'floor': st.push(Math.floor(x)); break;
+                        case 'ceil': st.push(Math.ceil(x)); break;
+                        case 'round': st.push(Math.round(x)); break;
+                        case 'trunc': st.push(Math.trunc(x)); break;
+                        case 'fact': st.push(calcFactorial(x)); break;
+                        case 'deg': st.push(x * 180 / Math.PI); break;
+                        case 'rad': st.push(x * Math.PI / 180); break;
+                        case 'pow': st.push(Math.pow(x, y)); break;
+                        case 'root': st.push(Math.pow(x, 1 / y)); break;
+                        case 'mod': st.push(((x % y) + y) % y); break;
+                        case 'gcd': st.push(calcGcd(x, y)); break;
+                        case 'lcm': st.push(Math.abs(x * y) / (calcGcd(x, y) || 1)); break;
+                        case 'nCr': st.push(calcFactorial(x) / (calcFactorial(y) * calcFactorial(x - y))); break;
+                        case 'nPr': st.push(calcFactorial(x) / calcFactorial(x - y)); break;
+                        case 'min': st.push(Math.min.apply(null, args)); break;
+                        case 'max': st.push(Math.max.apply(null, args)); break;
+                        case 'hypot': st.push(Math.hypot.apply(null, args)); break;
+                        case 'sum': st.push(args.reduce((p, c) => p + c, 0)); break;
+                        case 'avg': st.push(args.reduce((p, c) => p + c, 0) / args.length); break;
+                        default: throw new Error('Unknown function: ' + tk.v);
+                    }
+                    return;
+                }
+                throw new Error('Bad token');
+            });
+            if (st.length !== 1) throw new Error('Incomplete expression');
+            return st[0];
+        }
+
+        function calcEvaluate(expr, angleMode) {
+            return calcEvalRPN(calcToRPN(calcTokenize(expr)), angleMode || 'rad');
+        }
+
+        function calcFormat(v) {
+            if (!isFinite(v)) return v > 0 ? '∞' : (v < 0 ? '−∞' : 'NaN');
+            const p = document.getElementById('calcPrec').value;
+            if (p !== 'auto') return Number(v).toFixed(parseInt(p, 10));
+            if (Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
+            const a = Math.abs(v);
+            if (a !== 0 && (a < 1e-6 || a >= 1e15)) return v.toExponential(8);
+            return String(parseFloat(v.toPrecision(12)));
+        }
+
+        // ── LIVE EVALUATION + UI ─────────────────────────────────────────
+        function calcRun(pushHistory) {
+            const inp = document.getElementById('calcExpr');
+            const out = document.getElementById('calcOut');
+            const err = document.getElementById('calcErr');
+            const expr = inp.value.trim();
+            if (!expr) { out.textContent = '0'; err.textContent = ''; return; }
+            try {
+                const v = calcEvaluate(expr, document.getElementById('calcAngle').value);
+                const shown = calcFormat(v);
+                out.textContent = shown;
+                err.textContent = '';
+                if (pushHistory) {
+                    calcLastAnswer = v;
+                    calcHistory.unshift({ expr: expr, result: shown, ts: Date.now() });
+                    if (calcHistory.length > 60) calcHistory.pop();
+                    calcRenderHistory();
+                }
+            } catch (e) {
+                out.textContent = '—';
+                err.textContent = e.message;
+            }
+        }
+
+        function calcRenderHistory() {
+            const h = document.getElementById('calcHist');
+            if (!h) return;
+            if (!calcHistory.length) { h.innerHTML = '<div style="color:#37474F;font-style:italic;">No calculations yet.</div>'; return; }
+            h.innerHTML = '';
+            calcHistory.forEach(rec => {
+                const row = document.createElement('div');
+                row.style.cssText = 'padding:5px 7px;margin-bottom:3px;border-radius:6px;border-left:2px solid #14423c;cursor:pointer;display:flex;justify-content:space-between;gap:10px;transition:background .12s,border-color .12s;';
+                row.innerHTML = '<span style="color:#4DB6AC;">' + rec.expr.replace(/</g, '&lt;') + '</span><b style="color:#B2DFDB;">' + rec.result + '</b>';
+                row.onclick = () => { document.getElementById('calcExpr').value = rec.expr; calcRun(false); };
+                row.onmouseenter = () => { row.style.background = '#102520'; row.style.borderLeftColor = '#00E5A0'; };
+                row.onmouseleave = () => { row.style.background = 'transparent'; row.style.borderLeftColor = '#14423c'; };
+                h.appendChild(row);
+            });
+        }
+
+        // send the current calculation into the Notes Reader formula library
+        function calcSendToFormula() {
+            const expr = document.getElementById('calcExpr').value.trim();
+            const res = document.getElementById('calcOut').textContent;
+            const noteEl = document.getElementById('calcNote');
+            const note = noteEl ? noteEl.value.trim() : '';
+            if (!expr && !note) return;
+            // the note rides alongside the maths: "8*19 = 152  Formula A(:r/S=)"
+            const line = expr ? (expr + ' = ' + res + (note ? '  ' + note : '')) : note;
+            formulaLibrary.push({
+                id: Date.now() + Math.random(),
+                title: note || 'Calculation',
+                text: line,
+                notations: 'angle: ' + document.getElementById('calcAngle').value + (note ? ' · note: ' + note : ''),
+                agent: '',
+                ts: Date.now()
+            });
+            if (noteEl) noteEl.value = '';
+            if (typeof renderNotesReader === 'function') renderNotesReader();
+            const btn = document.getElementById('calcToFormula');
+            const old = btn.textContent;
+            btn.textContent = '✓ SENT';
+            setTimeout(() => { btn.textContent = old; }, 1100);
+        }
+
+        // keypad
+        function calcBuildKeys() {
+            const grid = document.getElementById('calcKeys');
+            if (!grid || grid.dataset.built) return;
+            grid.dataset.built = '1';
+            const ins = (txt) => {
+                const inp = document.getElementById('calcExpr');
+                const s = inp.selectionStart ?? inp.value.length;
+                inp.value = inp.value.slice(0, s) + txt + inp.value.slice(inp.selectionEnd ?? s);
+                inp.focus();
+                inp.selectionStart = inp.selectionEnd = s + txt.length;
+                calcRun(false);
+            };
+            const KEYS = [
+                ['sin', () => ins('sin(')], ['cos', () => ins('cos(')], ['tan', () => ins('tan(')],
+                ['ln', () => ins('ln(')], ['log', () => ins('log(')], ['√', () => ins('sqrt(')],
+                ['(', () => ins('(')], [')', () => ins(')')], ['^', () => ins('^')],
+                ['!', () => ins('!')], ['π', () => ins('pi')], ['e', () => ins('e')],
+                ['7', () => ins('7')], ['8', () => ins('8')], ['9', () => ins('9')],
+                ['÷', () => ins('/')], ['%', () => ins('%')], ['C', () => { document.getElementById('calcExpr').value = ''; calcRun(false); }],
+                ['4', () => ins('4')], ['5', () => ins('5')], ['6', () => ins('6')],
+                ['×', () => ins('*')], ['M+', () => { calcMemory += parseFloat(document.getElementById('calcOut').textContent) || 0; }], ['MR', () => ins('mem')],
+                ['1', () => ins('1')], ['2', () => ins('2')], ['3', () => ins('3')],
+                ['−', () => ins('-')], ['MC', () => { calcMemory = 0; }], ['ans', () => ins('ans')],
+                ['0', () => ins('0')], ['.', () => ins('.')], ['⌫', () => { const i2 = document.getElementById('calcExpr'); i2.value = i2.value.slice(0, -1); calcRun(false); }],
+                ['+', () => ins('+')], ['nCr', () => ins('nCr(')], ['=', () => calcRun(true)]
+            ];
+            KEYS.forEach(([label, fn]) => {
+                const b = document.createElement('button');
+                b.textContent = label;
+                const isNum = /^[0-9.]$/.test(label);
+                const isEq = label === '=';
+                const isFn = /^(sin|cos|tan|ln|log|√|π|e|ans|nCr|M\+|MR|MC)$/.test(label);
+                const isDanger = label === 'C' || label === '⌫';
+                let bg, fg, shadow;
+                if (isEq)          { bg = 'linear-gradient(180deg,#00E5A0,#00A87C)'; fg = '#04231d'; shadow = '0 2px 0 #00654b'; }
+                else if (isNum)    { bg = 'linear-gradient(180deg,#14312c,#0e2622)'; fg = '#E0F7F2'; shadow = '0 2px 0 #07110f'; }
+                else if (isDanger) { bg = 'linear-gradient(180deg,#3a1616,#2a0f0f)'; fg = '#FF8A80'; shadow = '0 2px 0 #150707'; }
+                else if (isFn)     { bg = 'linear-gradient(180deg,#0f2724,#0b1e1b)'; fg = '#4DB6AC'; shadow = '0 2px 0 #06100e'; }
+                else               { bg = 'linear-gradient(180deg,#112925,#0c201d)'; fg = '#80CBC4'; shadow = '0 2px 0 #07110f'; }
+                b.style.cssText = 'margin:0;padding:9px 0;font:600 13px "Courier New",monospace;border-radius:8px;border:1px solid rgba(127,255,212,.08);' +
+                    'background:' + bg + ';color:' + fg + ';box-shadow:' + shadow + ';transition:transform .06s, filter .12s;';
+                b.onmouseenter = () => { b.style.filter = 'brightness(1.35)'; };
+                b.onmouseleave = () => { b.style.filter = 'none'; };
+                b.onpointerdown = () => { b.style.transform = 'translateY(2px)'; b.style.boxShadow = 'none'; };
+                b.onpointerup = b.onpointerout = () => { b.style.transform = 'none'; b.style.boxShadow = shadow; };
+                b.onclick = fn;
+                grid.appendChild(b);
+            });
+        }
+
+        function toggleCalculator() {
+            calcOpen = !calcOpen;
+            const p = document.getElementById('calcPanel');
+            const b = document.getElementById('calcBtn');
+            if (calcOpen) {
+                calcBuildKeys();
+                calcRenderHistory();
+                if (!calcPopped && typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                p.style.display = 'flex';
+                setTimeout(() => document.getElementById('calcExpr').focus(), 30);
+            } else {
+                p.style.display = 'none';
+            }
+            if (b) b.style.background = calcOpen ? '#00897B' : '#00695C';
+        }
+
+        // panel controls: pop out (undock), pin to canvas, dim, collapse, drag
+        (function calcInit() {
+            const p = document.getElementById('calcPanel');
+            if (!p) return;
+            const q = s => document.getElementById(s);
+
+            q('calcExpr').addEventListener('input', () => calcRun(false));
+            q('calcExpr').addEventListener('keydown', ev => {
+                if (ev.key === 'Enter') { ev.preventDefault(); calcRun(true); }
+            });
+            q('calcAngle').onchange = () => calcRun(false);
+            q('calcPrec').onchange = () => calcRun(false);
+            q('calcToFormula').onclick = calcSendToFormula;
+            q('calcNote').addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); calcSendToFormula(); } });
+            q('calcOp').oninput = ev => { p.style.opacity = ev.target.value / 100; };
+
+            q('calcCollapseBtn').onclick = () => {
+                calcCollapsed = !calcCollapsed;
+                q('calcBody').style.display = calcCollapsed ? 'none' : 'flex';
+                q('calcCollapseBtn').textContent = calcCollapsed ? '▶' : '▼';
+            };
+
+            q('calcPopBtn').onclick = () => {
+                calcPopped = !calcPopped;
+                if (calcPopped) {
+                    const r = p.getBoundingClientRect();
+                    p.style.position = 'fixed';
+                    p.style.left = r.left + 'px';
+                    p.style.top = r.top + 'px';
+                    p.style.transform = 'none';
+                    p.style.marginTop = '0';
+                    p.style.zIndex = '99000';
+                    q('calcPopBtn').textContent = '⇲ Dock';
+                } else {
+                    calcPinned = false;
+                    p.classList.remove('faded');
+                    q('calcPinBtn').textContent = '📌 Pin';
+                    if (typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                    q('calcPopBtn').textContent = '⇱ Pop Out';
+                }
+            };
+
+            q('calcPinBtn').onclick = () => {
+                if (!calcPopped) q('calcPopBtn').click();     // pinning implies undocked
+                calcPinned = !calcPinned;
+                if (calcPinned) {
+                    const rect = canvas.getBoundingClientRect();
+                    const r = p.getBoundingClientRect();
+                    calcAnchor = {
+                        x: (r.left - rect.left - camera.x) / camera.zoom,
+                        y: (r.top - rect.top - camera.y) / camera.zoom
+                    };
+                    q('calcPinBtn').textContent = '📌 Unpin';
+                    q('calcPinBtn').style.background = '#FFB300';
+                    q('calcPinBtn').style.color = '#000';
+                    calcSyncPinned();
+                } else {
+                    q('calcPinBtn').textContent = '📌 Pin';
+                    q('calcPinBtn').style.background = 'rgba(255,255,255,.22)';
+                    q('calcPinBtn').style.color = '#fff';
+                }
+            };
+
+            // drag by header when undocked
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                p.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 120)) + 'px';
+                p.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 40)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            q('calcHead').addEventListener('pointerdown', ev => {
+                if (!calcPopped || calcPinned) return;
+                if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+                const r = p.getBoundingClientRect();
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv);
+                window.addEventListener('pointerup', up);
+            });
+        })();
+
+        // keep a pinned calculator locked to canvas space
+        function calcSyncPinned() {
+            if (!calcPinned) return;
+            const p = document.getElementById('calcPanel');
+            const rect = canvas.getBoundingClientRect();
+            p.style.left = (rect.left + camera.x + calcAnchor.x * camera.zoom) + 'px';
+            p.style.top = (rect.top + camera.y + calcAnchor.y * camera.zoom) + 'px';
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⛃ CHECKERS — full rules (forced captures, multi-jumps, kings) with a
+        // minimax + alpha-beta AI. Same panel behaviour as the other tools.
+        // ═══════════════════════════════════════════════════════════════════
+        var chkSoundOn = true, _chkAudio = null;
+        function chkTone(freq, dur, vol, type, delay) {
+            if (!chkSoundOn) return;
+            try {
+                if (!_chkAudio) _chkAudio = new (window.AudioContext || window.webkitAudioContext)();
+                if (_chkAudio.state === 'suspended') _chkAudio.resume();
+                const t = _chkAudio.currentTime + (delay || 0);
+                const o = _chkAudio.createOscillator(), g = _chkAudio.createGain();
+                o.type = type || 'sine';
+                o.frequency.setValueAtTime(freq, t);
+                // gentle bell-ish envelope — soft attack, long soft tail
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(vol || 0.05, t + 0.03);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + (dur || 0.3));
+                o.connect(g); g.connect(_chkAudio.destination);
+                o.start(t); o.stop(t + (dur || 0.3) + 0.05);
+            } catch (e) {}
+        }
+        const chkSfx = {
+            pick:    () => chkTone(523.25, 0.22, 0.035, 'sine'),                     // soft C5
+            move:    () => { chkTone(392.00, 0.30, 0.045, 'sine'); },                // warm G4
+            capture: () => { chkTone(329.63, 0.34, 0.05, 'sine'); chkTone(493.88, 0.40, 0.035, 'sine', 0.07); },
+            king:    () => { chkTone(523.25, 0.35, 0.04, 'sine'); chkTone(659.25, 0.35, 0.04, 'sine', 0.09); chkTone(783.99, 0.5, 0.04, 'sine', 0.18); },
+            engine:  () => chkTone(293.66, 0.28, 0.035, 'sine'),                     // low D4
+            win:     () => { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => chkTone(f, 0.5, 0.04, 'sine', i * 0.12)); },
+            lose:    () => { [440, 392, 329.63].forEach((f, i) => chkTone(f, 0.55, 0.04, 'sine', i * 0.15)); }
+        };
+
+        var chkOpen = false, chkPinned = false, chkPopped = false, chkCollapsed = false;
+        var chkAnchor = { x: 0, y: 0 };
+        var chkBoard = null, chkSel = null, chkTurnRed = true, chkBusy = false, chkOver = false;
+
+        const chkOnB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
+        const chkIsRed = v => v > 0, chkIsBlk = v => v < 0, chkIsKing = v => Math.abs(v) === 2;
+
+        function chkNewBoard() {
+            const b = new Array(64).fill(0);
+            for (let r = 0; r < 3; r++) for (let c = 0; c < 8; c++) if ((r + c) % 2 === 1) b[r * 8 + c] = -1;
+            for (let r = 5; r < 8; r++) for (let c = 0; c < 8; c++) if ((r + c) % 2 === 1) b[r * 8 + c] = 1;
+            return b;
+        }
+
+        function chkApply(b, mv) {
+            const nb = b.slice();
+            let v = nb[mv.from];
+            nb[mv.from] = 0;
+            mv.caps.forEach(ci => nb[ci] = 0);
+            const row = (mv.to / 8) | 0;
+            if (v === 1 && row === 0) v = 2;
+            if (v === -1 && row === 7) v = -2;
+            nb[mv.to] = v;
+            return nb;
+        }
+
+        // All legal moves. Captures are mandatory in checkers, so if any exist
+        // only captures are returned. Multi-jumps are expanded recursively.
+        function chkMoves(b, red) {
+            const seeds = [], quiet = [];
+            for (let i = 0; i < 64; i++) {
+                const v = b[i]; if (!v) continue;
+                if (red ? !chkIsRed(v) : !chkIsBlk(v)) continue;
+                const r = (i / 8) | 0, c = i % 8;
+                const dirs = chkIsKing(v) ? [[-1,-1],[-1,1],[1,-1],[1,1]] : (red ? [[-1,-1],[-1,1]] : [[1,-1],[1,1]]);
+                dirs.forEach(([dr, dc]) => {
+                    const nr = r + dr, nc = c + dc;
+                    if (!chkOnB(nr, nc)) return;
+                    const t = b[nr * 8 + nc];
+                    if (t === 0) { quiet.push({ from: i, to: nr * 8 + nc, caps: [] }); return; }
+                    const enemy = red ? chkIsBlk(t) : chkIsRed(t);
+                    if (!enemy) return;
+                    const jr = r + dr * 2, jc = c + dc * 2;
+                    if (chkOnB(jr, jc) && b[jr * 8 + jc] === 0) seeds.push({ from: i, to: jr * 8 + jc, caps: [nr * 8 + nc] });
+                });
+            }
+            if (!seeds.length) return quiet;
+            const out = [];
+            const rec = (bd, cur, origin) => {
+                const nb = chkApply(bd, cur);
+                const piece = nb[cur.to];
+                const r = (cur.to / 8) | 0, c = cur.to % 8;
+                const dirs = chkIsKing(piece) ? [[-1,-1],[-1,1],[1,-1],[1,1]] : (red ? [[-1,-1],[-1,1]] : [[1,-1],[1,1]]);
+                let extended = false;
+                dirs.forEach(([dr, dc]) => {
+                    const nr = r + dr, nc = c + dc, jr = r + dr * 2, jc = c + dc * 2;
+                    if (!chkOnB(jr, jc)) return;
+                    const t = nb[nr * 8 + nc];
+                    if (!t) return;
+                    const enemy = red ? chkIsBlk(t) : chkIsRed(t);
+                    if (enemy && nb[jr * 8 + jc] === 0) {
+                        extended = true;
+                        rec(nb, { from: cur.from, to: jr * 8 + jc, caps: cur.caps.concat([nr * 8 + nc]) }, origin);
+                    }
+                });
+                if (!extended) out.push({ from: origin, to: cur.to, caps: cur.caps });
+            };
+            seeds.forEach(m => rec(b, m, m.from));
+            return out;
+        }
+
+        function chkEval(b) {
+            let s = 0;
+            for (let i = 0; i < 64; i++) {
+                const v = b[i]; if (!v) continue;
+                const r = (i / 8) | 0, c = i % 8;
+                if (v === -1) s += 10 + r * 0.6;
+                else if (v === -2) s += 18;
+                else if (v === 1) s -= 10 + (7 - r) * 0.6;
+                else if (v === 2) s -= 18;
+                if (c === 0 || c === 7) s += (v < 0 ? 0.4 : -0.4);
+            }
+            return s;
+        }
+
+        function chkMinimax(b, depth, alpha, beta, blackTurn) {
+            const moves = chkMoves(b, !blackTurn);
+            if (!moves.length) return blackTurn ? -9999 : 9999;
+            if (depth === 0) return chkEval(b);
+            if (blackTurn) {
+                let best = -Infinity;
+                for (const m of moves) {
+                    best = Math.max(best, chkMinimax(chkApply(b, m), depth - 1, alpha, beta, false));
+                    alpha = Math.max(alpha, best);
+                    if (beta <= alpha) break;
+                }
+                return best;
+            }
+            let best = Infinity;
+            for (const m of moves) {
+                best = Math.min(best, chkMinimax(chkApply(b, m), depth - 1, alpha, beta, true));
+                beta = Math.min(beta, best);
+                if (beta <= alpha) break;
+            }
+            return best;
+        }
+
+        function chkBestMove(b, depth) {
+            const moves = chkMoves(b, false);
+            if (!moves.length) return null;
+            let best = null, bv = -Infinity;
+            for (const m of moves) {
+                const v = chkMinimax(chkApply(b, m), depth - 1, -Infinity, Infinity, false);
+                if (v > bv) { bv = v; best = m; }
+            }
+            return best;
+        }
+
+        function chkDraw() {
+            const cv = document.getElementById('chkCanvas');
+            if (!cv || !chkBoard) return;
+            const g = cv.getContext('2d');
+            const S = cv.width / 8;
+            const legal = chkTurnRed && !chkOver ? chkMoves(chkBoard, true) : [];
+            const targets = chkSel !== null ? legal.filter(m => m.from === chkSel).map(m => m.to) : [];
+            const movable = legal.map(m => m.from);
+            for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+                const dark = (r + c) % 2 === 1;
+                g.fillStyle = dark ? '#5D4037' : '#D7CCC8';
+                g.fillRect(c * S, r * S, S, S);
+                const i = r * 8 + c;
+                if (chkSel === i) { g.fillStyle = 'rgba(255,213,79,.55)'; g.fillRect(c * S, r * S, S, S); }
+                else if (targets.includes(i)) {
+                    g.fillStyle = 'rgba(129,199,132,.45)'; g.fillRect(c * S, r * S, S, S);
+                } else if (chkSel === null && movable.includes(i)) {
+                    g.strokeStyle = 'rgba(255,204,128,.5)'; g.lineWidth = 2;
+                    g.strokeRect(c * S + 2, r * S + 2, S - 4, S - 4);
+                }
+                const v = chkBoard[i];
+                if (!v) continue;
+                const cx = c * S + S / 2, cy = r * S + S / 2, rad = S * 0.36;
+                g.beginPath(); g.arc(cx, cy + 2, rad, 0, Math.PI * 2);
+                g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
+                const grad = g.createRadialGradient(cx - rad * .35, cy - rad * .4, rad * .15, cx, cy, rad);
+                if (v > 0) { grad.addColorStop(0, '#FF8A65'); grad.addColorStop(1, '#C62828'); }
+                else { grad.addColorStop(0, '#546E7A'); grad.addColorStop(1, '#1a1a1a'); }
+                g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2);
+                g.fillStyle = grad; g.fill();
+                g.strokeStyle = v > 0 ? '#8E1B1B' : '#000'; g.lineWidth = 1.5; g.stroke();
+                if (chkIsKing(v)) {
+                    g.fillStyle = '#FFD54F';
+                    g.font = 'bold ' + (S * 0.38) + 'px Arial';
+                    g.textAlign = 'center'; g.textBaseline = 'middle';
+                    g.fillText('♛', cx, cy + 1);
+                }
+            }
+            const reds = chkBoard.filter(chkIsRed).length, blks = chkBoard.filter(chkIsBlk).length;
+            const sc = document.getElementById('chkScore');
+            if (sc) sc.textContent = 'You ' + reds + '  ·  Engine ' + blks;
+        }
+
+        function chkSetStatus(t) { const el = document.getElementById('chkStatus'); if (el) el.textContent = t; }
+
+        function chkCheckEnd() {
+            const rm = chkMoves(chkBoard, true).length, bm = chkMoves(chkBoard, false).length;
+            if (!rm) { chkOver = true; chkSetStatus('Engine wins — no moves left'); chkSfx.lose(); return true; }
+            if (!bm) { chkOver = true; chkSetStatus('You win'); chkSfx.win(); return true; }
+            return false;
+        }
+
+        function chkAIMove() {
+            if (chkOver) return;
+            chkBusy = true;
+            chkSetStatus('Engine thinking…');
+            setTimeout(() => {
+                const depth = parseInt(document.getElementById('chkLevel').value, 10) || 4;
+                const mv = chkBestMove(chkBoard, depth);
+                if (!mv) { chkOver = true; chkSetStatus('You win'); chkBusy = false; chkDraw(); return; }
+                chkBoard = chkApply(chkBoard, mv);
+                chkSfx.engine();
+                chkTurnRed = true; chkBusy = false;
+                chkDraw();
+                if (!chkCheckEnd()) chkSetStatus('Your move');
+            }, 30);
+        }
+
+        function chkClick(ev) {
+            if (chkBusy || chkOver || !chkTurnRed) return;
+            const cv = document.getElementById('chkCanvas');
+            const r0 = cv.getBoundingClientRect();
+            const S = cv.width / 8;
+            const c = Math.floor((ev.clientX - r0.left) / (r0.width / 8));
+            const r = Math.floor((ev.clientY - r0.top) / (r0.height / 8));
+            if (!chkOnB(r, c)) return;
+            const i = r * 8 + c;
+            const legal = chkMoves(chkBoard, true);
+            if (chkSel !== null) {
+                const mv = legal.find(m => m.from === chkSel && m.to === i);
+                if (mv) {
+                    const wasKing = chkIsKing(chkBoard[mv.from]);
+                    chkBoard = chkApply(chkBoard, mv);
+                    if (mv.caps.length) chkSfx.capture(); else chkSfx.move();
+                    if (!wasKing && chkIsKing(chkBoard[mv.to])) chkSfx.king();
+                    chkSel = null; chkTurnRed = false; chkDraw();
+                    if (!chkCheckEnd()) chkAIMove();
+                    return;
+                }
+            }
+            const prevSel = chkSel;
+            chkSel = legal.some(m => m.from === i) ? i : null;
+            if (chkSel !== null && chkSel !== prevSel) chkSfx.pick();
+            chkDraw();
+        }
+
+        function chkNewGame() {
+            chkBoard = chkNewBoard(); chkSel = null; chkTurnRed = true; chkOver = false; chkBusy = false;
+            chkSetStatus('Your move'); chkDraw();
+        }
+
+        function toggleCheckers() {
+            chkOpen = !chkOpen;
+            const p = document.getElementById('chkPanel'), b = document.getElementById('gameBtn');
+            if (chkOpen) {
+                if (!chkBoard) chkNewGame();
+                p.style.display = 'flex';
+                if (!p.dataset.placed) {
+                    const cb = document.getElementById('controls').getBoundingClientRect();
+                    p.style.top = (cb.bottom + 14) + 'px';
+                    p.style.left = Math.max(20, (window.innerWidth - 392) / 2) + 'px';
+                    p.dataset.placed = '1';
+                }
+                chkDraw();
+            } else p.style.display = 'none';
+            if (b) b.style.background = chkOpen ? '#6D4C41' : '#4E342E';
+        }
+
+        function chkSyncPinned() {
+            if (!chkPinned) return;
+            const p = document.getElementById('chkPanel');
+            const rect = canvas.getBoundingClientRect();
+            p.style.left = (rect.left + camera.x + chkAnchor.x * camera.zoom) + 'px';
+            p.style.top = (rect.top + camera.y + chkAnchor.y * camera.zoom) + 'px';
+        }
+
+        (function chkInit() {
+            const p = document.getElementById('chkPanel'); if (!p) return;
+            const q = id => document.getElementById(id);
+            q('chkCanvas').addEventListener('click', chkClick);
+            q('chkNew').onclick = chkNewGame;
+
+            // ── soft, local, synthesized sounds (no files, no network) ──
+            q('chkSound').onclick = () => {
+                chkSoundOn = !chkSoundOn;
+                q('chkSound').textContent = chkSoundOn ? '🔊' : '🔇';
+                q('chkSound').style.opacity = chkSoundOn ? '1' : '.5';
+            };
+
+            // ── how to play ──
+            q('chkHelp').onclick = () => {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '⛃ How to play',
+                    body: 'You are RED (bottom). The engine is BLACK.\n\n' +
+                          '• Click one of your pieces — pieces you can move glow amber.\n' +
+                          '• Click a green square to move there. That\u2019s it, single clicks.\n' +
+                          '• Captures are forced: if a jump is available you must take it.\n' +
+                          '• Multi-jumps happen automatically in one move.\n' +
+                          '• Reach the far row and your piece becomes a KING (gold crown) — kings move both directions.\n' +
+                          '• Win by taking every black piece, or leaving the engine with no legal move.\n\n' +
+                          'EASY / MEDIUM / HARD set how many moves ahead the engine thinks.',
+                    okText: 'Got it', danger: false, hideCancel: true
+                });
+            };
+            q('chkLevel').onchange = () => {};
+            q('chkOp').oninput = ev => { p.style.opacity = ev.target.value / 100; };
+            q('chkCollapseBtn').onclick = () => {
+                chkCollapsed = !chkCollapsed;
+                q('chkBody').style.display = chkCollapsed ? 'none' : 'flex';
+                q('chkCollapseBtn').textContent = chkCollapsed ? '▶' : '▼';
+            };
+            q('chkPopBtn').onclick = () => {
+                chkPopped = !chkPopped;
+                if (chkPopped) {
+                    p.style.zIndex = '99900';
+                    q('chkPopBtn').textContent = '⇲ Dock';
+                } else {
+                    chkPinned = false;
+                    q('chkPinBtn').textContent = '📌 Pin';
+                    q('chkPinBtn').style.background = 'rgba(255,204,128,.14)'; q('chkPinBtn').style.color = '#FFCC80';
+                    const cb2 = document.getElementById('controls').getBoundingClientRect();
+                    p.style.top = (cb2.bottom + 14) + 'px'; p.style.left = Math.max(20, (window.innerWidth - 392) / 2) + 'px'; p.style.zIndex = '99500';
+                    q('chkPopBtn').textContent = '⇱ Pop Out';
+                }
+            };
+            q('chkPinBtn').onclick = () => {
+                chkPinned = !chkPinned;
+                if (chkPinned) {
+                    const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
+                    chkAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom, y: (r.top - rect.top - camera.y) / camera.zoom };
+                    q('chkPinBtn').textContent = '📌 Unpin';
+                    q('chkPinBtn').style.background = '#FFB300'; q('chkPinBtn').style.color = '#000';
+                    chkSyncPinned();
+                } else {
+                    q('chkPinBtn').textContent = '📌 Pin';
+                    q('chkPinBtn').style.background = 'rgba(255,204,128,.14)'; q('chkPinBtn').style.color = '#FFCC80';
+                }
+            };
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                p.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 120)) + 'px';
+                p.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 40)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            q('chkHead').addEventListener('pointerdown', ev => {
+                if (chkPinned) return;
+                if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+                const r = p.getBoundingClientRect();
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+        })();
+
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ✎ SCRATCH PAD — a typewriter page docked to the toolbar. Rich notes:
+        // text, pasted images, links, checklists, quotes, code. Deliberately NOT
+        // a canvas object: it is never pinned and never counted by the engine.
+        // ═══════════════════════════════════════════════════════════════════
+        var padOpen = false, padPopped = false, padCollapsed = false;
+        var padPages = [{ id: 1, name: 'Page 1', html: '' }];
+        var padActive = 0, _padSaveT = null;
+
+        function padEl(id) { return document.getElementById(id); }
+        function padPageEl() { return padEl('padPage'); }
+
+        function padExec(cmd, val) {
+            padPageEl().focus();
+            try { document.execCommand(cmd, false, val || null); } catch (e) {}
+            padTouch();
+        }
+
+        // Insert arbitrary HTML at the caret
+        function padInsert(html) {
+            padPageEl().focus();
+            try { document.execCommand('insertHTML', false, html); } catch (e) {}
+            padTouch();
+        }
+
+        function padStats() {
+            const el = padPageEl(); if (!el) return;
+            const txt = (el.innerText || '').trim();
+            const words = txt ? txt.split(/\s+/).length : 0;
+            const chars = txt.length;
+            const imgs = el.querySelectorAll('img').length;
+            const links = el.querySelectorAll('a').length;
+            const boxes = el.querySelectorAll('input[type=checkbox]').length;
+            const done = el.querySelectorAll('input[type=checkbox]:checked').length;
+            const mins = Math.max(1, Math.round(words / 200));
+            let s = words + (words === 1 ? ' word · ' : ' words · ') + chars + ' chars';
+            if (imgs) s += ' · ' + imgs + ' image' + (imgs > 1 ? 's' : '');
+            if (links) s += ' · ' + links + ' link' + (links > 1 ? 's' : '');
+            if (boxes) s += ' · ' + done + '/' + boxes + ' done';
+            if (words > 60) s += ' · ~' + mins + ' min read';
+            padEl('padStats').textContent = s;
+        }
+
+        function padTouch() {
+            padPages[padActive].html = padPageEl().innerHTML;
+            padStats();
+            const tag = padEl('padSaved');
+            if (tag) {
+                tag.textContent = '● saving';
+                clearTimeout(_padSaveT);
+                _padSaveT = setTimeout(() => { tag.textContent = '✓ saved ' + new Date().toLocaleTimeString(); }, 400);
+            }
+        }
+
+        function padRenderTabs() {
+            const t = padEl('padTabs'); if (!t) return;
+            t.innerHTML = '';
+            padPages.forEach((p, i) => {
+                const b = document.createElement('div');
+                const on = i === padActive;
+                b.style.cssText = 'display:flex; align-items:center; gap:5px; padding:5px 9px; border-radius:7px 7px 0 0; cursor:pointer; white-space:nowrap;' +
+                    'font:11px "Courier New",monospace; letter-spacing:.4px;' +
+                    (on ? 'background:#f4ecdc; color:#2f2a24; font-weight:700;' : 'background:#332c26; color:#9a8d7c;');
+                const label = document.createElement('span');
+                label.textContent = p.name;
+                label.ondblclick = (ev) => {
+                    ev.stopPropagation();
+                    const n = prompt('Rename page:', p.name);
+                    if (n !== null) { p.name = n.trim() || p.name; padRenderTabs(); }
+                };
+                b.appendChild(label);
+                if (padPages.length > 1) {
+                    const x = document.createElement('span');
+                    x.textContent = '✕'; x.style.cssText = 'opacity:.55; font-size:10px;';
+                    x.onclick = (ev) => {
+                        ev.stopPropagation();
+                        padPages.splice(i, 1);
+                        if (padActive >= padPages.length) padActive = padPages.length - 1;
+                        padLoadPage();
+                    };
+                    b.appendChild(x);
+                }
+                b.onclick = () => { padPages[padActive].html = padPageEl().innerHTML; padActive = i; padLoadPage(); };
+                t.appendChild(b);
+            });
+            const add = document.createElement('div');
+            add.textContent = '+';
+            add.title = 'New page';
+            add.style.cssText = 'padding:5px 11px; border-radius:7px 7px 0 0; cursor:pointer; background:#332c26; color:#9a8d7c; font:12px Arial;';
+            add.onclick = () => {
+                padPages[padActive].html = padPageEl().innerHTML;
+                padPages.push({ id: Date.now(), name: 'Page ' + (padPages.length + 1), html: '' });
+                padActive = padPages.length - 1;
+                padLoadPage();
+            };
+            t.appendChild(add);
+        }
+
+        function padLoadPage() {
+            padPageEl().innerHTML = padPages[padActive].html || '';
+            padRenderTabs(); padStats();
+        }
+
+        function padBuildTools() {
+            const bar = padEl('padTools');
+            if (!bar || bar.dataset.built) return;
+            bar.dataset.built = '1';
+            const mk = (label, title, fn, wide) => {
+                const b = document.createElement('button');
+                b.innerHTML = label; b.title = title;
+                b.style.cssText = 'margin:0; padding:4px ' + (wide ? '8px' : '7px') + '; min-width:26px; font:12px "Courier New",monospace;' +
+                    'background:#3a332c; color:#d7c9b0; border:1px solid #4a4038; border-radius:5px; cursor:pointer;';
+                b.onmouseenter = () => b.style.background = '#4a4038';
+                b.onmouseleave = () => b.style.background = '#3a332c';
+                b.onclick = (ev) => { ev.preventDefault(); fn(); };
+                bar.appendChild(b);
+                return b;
+            };
+            const sep = () => { const s = document.createElement('span');
+                s.style.cssText = 'width:1px; height:18px; background:#4a4038; margin:0 3px;'; bar.appendChild(s); };
+
+            mk('<b>B</b>', 'Bold (Ctrl+B)', () => padExec('bold'));
+            mk('<i>I</i>', 'Italic (Ctrl+I)', () => padExec('italic'));
+            mk('<u>U</u>', 'Underline (Ctrl+U)', () => padExec('underline'));
+            mk('<s>S</s>', 'Strikethrough', () => padExec('strikeThrough'));
+            sep();
+            mk('H1', 'Heading', () => padExec('formatBlock', '<h2>'), true);
+            mk('H2', 'Subheading', () => padExec('formatBlock', '<h3>'), true);
+            mk('¶', 'Normal text', () => padExec('formatBlock', '<div>'));
+            sep();
+            mk('•', 'Bullet list', () => padExec('insertUnorderedList'));
+            mk('1.', 'Numbered list', () => padExec('insertOrderedList'), true);
+            mk('☐', 'Checklist item', () => padInsert('<div><input type="checkbox"> </div>'));
+            sep();
+            mk('❝', 'Quote', () => padInsert('<blockquote style="margin:8px 0 8px 4px; padding:2px 0 2px 12px; border-left:3px solid #c0392b; color:#5b5147; font-style:italic;">quote</blockquote>'));
+            mk('&lt;/&gt;', 'Code block', () => padInsert('<pre style="margin:8px 0; padding:9px 11px; background:#e7dcc6; border:1px solid #d3c5a8; border-radius:6px; font:13px/20px \'Courier New\',monospace; white-space:pre-wrap;">code</pre>'), true);
+            mk('▬', 'Horizontal rule', () => padInsert('<hr style="border:none; border-top:1px dashed #b6a party;">'.replace(' party','')));
+            sep();
+            mk('🖍', 'Highlight', () => padExec('hiliteColor', '#ffe9a8'));
+            mk('🔗', 'Insert link', () => {
+                const u = prompt('Link URL:', 'https://');
+                if (u) padExec('createLink', u);
+            });
+            mk('🖼', 'Insert an image file', () => padEl('padImgInput').click());
+            mk('☺', 'Emoji', () => padToggleEmoji());
+            sep();
+            mk('⚫', 'Insert a live link to the selected canvas element', () => padInsertChip());
+            mk('=', 'Resolve "= expression" on this line (or select maths)', () => padSolve(), true);
+            mk('📷', 'Capture the current canvas view into this note', () => padCapture());
+            sep();
+            mk('⌫', 'Clear this page', () => {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: 'Clear page', body: 'Erase everything on "' + padPages[padActive].name + '"?',
+                    okText: 'Clear', danger: true,
+                    onConfirm: () => { padPageEl().innerHTML = ''; padTouch(); }
+                });
+            });
+
+            // hidden image picker
+            const inp = document.createElement('input');
+            inp.type = 'file'; inp.id = 'padImgInput'; inp.accept = 'image/*'; inp.style.display = 'none';
+            inp.onchange = (ev) => {
+                const f = ev.target.files[0]; if (!f) return;
+                const r = new FileReader();
+                r.onload = e2 => { padInsertImage(e2.target.result); };
+                r.readAsDataURL(f); ev.target.value = '';
+            };
+            bar.appendChild(inp);
+
+            // emoji tray
+            const tray = document.createElement('div');
+            tray.id = 'padEmoji';
+            tray.style.cssText = 'display:none; flex-wrap:wrap; gap:2px; width:100%; padding:6px 2px 2px; max-height:112px; overflow:auto;';
+            ('😀 😄 😅 😂 🙂 😉 😍 🤔 😐 😴 😎 🤯 😤 😭 👍 👎 👏 🙌 🤝 💪 ✅ ❌ ⚠️ ❗ ❓ 💡 🔥 ⭐ ✨ 🎯 📌 📍 🔗 📎 🗂 📁 📄 📝 ✏️ 🖊 🔍 ⏱ 🕘 📅 🔔 ⚡ 🐙 🚀 🧠 ⚙️ 🔧 🔨 🧩 📊 📈 📉 💾 🖥 ⌨️ 🖱 🎨 🎵 ☕ 🍕 🌙 ☀️ 🌊 🌳 ❤️ 💜 💯')
+                .split(' ').forEach(e => {
+                    const s = document.createElement('span');
+                    s.textContent = e;
+                    s.style.cssText = 'font-size:17px; padding:2px 4px; cursor:pointer; border-radius:4px;';
+                    s.onmouseenter = () => s.style.background = '#4a4038';
+                    s.onmouseleave = () => s.style.background = 'transparent';
+                    s.onclick = () => { padInsert(e); };
+                    tray.appendChild(s);
+                });
+            bar.appendChild(tray);
+        }
+
+        function padToggleEmoji() {
+            const t = padEl('padEmoji');
+            t.style.display = (t.style.display === 'none' || !t.style.display) ? 'flex' : 'none';
+        }
+
+        function padInsertImage(src) {
+            padInsert('<div style="margin:8px 0;"><img src="' + src + '" style="max-width:100%; border-radius:6px; border:1px solid #d3c5a8; display:block;"></div>');
+        }
+
+        function padLinkify(text) {
+            return text.replace(/(https?:\/\/[^\s<]+)/g, function (u) {
+                return '<a href="' + u + '" target="_blank" rel="noopener" style="color:#1565C0; text-decoration:underline;">' + u + '</a>';
+            });
+        }
+
+
+        // ── ⚫ ELEMENT CHIPS — a live reference to a canvas element. Clicking a
+        // chip flies the camera to that element and selects it, so notes are
+        // wired into the model instead of merely describing it.
+        function padChipHtml(el) {
+            const k = (typeof elKind === 'function') ? elKind(el) : 'element';
+            const ico = el.isMesh ? '◈' : k === 'group' ? '⊞' : k === 'image' ? '🖼'
+                      : k === 'dot' ? '⚫' : k === 'line' ? '─' : k === 'rect' ? '▭'
+                      : k === 'circle' ? '◯' : k === 'triangle' ? '△' : k === 'arrow' ? '➤'
+                      : k === 'text' ? 'T' : k === 'cartridge' ? '▤' : k === 'port' ? '⎔' : '•';
+            const nm = (el.name || k).replace(/</g, '&lt;');
+            const dg = el.numDesignation ? ' #' + el.numDesignation : '';
+            return '<span class="padChip" data-el="' + el.id + '" contenteditable="false" ' +
+                'title="Click to jump to this element on the canvas" ' +
+                'style="display:inline-flex; align-items:center; gap:5px; padding:1px 8px; margin:0 2px; ' +
+                'background:#e7dcc6; border:1px solid #c0392b; border-radius:11px; ' +
+                'font:12px \'Courier New\',monospace; color:#7b2d22; cursor:pointer; user-select:none;">' +
+                ico + ' ' + nm + dg + '</span>&nbsp;';
+        }
+
+        function padInsertChip() {
+            const sel = (typeof selectedGroup !== 'undefined' && selectedGroup.length)
+                ? selectedGroup
+                : (selectedImage ? [selectedImage] : []);
+            if (!sel.length) {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '⚫ No element selected',
+                    body: 'Click an element on the canvas (or lasso several), then press this again to drop a live link into the note.',
+                    okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+            const pg = padPages[padActive];
+            sel.forEach(el => {
+                el.padRefs = el.padRefs || [];
+                if (!el.padRefs.some(r => r.page === pg.id)) el.padRefs.push({ page: pg.id, name: pg.name });
+            });
+            padInsert(sel.map(padChipHtml).join(''));
+            if (typeof saveState === 'function') saveState();
+            draw();
+        }
+
+        // ── = INLINE MATH — resolves an expression on the current line using the
+        // engine's own calculator (tokenizer → shunting-yard → RPN evaluator).
+        function padSolve() {
+            if (typeof calcEvaluate !== 'function') return;
+            const selObj = window.getSelection();
+            let expr = selObj ? String(selObj).trim() : '';
+            let replaceSel = !!expr;
+            let node = null;
+            if (!expr && selObj && selObj.anchorNode) {
+                node = selObj.anchorNode;
+                const line = (node.textContent || '');
+                const m = line.match(/=\s*([^=]+)$/);
+                expr = m ? m[1].trim() : line.trim();
+            }
+            if (!expr) return;
+            let val;
+            try {
+                const angEl = document.getElementById('calcAngle');
+                val = calcEvaluate(expr.replace(/^=\s*/, ''), angEl ? angEl.value : 'rad');
+            } catch (e) {
+                const tag = document.getElementById('padHint');
+                if (tag) { tag.textContent = '✗ ' + e.message; tag.style.color = '#c0392b';
+                    setTimeout(() => { tag.textContent = 'paste images · drop files · type / for a rule'; tag.style.color = '#5f564b'; }, 2600); }
+                return;
+            }
+            const shown = (typeof calcFormat === 'function') ? calcFormat(val) : String(val);
+            const chip = '<span class="padMath" contenteditable="false" title="Computed by the OTOM calculator" ' +
+                'style="display:inline-flex; align-items:center; gap:6px; padding:1px 8px; margin:0 2px; ' +
+                'background:#dff0e6; border:1px solid #2e7d32; border-radius:6px; ' +
+                'font:13px \'Courier New\',monospace; color:#1b5e20;">' +
+                expr.replace(/^=\s*/, '').replace(/</g, '&lt;') + ' = <b>' + shown + '</b></span>&nbsp;';
+            if (replaceSel) { padInsert(chip); return; }
+            // wipe the typed expression on this line, then drop the result chip
+            if (node && node.nodeType === 3) {
+                const line = node.textContent;
+                const m = line.match(/=\s*[^=]+$/);
+                node.textContent = m ? line.slice(0, m.index) : '';
+                const r = document.createRange();
+                r.setStart(node, node.textContent.length); r.collapse(true);
+                selObj.removeAllRanges(); selObj.addRange(r);
+            }
+            padInsert(chip);
+        }
+
+        // ── 📷 CANVAS CAPTURE — drops a timestamped picture of the current canvas
+        // view straight into the note: a visual changelog of your own work.
+        function padCapture() {
+            try {
+                const src = canvas.toDataURL('image/png');
+                const when = new Date().toLocaleString();
+                padInsert(
+                    '<div style="margin:10px 0; padding:8px; background:#e7dcc6; border:1px solid #d3c5a8; border-radius:8px;">' +
+                    '<div style="font:10px \'Courier New\',monospace; letter-spacing:.6px; color:#7b6a52; margin-bottom:5px;">' +
+                    '📷 CANVAS · ' + when + ' · ' + images.length + ' elements · ' + Math.round(camera.zoom * 100) + '% zoom</div>' +
+                    '<img src="' + src + '" style="max-width:100%; display:block; border-radius:5px; border:1px solid #c9b característica;">'.replace(' característica','') +
+                    '</div>');
+            } catch (e) {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '📷 Capture failed', body: e.message, okText: 'OK', danger: true, hideCancel: true });
+            }
+        }
+
+        function togglePad() {
+            padOpen = !padOpen;
+            const p = padEl('padPanel'), b = padEl('padBtn');
+            if (padOpen) {
+                padBuildTools();
+                if (!padPopped && typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                p.style.display = 'flex';
+                padLoadPage();
+                setTimeout(() => padPageEl().focus(), 40);
+            } else p.style.display = 'none';
+            if (b) b.style.background = padOpen ? '#607D8B' : '#455A64';
+        }
+
+        (function padInit() {
+            const p = padEl('padPanel'); if (!p) return;
+            const page = padPageEl();
+
+            page.addEventListener('input', padTouch);
+
+            // a chip is a live reference: click it to fly to that element
+            page.addEventListener('click', (ev) => {
+                const chip = ev.target.closest && ev.target.closest('.padChip');
+                if (!chip) return;
+                const id = parseFloat(chip.getAttribute('data-el'));
+                const el = images.find(im => im.id === id);
+                if (!el) {
+                    chip.style.opacity = '.45';
+                    chip.title = 'This element no longer exists on the canvas';
+                    return;
+                }
+                selectedImage = el;
+                const r = canvas.getBoundingClientRect();
+                camera.x = r.width / 2 - el.x * camera.zoom;
+                camera.y = r.height / 2 - el.y * camera.zoom;
+                if (typeof updateImageList === 'function') updateImageList();
+                draw();
+            });
+            page.addEventListener('change', padTouch);   // checkbox ticks
+
+            // PASTE: images from the clipboard, and URLs become real links
+            page.addEventListener('paste', (ev) => {
+                const dt = ev.clipboardData; if (!dt) return;
+                const items = dt.items || [];
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type && items[i].type.indexOf('image') === 0) {
+                        ev.preventDefault();
+                        const f = items[i].getAsFile();
+                        const r = new FileReader();
+                        r.onload = e2 => padInsertImage(e2.target.result);
+                        r.readAsDataURL(f);
+                        return;
+                    }
+                }
+                const txt = dt.getData('text/plain');
+                if (txt && /https?:\/\//.test(txt) && !dt.getData('text/html')) {
+                    ev.preventDefault();
+                    padInsert(padLinkify(txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')));
+                }
+            });
+
+            // DROP: image files land where you drop them
+            page.addEventListener('dragover', (ev) => { ev.preventDefault(); page.style.boxShadow = 'inset 0 0 0 2px #c0392b'; });
+            page.addEventListener('dragleave', () => { page.style.boxShadow = 'none'; });
+            page.addEventListener('drop', (ev) => {
+                page.style.boxShadow = 'none';
+                const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+                if (f && f.type.indexOf('image') === 0) {
+                    ev.preventDefault();
+                    const r = new FileReader();
+                    r.onload = e2 => padInsertImage(e2.target.result);
+                    r.readAsDataURL(f);
+                }
+            });
+
+            // typing shortcuts: "/" on a blank line drops a rule; [] makes a checkbox
+            page.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' && !ev.shiftKey) {
+                    const sel = window.getSelection();
+                    const line = sel && sel.anchorNode ? (sel.anchorNode.textContent || '') : '';
+                    if (line.trim() === '/') {
+                        ev.preventDefault();
+                        if (sel.anchorNode.nodeType === 3) sel.anchorNode.textContent = '';
+                        padInsert('<hr style="border:none; border-top:1px dashed #b6a894; margin:10px 0;">');
+                        return;
+                    }
+                    if (line.trim() === '[]') {
+                        ev.preventDefault();
+                        if (sel.anchorNode.nodeType === 3) sel.anchorNode.textContent = '';
+                        padInsert('<div><input type="checkbox"> </div>');
+                        return;
+                    }
+                }
+                ev.stopPropagation();   // never let engine hotkeys fire while typing
+            });
+
+            // FIND
+            padEl('padFindBtn').onclick = () => {
+                const f = padEl('padFind');
+                const on = f.style.display === 'none' || !f.style.display;
+                f.style.display = on ? 'flex' : 'none';
+                if (on) padEl('padFindInput').focus(); else padClearMarks();
+            };
+            padEl('padFindInput').addEventListener('input', function () {
+                padClearMarks();
+                const q = this.value.trim();
+                const cnt = padEl('padFindCount');
+                if (!q) { cnt.textContent = ''; return; }
+                let n = 0;
+                const walk = (node) => {
+                    if (node.nodeType === 3) {
+                        const idx = node.textContent.toLowerCase().indexOf(q.toLowerCase());
+                        if (idx >= 0) {
+                            const rng = document.createRange();
+                            rng.setStart(node, idx); rng.setEnd(node, idx + q.length);
+                            const mk = document.createElement('mark');
+                            mk.className = 'padMark';
+                            mk.style.cssText = 'background:#ffe9a8; color:#2f2a24;';
+                            try { rng.surroundContents(mk); n++; } catch (e) {}
+                        }
+                    } else if (node.nodeType === 1 && node.tagName !== 'MARK') {
+                        Array.from(node.childNodes).forEach(walk);
+                    }
+                };
+                Array.from(page.childNodes).forEach(walk);
+                cnt.textContent = n ? n + ' found' : 'none';
+            });
+
+            // EXPORT
+            padEl('padExportBtn').onclick = () => {
+                const pg = padPages[padActive];
+                pg.html = page.innerHTML;
+                const doc = '<!DOCTYPE html><meta charset="utf-8"><title>' + pg.name +
+                    '</title><body style="max-width:760px;margin:40px auto;padding:0 20px;' +
+                    'font:15px/28px \'Courier New\',Courier,monospace;color:#2f2a24;background:#f4ecdc;">' +
+                    '<h1 style="font-size:18px;letter-spacing:2px;">' + pg.name + '</h1>' + pg.html + '</body>';
+                const blob = new Blob([doc], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'scratchpad_' + pg.name.replace(/[^\w\-]+/g, '_') + '.html';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            padEl('padCollapseBtn').onclick = () => {
+                padCollapsed = !padCollapsed;
+                padEl('padBody').style.display = padCollapsed ? 'none' : 'flex';
+                p.style.height = padCollapsed ? 'auto' : '52vh';
+                p.style.resize = padCollapsed ? 'none' : 'both';
+                padEl('padCollapseBtn').textContent = padCollapsed ? '▶' : '▼';
+            };
+
+            padEl('padPopBtn').onclick = () => {
+                padPopped = !padPopped;
+                if (padPopped) {
+                    const r = p.getBoundingClientRect();
+                    p.style.position = 'fixed';
+                    p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
+                    p.style.transform = 'none'; p.style.marginTop = '0'; p.style.zIndex = '99400';
+                    padEl('padPopBtn').textContent = '⇲ Dock';
+                } else {
+                    if (typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                    p.style.zIndex = '1580';
+                    padEl('padPopBtn').textContent = '⇱ Pop Out';
+                }
+            };
+
+            // drag by header when undocked
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                p.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 140)) + 'px';
+                p.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 44)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            padEl('padHead').addEventListener('pointerdown', ev => {
+                if (!padPopped) return;
+                if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT') return;
+                const r = p.getBoundingClientRect();
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+        })();
+
+        function padClearMarks() {
+            const page = padPageEl(); if (!page) return;
+            page.querySelectorAll('mark.padMark').forEach(m => {
+                const t = document.createTextNode(m.textContent);
+                m.parentNode.replaceChild(t, m);
+            });
+            page.normalize();
+        }
+
+        function addFormula() {            const tEl = document.getElementById('formTitle');
             const nEl = document.getElementById('formName');
             const noEl = document.getElementById('formNotes');
             const auEl = document.getElementById('formAuthor');
@@ -8034,6 +9567,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (im.socketId) {
                     const host = images.find(x => x.id === im.socketId);
                     if (host) add('◎ Plugged into', host.name || 'Socket');
+                }
+                if (im.padRefs && im.padRefs.length && typeof padPages !== 'undefined') {
+                    const nm = im.padRefs.filter(r => padPages.some(p => p.id === r.page))
+                                         .map(r => { const p = padPages.find(x => x.id === r.page); return p ? p.name : r.name; });
+                    if (nm.length) add('✎ Scratch Pad', nm.join(', '));
                 }
                 if (im.pinned) add('State', '📌 Pinned');
                 if (im.hidden) add('State', 'Hidden');
@@ -8588,6 +10126,161 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (s.note) P.unshift(['Note', s.note]);
                     row(chip('⏱', '#ede7f6'), s.note || d.toLocaleTimeString(), d.toLocaleString() + ' · SW ' + s.lap, 'Time Stamp', P, null, '#5E35B1');
                 });
+            }
+
+            // ✎ Scratch Pad — not a canvas object, but its CONTENT is real weight
+            // (pasted images, captures, element references), so the engine counts it.
+            if (typeof padPages !== 'undefined' && padPages.length) {
+                try { if (typeof padOpen !== 'undefined' && padOpen && document.getElementById('padPage'))
+                        padPages[padActive].html = document.getElementById('padPage').innerHTML; } catch (e) {}
+                let padBytes = 0, padImgs = 0, padChips = 0, padMath = 0, padCaps = 0, padWords = 0, padBoxes = 0, padDone = 0;
+                const probe = document.createElement('div');
+                padPages.forEach(pg => {
+                    padBytes += objBytes({ n: pg.name, h: pg.html });
+                    probe.innerHTML = pg.html || '';
+                    padImgs += probe.querySelectorAll('img').length;
+                    padChips += probe.querySelectorAll('.padChip').length;
+                    padMath += probe.querySelectorAll('.padMath').length;
+                    padCaps += (pg.html || '').split('📷 CANVAS').length - 1;
+                    padBoxes += probe.querySelectorAll('input[type=checkbox]').length;
+                    padDone += probe.querySelectorAll('input[type=checkbox][checked]').length;
+                    const tx = (probe.innerText || probe.textContent || '').trim();
+                    padWords += tx ? tx.split(/\s+/).length : 0;
+                });
+                probe.innerHTML = '';
+                section('Scratch Pad', padPages.length);
+                // live element references, resolved against the canvas
+                const refs = [];
+                padPages.forEach(pg => {
+                    probe.innerHTML = pg.html || '';
+                    probe.querySelectorAll('.padChip').forEach(ch => {
+                        const id = parseFloat(ch.getAttribute('data-el'));
+                        const el2 = images.find(im => im.id === id);
+                        refs.push({ page: pg.name, label: ch.textContent.trim(), live: !!el2, el: el2 });
+                    });
+                });
+                probe.innerHTML = '';
+                const dead = refs.filter(r => !r.live).length;
+                const P = [
+                    ['Pages', padPages.length],
+                    ['Page names', padPages.map(p => p.name).join(', ')],
+                    ['Words', padWords],
+                    ['Pasted images', padImgs],
+                    ['Canvas captures', padCaps],
+                    ['Element references', padChips + (dead ? ' (' + dead + ' broken)' : '')],
+                    ['Solved calculations', padMath],
+                    ['Checklist', padBoxes ? (padDone + ' / ' + padBoxes + ' done') : '—'],
+                    ['Open', (typeof padOpen !== 'undefined' && padOpen) ? 'yes' : 'no'],
+                    ['Docked', (typeof padPopped !== 'undefined' && padPopped) ? 'popped out' : 'docked to toolbar'],
+                    ['Canvas object', 'no — side surface, not part of the model'],
+                    ['Memory', formatBytes(padBytes)]
+                ];
+                row(chip('✎', '#efe7d8'), 'Scratch Pad',
+                    padPages.length + (padPages.length === 1 ? ' page · ' : ' pages · ') + padWords + ' words · ' +
+                    (padImgs ? padImgs + ' img · ' : '') + formatBytes(padBytes),
+                    'Scratch Pad', P, () => { if (typeof padOpen !== 'undefined' && !padOpen) togglePad(); }, '#7b6a52');
+                // element references listed as a branch, each one clickable
+                if (refs.length) {
+                    const tr = document.createElement('div');
+                    tr.style.cssText = 'font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.6;margin:-1px 0 6px 16px;padding-left:8px;border-left:2px solid #d3c5a8;';
+                    refs.forEach((rf, ri) => {
+                        const last = ri === refs.length - 1;
+                        const line = document.createElement('div');
+                        line.style.cssText = 'white-space:pre;cursor:' + (rf.live ? 'pointer' : 'default') +
+                            ';border-radius:4px;padding:1px 3px;color:' + (rf.live ? '#5b5147' : '#bbb') + ';';
+                        line.innerHTML = '<span style="color:#c9bda6;">' + (last ? '└─ ' : '├─ ') + '</span>' +
+                            (rf.live ? '🔗 ' : '⚠ ') + esc(rf.label) +
+                            '<span style="color:#a89b86;"> · ' + esc(rf.page) + (rf.live ? '' : ' · missing') + '</span>';
+                        if (rf.live) {
+                            line.addEventListener('mouseenter', ev => { line.style.background = '#f2ece0'; showTip(rf.label, '🔗', dataPairs(rf.el), ev.clientX, ev.clientY); });
+                            line.addEventListener('mousemove', ev => positionTip(ev.clientX, ev.clientY));
+                            line.addEventListener('mouseleave', () => { line.style.background = 'transparent'; hideTip(); });
+                            line.addEventListener('click', () => { hideTip(); selectEl(rf.el); });
+                        }
+                        tr.appendChild(line);
+                    });
+                    (curBody || c).appendChild(tr);
+                }
+                totalBytes += padBytes;
+            }
+
+            // ⛃ Checkers panel — a live canvas widget, so it reports its footprint
+            // like everything else the Asset Manager tracks.
+            if (typeof chkOpen !== 'undefined' && chkOpen) {
+                section('Checkers', 1);
+                const cvEl = document.getElementById('chkCanvas');
+                // board array + game state + the panel's own pixel buffer
+                const boardBytes = chkBoard ? objBytes({ b: chkBoard }) : 0;
+                const pxBytes2 = cvEl ? (cvEl.width * cvEl.height * 4) : 0;
+                const stateBytes = objBytes({ sel: chkSel, turn: chkTurnRed, over: chkOver,
+                                              pinned: chkPinned, popped: chkPopped, collapsed: chkCollapsed,
+                                              anchor: (typeof chkAnchor !== 'undefined' ? chkAnchor : null) });
+                const chkBytes = boardBytes + pxBytes2 + stateBytes;
+                const reds = chkBoard ? chkBoard.filter(v => v > 0).length : 0;
+                const blks = chkBoard ? chkBoard.filter(v => v < 0).length : 0;
+                const kings = chkBoard ? chkBoard.filter(v => Math.abs(v) === 2).length : 0;
+                const lvlEl = document.getElementById('chkLevel');
+                const depth = lvlEl ? parseInt(lvlEl.value, 10) : 4;
+                const P = [
+                    ['State', chkOver ? 'Game over' : (chkTurnRed ? 'Your move' : 'Engine thinking')],
+                    ['Your pieces', reds],
+                    ['Engine pieces', blks],
+                    ['Kings on board', kings],
+                    ['AI depth', depth + ' ply (' + (depth <= 2 ? 'Easy' : depth <= 4 ? 'Medium' : 'Hard') + ')'],
+                    ['Board memory', formatBytes(boardBytes)],
+                    ['Pixel buffer', (cvEl ? cvEl.width + '×' + cvEl.height + ' · ' + formatBytes(pxBytes2) : '—')],
+                    ['Game state', formatBytes(stateBytes)],
+                    ['Sound', (typeof chkSoundOn !== 'undefined' && chkSoundOn) ? 'on' : 'off'],
+                    ['Pinned', chkPinned ? 'yes — anchored to canvas' : 'no'],
+                    ['Collapsed', chkCollapsed ? 'yes' : 'no'],
+                    ['Memory', formatBytes(chkBytes)]
+                ];
+                row(chip('⛃', '#efebe9'), 'Checkers',
+                    'you ' + reds + ' · engine ' + blks + ' · ' + formatBytes(chkBytes) +
+                    (chkPinned ? ' · 📌 pinned' : ''),
+                    'Checkers', P, null, '#6D4C41');
+                totalBytes += chkBytes;
+            }
+
+            // 🌐 Browser panels — each open browser reports its own footprint
+            if (typeof mediaPlayers !== 'undefined') {
+                const browsers = mediaPlayers.filter(m => m.isBrowser && m.el);
+                if (browsers.length) {
+                    section('Browser Panels', browsers.length);
+                    browsers.forEach((mp, bi) => {
+                        const el2 = mp.el;
+                        const r2 = el2.getBoundingClientRect();
+                        const uEl = el2.querySelector('.brUrl');
+                        const fr = el2.querySelector('.brFrame');
+                        const url = uEl ? (uEl.value || '') : '';
+                        const loaded = !!(fr && fr.style.display !== 'none' && fr.src);
+                        // an embedded page owns its own document, so the honest figure is
+                        // the panel's compositing surface plus its own state
+                        const surface = Math.round(r2.width * r2.height * 4);
+                        const stBytes = objBytes({ url: url, pinned: mp.pinned, collapsed: mp.collapsed,
+                                                   anchor: mp.anchor, free: mp.free });
+                        const bBytes = surface + stBytes;
+                        let host = '—';
+                        try { host = url ? new URL(url).hostname : '—'; } catch (e) { host = url || '—'; }
+                        const P2 = [
+                            ['Page', loaded ? 'loaded in panel' : 'empty'],
+                            ['URL', url || '—'],
+                            ['Host', host],
+                            ['Size', Math.round(r2.width) + ' × ' + Math.round(r2.height) + ' px'],
+                            ['Surface buffer', formatBytes(surface)],
+                            ['Panel state', formatBytes(stBytes)],
+                            ['Opacity', el2.style.opacity ? Math.round(parseFloat(el2.style.opacity) * 100) + '%' : '100%'],
+                            ['Pinned', mp.pinned ? 'yes — anchored to canvas' : 'no'],
+                            ['Collapsed', mp.collapsed ? 'yes' : 'no'],
+                            ['Memory', formatBytes(bBytes)],
+                            ['Note', 'An embedded page runs in its own document; its heap is not reported to this engine.']
+                        ];
+                        row(chip('🌐', '#e3f2fd'), 'Browser ' + (bi + 1),
+                            host + ' · ' + formatBytes(bBytes) + (mp.pinned ? ' · 📌 pinned' : ''),
+                            'Browser Panel', P2, null, '#1565C0');
+                        totalBytes += bBytes;
+                    });
+                }
             }
 
             if (!images.length && !connections.length && !guides.length && !centerPoint && !background && !(typeof canvasNotes !== 'undefined' && canvasNotes.length)) {
@@ -10449,6 +12142,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 '<button class="mpPin" style="margin:0;padding:4px 11px;font-size:11px;background:rgba(255,255,255,.22);border-radius:5px;">📌 Pin</button>' +
                 '<span style="font-size:10px;opacity:.8;">Op</span>' +
                 '<input class="mpOp" type="range" min="10" max="100" value="100" style="width:60px;">' +
+                '<button class="brCollapse" title="Collapse / expand this panel" style="margin:0;padding:4px 9px;font-size:12px;background:rgba(255,255,255,.22);border-radius:5px;">▼</button>' +
                 '<button class="mpPop" title="Open this page in a real browser tab" style="margin:0;padding:4px 11px;font-size:11px;background:rgba(255,255,255,.22);border-radius:5px;">⇱ Pop Out</button>' +
                 '<button class="mpClose" style="margin:0;padding:4px 9px;font-size:12px;background:rgba(255,255,255,.22);border-radius:5px;">✕</button>' +
               '</div>' +
@@ -10499,6 +12193,33 @@ ctx.fillText(conn.number.toString(), midX, midY);
             q('.brReload').onclick = () => { if (frame.src) frame.src = frame.src; };
             q('.mpPop').onclick = () => { const u = normalize(urlInp.value); if (u) window.open(u, '_blank', 'noopener'); };
             q('.mpOp').oninput = (ev) => { el.style.opacity = ev.target.value / 100; };
+
+            // Collapse / expand — shrinks the panel down to just its header bar,
+            // remembering its full size so it restores exactly.
+            const colBtn = q('.brCollapse');
+            colBtn.onclick = () => {
+                const bar = q('.mpBar'), body = q('.mpVid');
+                if (!rec.collapsed) {
+                    const r = el.getBoundingClientRect();
+                    rec.expanded = { w: el.style.width || (r.width + 'px'), h: el.style.height || (r.height + 'px'), resize: el.style.resize };
+                    bar.style.display = 'none';
+                    body.style.display = 'none';
+                    el.style.height = 'auto';
+                    el.style.minHeight = '0';
+                    el.style.resize = 'none';
+                    colBtn.textContent = '▶';
+                    rec.collapsed = true;
+                } else {
+                    bar.style.display = 'flex';
+                    body.style.display = 'block';
+                    el.style.height = (rec.expanded && rec.expanded.h) ? rec.expanded.h : '520px';
+                    el.style.width = (rec.expanded && rec.expanded.w) ? rec.expanded.w : el.style.width;
+                    el.style.minHeight = '180px';
+                    if (!rec.pinned) el.style.resize = 'both';
+                    colBtn.textContent = '▼';
+                    rec.collapsed = false;
+                }
+            };
             q('.mpClose').onclick = () => { el.remove(); mediaPlayers = mediaPlayers.filter(x => x !== rec); };
 
             // Pin / Unpin — anchors the panel into canvas space
