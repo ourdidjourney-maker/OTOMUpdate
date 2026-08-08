@@ -6569,7 +6569,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     '<span style="font-weight:800; color:#26C6DA; font-size:13px;">' + (st.win ? '✓ open' : st.n) + '</span>';
                 // hover card: inspect what actually came back in this category
                 if (st.meta && st.meta.length) {
-                    row.style.cursor = 'help';
+                    row.style.cursor = 'default';
                     row.addEventListener('mouseenter', (ev) => {
                         row.style.background = '#1b2530';
                         row.style.borderColor = '#26C6DA';
