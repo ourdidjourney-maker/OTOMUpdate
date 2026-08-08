@@ -1677,14 +1677,26 @@
 
         function promptCanvasSize() {
             const cur = canvasSize ? (canvasSize.w + ' x ' + canvasSize.h) : (window.innerWidth + ' x ' + window.innerHeight);
-            const v = prompt('Canvas size as  WIDTH x HEIGHT  (blank = fill screen):', cur);
-            if (v === null) return;
+            if (typeof askFileName === 'function') {
+                askFileName('⤢ Canvas size', cur, 'W x H', (val) => applyCanvasSize(val));
+                return;
+            }
+            const v = cur;
             const t = v.trim();
+            applyCanvasSize(t);
+        }
+
+        function applyCanvasSize(val) {
+            const t = (val || '').trim();
             if (!t) { canvasSize = null; layoutCanvas(); return; }
-            const m = t.split(/[x,\s]+/i).filter(Boolean);
-            const w = parseInt(m[0], 10), h = parseInt(m[1], 10);
-            if (!(w > 0) || !(h > 0)) { alert('Enter it as  WIDTH x HEIGHT , e.g. 1200 x 800'); return; }
-            canvasSize = { w: w, h: h };
+            const m = t.split(/[x,\s_]+/i).filter(Boolean);
+            const w = parseInt(m[0], 10), hh = parseInt(m[1], 10);
+            if (!(w > 0) || !(hh > 0)) {
+                if (typeof showConfirm === 'function') showConfirm({ title: '⤢ Canvas size',
+                    body: 'Enter it as WIDTH x HEIGHT, for example 1200 x 800.', okText: 'OK', danger: true, hideCancel: true });
+                return;
+            }
+            canvasSize = { w: w, h: hh };
             layoutCanvas();
         }
 
@@ -2656,6 +2668,7 @@
         // UNDO/REDO SYSTEM
         // ========================================
         function saveState() {
+            if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
             if (historyIndex < historyStack.length - 1) {
                 historyStack = historyStack.slice(0, historyIndex + 1);
             }
@@ -4092,6 +4105,7 @@
             // drawing/panning), which avoids a full allocation every frame.
             const imageMap = connections.length ? new Map(images.map(img => [img.id, img])) : null;
             resetFlagRects();
+            flagCacheSync();
 
             // ========================================
             // 🚀 PERFORMANCE FIX: VISIBLE GRID ONLY
@@ -4688,7 +4702,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         // Only the FIRST flag searches for clear space (vs other elements).
                         // The rest stack sequentially — self-collision would fight negative gaps.
                         let top;
-                        if (!stackStarted) { top = _mdOff ? ly : findFreeSlot(lx - p, ly, w + p * 2, boxH, boxH); stackStarted = true; flagOwner(_mdKey); }
+                        if (!stackStarted) { top = _mdOff ? ly : findFreeSlotCached('md:' + image.id, lx - p, ly, w + p * 2, boxH, boxH); stackStarted = true; flagOwner(_mdKey); }
                         else { top = ly; }
                         claimRect(lx - p, top, w + p * 2, boxH);
                         ctx.fillStyle = TH.box; ctx.fillRect(lx - p, top, w + p * 2, boxH);
@@ -4837,8 +4851,14 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (!_nlOff) {
                         const _bw = textWidth + padding * 2, _bh = textHeight + padding * 2;
                         const _step = _bh + (2 + flagGap) / camera.zoom;
-                        let _guard = 0;
-                        while (rectOccupied(boxX, boxY, _bw, _bh) && _guard++ < 60) { boxY += _step; labelY += _step; }
+                        const _nk = 'nl:' + image.id;
+                        const _hit = _flagPlace ? _flagPlace.get(_nk) : undefined;
+                        if (_hit !== undefined) { boxY += _hit; labelY += _hit; }
+                        else {
+                            let _guard = 0, _shift = 0;
+                            while (rectOccupied(boxX, boxY, _bw, _bh) && _guard++ < 60) { boxY += _step; labelY += _step; _shift += _step; }
+                            if (_flagPlace) _flagPlace.set(_nk, _shift);
+                        }
                     }
 
                     ctx.fillStyle = TH.box;
@@ -4877,7 +4897,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         const txt = r[0] + ': ' + r[1];
                         const w = ctx.measureText(txt).width;
                         let top = ly;
-                        if (first && !_fOff) { top = findFreeSlot(lx - p, ly, w + p * 2, boxH, boxH); flagOwner(_fKey); }
+                        if (first && !_fOff) { top = findFreeSlotCached('fm:' + image.id, lx - p, ly, w + p * 2, boxH, boxH); flagOwner(_fKey); }
                         first = false;
                         claimRect(lx - p, top, w + p * 2, boxH);
                         ctx.fillStyle = TH.box; ctx.fillRect(lx - p, top, w + p * 2, boxH);
@@ -5551,8 +5571,15 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         [im.x - im.width / 2 - gap - boxW, im.y - im.height / 2 - gap - boxH]
                     ];
                     let fx = cands[0][0], fy = cands[0][1];
-                    for (const [cx2, cy2] of cands) {
-                        if (!rectOccupied(cx2, cy2, boxW, boxH)) { fx = cx2; fy = cy2; break; }
+                    const _pk = 'pri:' + im.id;
+                    const _pidx = _flagPlace ? _flagPlace.get(_pk) : undefined;
+                    if (_pidx !== undefined && cands[_pidx]) { fx = cands[_pidx][0]; fy = cands[_pidx][1]; }
+                    else {
+                        let _found = 0;
+                        for (let ci = 0; ci < cands.length; ci++) {
+                            if (!rectOccupied(cands[ci][0], cands[ci][1], boxW, boxH)) { fx = cands[ci][0]; fy = cands[ci][1]; _found = ci; break; }
+                        }
+                        if (_flagPlace) _flagPlace.set(_pk, _found);
                     }
                     claimRect(fx, fy, boxW, boxH);
                     ctx.save();
@@ -5632,7 +5659,16 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     const w = ctx.measureText(txt).width, p = 4 / z, th = 16 / z;
                     const boxH = th + p * 2, step = boxH + flagGap / z;
                     let ty = ly - boxH - flagGap / z;
-                    if (!_maOff) { for (let i = 0; i < 40 && rectOccupied(lx - p, ty, w + p * 2, boxH); i++) ty -= step; }
+                    if (!_maOff) {
+                        const _mk = 'ma:' + im.id;
+                        const _mh = _flagPlace ? _flagPlace.get(_mk) : undefined;
+                        if (_mh !== undefined) ty -= _mh;
+                        else {
+                            let _up = 0;
+                            for (let i = 0; i < 40 && rectOccupied(lx - p, ty, w + p * 2, boxH); i++) { ty -= step; _up += step; }
+                            if (_flagPlace) _flagPlace.set(_mk, _up);
+                        }
+                    }
                     flagOwner(_maKey);
                     claimRect(lx - p, ty, w + p * 2, boxH);
                     const cy2 = ty + boxH / 2;
@@ -5798,10 +5834,24 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     // If the slot is taken, slide ALONG the edge instead of drifting off it
                     const pxDir = -uy, pyDir = ux;   // perpendicular to the bearing
                     let bx = px - bw / 2, by = py - bh / 2;
-                    for (let i = 1; i <= 10 && rectOccupied(bx, by, bw, bh); i++) {
-                        const off = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (bh + 2 / z);
-                        bx = px + pxDir * off - bw / 2;
-                        by = py + pyDir * off - bh / 2;
+                    // The retry search is the expensive part of the compass: with many
+                    // elements the badges collide constantly and this runs repeatedly.
+                    // Its answer only changes when the scene changes, so cache the
+                    // chosen OFFSET and skip the search while the scene holds.
+                    const _ckey = 'cmp:' + im.id;
+                    const _cached = _flagPlace ? _flagPlace.get(_ckey) : undefined;
+                    if (_cached !== undefined) {
+                        bx = px + pxDir * _cached - bw / 2;
+                        by = py + pyDir * _cached - bh / 2;
+                    } else {
+                        let chosen = 0;
+                        for (let i = 1; i <= 10 && rectOccupied(bx, by, bw, bh); i++) {
+                            const off = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * (bh + 2 / z);
+                            chosen = off;
+                            bx = px + pxDir * off - bw / 2;
+                            by = py + pyDir * off - bh / 2;
+                        }
+                        if (_flagPlace) _flagPlace.set(_ckey, chosen);
                     }
                     claimRect(bx, by, bw, bh);
 
@@ -7712,6 +7762,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         // ---- Flag collision system: every on-canvas flag claims its rect so none overlap ----
         // ---- Flag collision: SPATIAL HASH GRID (O(1) neighbor lookup, not O(n) scan) ----
+        // flag placement cache — declared early because saveState() can fire
+        // during setup, long before the flag system's own code is reached
+        var _flagPlace = new Map();
+        var _flagSceneSig = '';
         var flagRects = [];
         var flagGap = 0;   // user-adjustable extra pixels between stacked flags
         // ── Draggable flags ──────────────────────────────────────────
@@ -7776,6 +7830,68 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
         }
         // Find a free slot by stepping downward from a starting point
+        // ── FLAG PLACEMENT CACHE ────────────────────────────────────────
+        // Flag placement is a search: "where can this badge sit without overlapping
+        // anything?" The answer depends only on where elements sit RELATIVE to each
+        // other — not on the camera. So panning and zooming cannot change it, and an
+        // idle canvas cannot change it, yet the search used to run 60 times a second.
+        //
+        // This caches the RESULT of each search against a fingerprint of the scene.
+        // While the fingerprint holds, placements are reused; the moment anything
+        // genuinely moves, the cache clears and every flag re-solves once.
+        //
+        // Nothing about drawing changes — draw() still renders every frame exactly as
+        // before. It simply reads a stored position instead of re-deriving it.
+
+        function flagSceneFingerprint() {
+            // camera is deliberately EXCLUDED: it cannot affect relative layout
+            let s = images.length + '|' + flagGap + '|';
+            for (let i = 0; i < images.length; i++) {
+                const im = images[i];
+                if (!inView(im, 120)) continue;   // off-screen flags are never placed
+                s += (im.x | 0) + ',' + (im.y | 0) + ',' + (im.width | 0) + ',' + (im.height | 0) + ',' +
+                     ((im.rotation || 0) * 100 | 0) + ',' + (im.hidden ? 1 : 0) + ';';
+            }
+            // which flag systems are on changes what competes for space
+            s += '|' + (showMemInfo ? 1 : 0) + (showPath ? 1 : 0) + (showFilename ? 1 : 0) +
+                 (showNotations ? 1 : 0) + (showAgent ? 1 : 0) + (showMemAlloc ? 1 : 0) +
+                 (compassMode) + (compassArrow ? 1 : 0) + (vtrScale ? 1 : 0) + (meshInfoMode) +
+                 (priorityShow.low ? 1 : 0) + (priorityShow.medium ? 1 : 0) + (priorityShow.high ? 1 : 0);
+            return s;
+        }
+
+        // Called once per frame, before any flag is placed.
+        // Any code path that moves, adds or removes elements can call this directly.
+        // The fingerprint already catches position changes; this is belt-and-braces for
+        // structural edits so a flag can never sit in a stale slot.
+        function invalidateFlagCache() {
+            // `var` hoists the name but not the value, so this can be reached before the
+            // cache is constructed (saveState fires during early setup). Guard, don't
+            // assume — an uninitialised cache is simply an empty one.
+            _flagSceneSig = '';
+            if (_flagPlace && typeof _flagPlace.clear === 'function') _flagPlace.clear();
+        }
+
+        function flagCacheSync() {
+            const sig = flagSceneFingerprint();
+            if (sig !== _flagSceneSig) {
+                _flagSceneSig = sig;
+                // draw() runs during startup, before the declaration below has executed,
+                // so build the cache on first use instead of assuming it exists.
+                if (!_flagPlace) _flagPlace = new Map(); else _flagPlace.clear();
+            }
+        }
+
+        // Find a free slot, reusing the previous answer while the scene is unchanged.
+        function findFreeSlotCached(key, x, y, w, h, stepY) {
+            if (!_flagPlace) _flagPlace = new Map();
+            const hit = _flagPlace.get(key);
+            if (hit !== undefined) return hit;
+            const ty = findFreeSlot(x, y, w, h, stepY);
+            if (_flagPlace) _flagPlace.set(key, ty);
+            return ty;
+        }
+
         function findFreeSlot(x, y, w, h, stepY) {
             let ty = y;
             for (let i = 0; i < 40; i++) {
@@ -8986,8 +9102,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 label.textContent = p.name;
                 label.ondblclick = (ev) => {
                     ev.stopPropagation();
-                    const n = prompt('Rename page:', p.name);
-                    if (n !== null) { p.name = n.trim() || p.name; padRenderTabs(); }
+                    // native prompt() is blocked by the host; use the engine's own dialog
+                    if (typeof askFileName === 'function') {
+                        askFileName('✎ Rename page', p.name, '', (v) => { p.name = v || p.name; padRenderTabs(); });
+                    }
                 };
                 b.appendChild(label);
                 if (padPages.length > 1) {
