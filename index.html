@@ -456,6 +456,20 @@
     </style>
 </head>
 <body>
+    <div id="helpPanel" style="display:none; position:fixed; top:70px; left:50%; transform:translateX(-50%); width:720px; max-width:94vw; height:74vh; min-width:420px; min-height:300px; z-index:99800; background:#0f1419; border:1px solid #26343d; border-radius:14px; box-shadow:0 26px 70px rgba(0,0,0,.62); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
+        <div id="helpHead" style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; cursor:move; user-select:none; border-bottom:1px solid #26343d;">
+            <span style="font:700 12px Arial; letter-spacing:2.4px; color:#26C6DA; flex:1;">OTOM — OPERATOR MANUAL</span>
+            <input id="helpSearch" type="text" placeholder="search…" style="width:130px; padding:5px 9px; font-size:11px; background:#0b1015; color:#eceff1; border:1px solid #26343d; border-radius:6px; outline:none;">
+            <button id="helpPinBtn" onclick="toggleHelpPin()" title="Pin to the canvas — moves and scales with pan and zoom" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:6px;">📌 Pin</button>
+            <span style="font-size:9px; letter-spacing:1px; color:#546e7a;">OP</span>
+            <input id="helpOp" type="range" min="20" max="100" value="100" oninput="document.getElementById('helpPanel').style.opacity=this.value/100" style="width:56px;" title="Opacity">
+            <button onclick="toggleHelp()" style="margin:0; padding:4px 10px; font-size:12px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:6px;">✕</button>
+        </div>
+        <div style="display:flex; flex:1 1 auto; min-height:0;">
+            <div id="helpNav" style="width:186px; flex:0 0 auto; overflow-y:auto; background:#0b1015; border-right:1px solid #1b2530; padding:8px 0;"></div>
+            <div id="helpBody" style="flex:1 1 auto; overflow-y:auto; padding:20px 26px; color:#cfd8dc; font-size:13px; line-height:1.75;"></div>
+        </div>
+    </div>
     <div id="chkPanel" style="display:none; position:fixed; top:120px; left:60px; width:392px; box-sizing:border-box; border:1px solid #3E2723; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#1a1310,#120c0a); box-shadow:0 18px 46px rgba(0,0,0,.55); z-index:99500; flex-direction:column; font-family:Arial,sans-serif;">
             <div id="chkHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#4E342E,#3A241F); color:#D7CCC8; user-select:none; border-bottom:1px solid #3E2723;">
                 <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#FFCC80;">CHECKERS</span>
@@ -586,6 +600,7 @@
         <button id="darkBtn" onclick="toggleDarkMode()" style="background: #263238;" title="Dark mode for the whole interface and canvas">🌙 Dark</button>
         <button title="Open the performance monitor: FPS, memory and scene breakdown" id="perfBtn" onclick="togglePerf()" style="background: #263238;">📊 Perf</button>
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
+        <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="pulseBtn" onclick="togglePulse()" style="background: #263238; font-size:11px; padding:6px 9px;" title="Live system pulse — dots blink as CPU, memory and GPU work happens">◉ Pulse</button>
         <span class="gsep" data-grp="HISTORY"></span>
 <button title="Step back through your edit history" onclick="undo()" style="background: #FFC107;">↶ Undo (Ctrl+Z)</button>
@@ -1311,6 +1326,7 @@
                 { ico: '━', label: 'Primer',  accent: '#1B5E20', run: () => togglePrimerBoard() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
                 { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
+                { ico: '?', label: 'Help',    accent: '#37474F', run: () => toggleHelp() },
                 { ico: '✎', label: 'Scratch', accent: '#455A64', run: () => togglePad() },
                 { ico: '🧮', label: 'Calc',    accent: '#00695C', run: () => toggleCalculator() },
                 { ico: '⛃', label: 'Checkers', accent: '#4E342E', run: () => toggleCheckers() },
@@ -5935,6 +5951,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     mediaPlayers.some(m => m.pinned)) syncMediaPlayers();
                     if (typeof calcPinned !== 'undefined' && calcPinned) calcSyncPinned();
                     if (typeof chkPinned !== 'undefined' && chkPinned) chkSyncPinned();
+                    if (typeof helpPinned !== 'undefined' && helpPinned) helpSyncPinned();
+                    if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
                 requestAnimationFrame(tick);
             }
             requestAnimationFrame(tick);
@@ -8329,7 +8347,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -9799,6 +9817,633 @@ ctx.fillText(conn.number.toString(), midX, midY);
             page.normalize();
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ? OPERATOR MANUAL — a self-contained reference. Deliberately its own
+        // floating window: it is documentation, not an engine asset, so it never
+        // appears in the Asset Manager and never counts toward the footprint.
+        // ═══════════════════════════════════════════════════════════════════
+        var helpOpen = false;
+        // ── Manual visuals: real button replicas, SVG diagrams, UI mockups ──
+        // Everything here is inline markup so the manual is self-contained and needs
+        // no assets. Colours are lifted from the actual toolbar so a replica in the
+        // docs looks exactly like the control it describes.
+        // Inline icons drawn to match how the engine ACTUALLY renders each element,
+        // so a symbol in the manual is recognisable on the canvas.
+        function hIco(kind, size) {
+            const s = size || 26, c = '#90A4AE';
+            const w = 'width="' + s + '" height="' + s + '" viewBox="0 0 40 40" style="vertical-align:middle; flex:0 0 auto;"';
+            const M = {
+                vector:  '<circle cx="20" cy="20" r="9" fill="#cfd8dc"/>',
+                fusion:  '<circle cx="20" cy="20" r="8" fill="#cfd8dc"/><circle cx="20" cy="20" r="13" fill="none" stroke="#00BFA5" stroke-width="2" stroke-dasharray="4 3"/><circle cx="20" cy="20" r="3" fill="#00BFA5"/>',
+                socket:  '<circle cx="20" cy="20" r="9" fill="#37474F"/><circle cx="20" cy="20" r="14" fill="none" stroke="#78909C" stroke-width="2"/>',
+                line:    '<line x1="6" y1="20" x2="34" y2="20" stroke="' + c + '" stroke-width="3"/>',
+                rect:    '<rect x="8" y="10" width="24" height="20" fill="none" stroke="' + c + '" stroke-width="2.5"/>',
+                circle:  '<ellipse cx="20" cy="20" rx="13" ry="11" fill="none" stroke="' + c + '" stroke-width="2.5" stroke-dasharray="6 4"/>',
+                triangle:'<polygon points="20,8 32,31 8,31" fill="none" stroke="' + c + '" stroke-width="2.5"/>',
+                arrow:   '<polygon points="6,17 26,17 26,11 34,20 26,29 26,23 6,23" fill="' + c + '"/>',
+                text:    '<text x="20" y="28" font-size="22" font-weight="bold" fill="' + c + '" text-anchor="middle" font-family="Arial">T</text>',
+                group:   '<rect x="6" y="8" width="28" height="24" fill="none" stroke="#FF6F00" stroke-width="2" stroke-dasharray="6 4"/><circle cx="14" cy="20" r="4" fill="#cfd8dc"/><rect x="22" y="15" width="9" height="9" fill="none" stroke="#cfd8dc" stroke-width="2"/>',
+                weld:    '<rect x="6" y="8" width="28" height="24" fill="none" stroke="#0097A7" stroke-width="2.5"/><circle cx="14" cy="20" r="4" fill="#cfd8dc"/><rect x="22" y="15" width="9" height="9" fill="none" stroke="#cfd8dc" stroke-width="2"/>',
+                mesh:    '<g stroke="#6A1B9A" stroke-width="1.4" fill="none"><path d="M8 12 L20 20 L32 12 M8 28 L20 20 L32 28 M20 20 L20 20"/></g>' +
+                         '<circle cx="8" cy="12" r="3" fill="#cfd8dc"/><circle cx="32" cy="12" r="3" fill="#cfd8dc"/><circle cx="20" cy="20" r="3" fill="#cfd8dc"/><circle cx="8" cy="28" r="3" fill="#cfd8dc"/><circle cx="32" cy="28" r="3" fill="#cfd8dc"/>',
+                // cartridge: notched corner + 8-track stripes + label window (as drawn)
+                cartridge:'<rect x="5" y="10" width="30" height="21" rx="3" fill="#0f1419" stroke="#E53935" stroke-width="2"/>' +
+                          '<path d="M5 15 L10 15 L10 10" fill="none" stroke="#E53935" stroke-width="1.5"/>' +
+                          '<line x1="8" y1="17.5" x2="32" y2="17.5" stroke="#E53935" stroke-width="1.6"/>' +
+                          '<line x1="8" y1="23.5" x2="32" y2="23.5" stroke="#E53935" stroke-width="1.6"/>' +
+                          '<rect x="8" y="19" width="24" height="3.4" fill="rgba(120,144,156,.45)"/>',
+                // port: two rings, four prongs, centre dot (as drawn)
+                port:    '<circle cx="20" cy="20" r="12" fill="#0f1419" stroke="#5E35B1" stroke-width="2"/>' +
+                         '<circle cx="20" cy="20" r="7.5" fill="none" stroke="#5E35B1" stroke-width="1.4"/>' +
+                         '<g stroke="#5E35B1" stroke-width="2.6"><line x1="30" y1="20" x2="35" y2="20"/><line x1="5" y1="20" x2="10" y2="20"/><line x1="20" y1="30" x2="20" y2="35"/><line x1="20" y1="5" x2="20" y2="10"/></g>' +
+                         '<circle cx="20" cy="20" r="3" fill="#5E35B1"/>',
+                ruler:   '<line x1="4" y1="20" x2="36" y2="20" stroke="#2196F3" stroke-width="2"/><line x1="20" y1="6" x2="20" y2="34" stroke="#2196F3" stroke-width="2"/>',
+                note:    '<rect x="6" y="9" width="28" height="17" rx="6" fill="#0f1419" stroke="#0288D1" stroke-width="2"/><circle cx="14" cy="29" r="2.6" fill="#0f1419" stroke="#0288D1" stroke-width="1.6"/><circle cx="10" cy="34" r="1.6" fill="#0f1419" stroke="#0288D1" stroke-width="1.4"/>',
+                image:   '<rect x="6" y="10" width="28" height="21" fill="none" stroke="' + c + '" stroke-width="2"/><polyline points="9,27 17,18 23,24 28,20 31,27" fill="none" stroke="' + c + '" stroke-width="2"/><circle cx="27" cy="15" r="2.4" fill="' + c + '"/>'
+            };
+            return '<svg ' + w + '>' + (M[kind] || '') + '</svg>';
+        }
+        // an icon + label + description line
+        function hDef(kind, name, desc) {
+            return '<div style="display:flex; align-items:flex-start; gap:12px; padding:9px 11px; margin:6px 0; background:#0b1015; border:1px solid #1b2530; border-radius:9px;">' +
+                '<span style="flex:0 0 auto; padding-top:1px;">' + hIco(kind, 28) + '</span>' +
+                '<span><b style="color:#eceff1;">' + name + '</b><br><span style="color:#90A4AE; font-size:12.5px;">' + desc + '</span></span></div>';
+        }
+
+        function hBtn(label, bg, fg) {
+            return '<span style="display:inline-block; padding:5px 11px; margin:2px 3px 2px 0; border-radius:5px; ' +
+                'background:' + (bg || '#607D8B') + '; color:' + (fg || '#fff') + '; font:13px Arial; ' +
+                'box-shadow:0 1px 3px rgba(0,0,0,.4); white-space:nowrap; vertical-align:middle;">' + label + '</span>';
+        }
+        function hKey(k) {
+            return '<span style="display:inline-block; min-width:20px; padding:3px 8px; margin:0 2px; border-radius:5px; ' +
+                'background:#1b2530; border:1px solid #37474F; border-bottom:2px solid #37474F; color:#eceff1; ' +
+                'font:600 11px ui-monospace,Consolas,monospace; text-align:center; vertical-align:middle;">' + k + '</span>';
+        }
+        function hFig(caption, svg) {
+            return '<div style="margin:14px 0 16px; padding:14px; background:#0b1015; border:1px solid #1b2530; border-radius:10px;">' +
+                svg + (caption ? '<div style="margin-top:9px; color:#546e7a; font:11px Arial; text-align:center;">' + caption + '</div>' : '') + '</div>';
+        }
+        function hRow(items) {
+            return '<div style="margin:10px 0; padding:10px 12px; background:#0b1015; border:1px solid #1b2530; border-radius:9px;">' + items + '</div>';
+        }
+
+        var HELP_DOC = [
+        { id:'start', t:'Getting Started', h:`
+<h3>What OTOM is</h3>
+<p>A canvas engine where <b>shapes carry meaning</b>. Elements are placed on an infinite canvas, connected with numbered logic lines, and grouped into reusable assets. Everything the engine holds is measured and reported — nothing is hidden from you.</p>
+<h3>Anatomy of an element</h3>
+` + hFig('Selected element: rotate handle above, resize handle at the corner, pin badge top-left, name label to the side.',
+`<svg viewBox="0 0 420 200" style="width:100%; max-width:420px; display:block; margin:0 auto;">
+  <rect x="150" y="70" width="90" height="70" fill="#1b2530" stroke="#2196F3" stroke-width="2"/>
+  <line x1="195" y1="70" x2="195" y2="38" stroke="#2196F3" stroke-width="2"/>
+  <circle cx="195" cy="30" r="11" fill="#0f1419" stroke="#2196F3" stroke-width="2"/>
+  <path d="M189 30 a6 6 0 1 1 6 6" fill="none" stroke="#2196F3" stroke-width="2"/>
+  <rect x="235" y="135" width="11" height="11" fill="#4CAF50" stroke="#fff" stroke-width="1.5"/>
+  <circle cx="140" cy="60" r="9" fill="#0f1419" stroke="#90A4AE" stroke-width="1.5"/>
+  <circle cx="140" cy="57" r="3" fill="#90A4AE"/><line x1="140" y1="60" x2="140" y2="65" stroke="#90A4AE" stroke-width="1.5"/>
+  <rect x="258" y="95" width="86" height="22" fill="#0f1419" stroke="#4CAF50" stroke-width="1.5" rx="2"/>
+  <text x="301" y="110" fill="#cfd8dc" font="12px Arial" font-size="12" text-anchor="middle">Node 1</text>
+  <text x="195" y="112" fill="#78909C" font-size="11" text-anchor="middle">element</text>
+  <text x="195" y="14" fill="#546e7a" font-size="10" text-anchor="middle">rotate</text>
+  <text x="278" y="160" fill="#546e7a" font-size="10" text-anchor="middle">resize (Shift+drag)</text>
+  <text x="112" y="40" fill="#546e7a" font-size="10" text-anchor="middle">pin</text>
+  <text x="301" y="132" fill="#546e7a" font-size="10" text-anchor="middle">name flag</text>
+</svg>`) + `
+<h3>The first five minutes</h3>
+<ul>
+<li><b>Double-click empty canvas</b> — creates a vector (the basic node).</li>
+<li><b>Double-click an element</b> — opens its data dialogue: name, data string, notations, agent, priority, outline.</li>
+<li><b>Drag</b> to move · <b>Shift + drag a corner</b> to resize · <b>drag the top handle</b> to rotate.</li>
+<li><b>Middle-click canvas</b> — drop a thought bubble notation.</li>
+<li><b>Left Alt + click</b> — the radial menu blooms at your cursor. Every major tool, without travelling to the toolbar.</li>
+</ul>
+<h3>Buttons you will use constantly</h3>
+` + hRow(
+  hBtn('Upload Coding Block/Element', '#2196F3') + hBtn('Draw Datum Line', '#795548') +
+  hBtn('◯ Draw Circle', '#795548') + hBtn('Connect Block Elements', '#FF9800') +
+  hBtn('⬚ Lasso', '#6A1B9A') + hBtn('⊞ Make Asset', '#FF6F00') +
+  hBtn('▤ Asset Drawer ▼', '#FF6F00') + hBtn('🗂 Assets', '#673AB7') +
+  hBtn('⚡ Snapshot', '#FF6D00') + hBtn('◉ Pulse', '#263238') + hBtn('? Help', '#37474F')
+) + `
+<h3>The philosophy</h3>
+<p>Every tool comes <b>to the cursor</b>. Panels are subordinate to the canvas — they dim, pin, and collapse so your eyes never leave your work. If something makes you look away, that is a bug.</p>` },
+
+        { id:'canvas', t:'Canvas & Camera', h:`
+<h3>Moving around</h3>
+<ul>
+<li><b>Drag empty canvas</b> — pan. <b>Mouse wheel</b> — zoom at the cursor.</li>
+<li><b>Reset View</b> — back to 100% on the world origin (0,0).</li>
+<li><b>Auto Size Canvas</b> — shrink the canvas to fit everything you have placed.</li>
+<li><b>Set Size</b> — exact width × height.</li>
+<li><b>Fullscreen</b> or <b>F11</b>.</li>
+</ul>
+<h3>Selection</h3>
+<ul>
+<li><b>Click</b> selects · <b>Shift+click</b> adds to a multi-selection.</li>
+<li><b>Lasso</b> — drag a box around several elements.</li>
+<li><b>Arrow keys</b> nudge the selection · <b>Shift+arrows</b> nudge 10×.</li>
+<li><b>Shift+G</b> — bundle a selection into an <b>Ad Hoc Group</b>. Members keep their identity but move as one. Click any member to select the whole group.</li>
+<li><b>P</b> pins an element in place · <b>H</b> hides it · <b>Delete</b> removes it.</li>
+<li><b>Ctrl+drag</b> duplicates · <b>Ctrl+Z / Ctrl+Shift+Z</b> undo and redo.</li>
+</ul>` },
+
+        { id:'draw', t:'Drawing Elements', h:`
+<h3>The primitives</h3>
+` +
+hDef('vector','Vector','Double-click bare canvas. The fundamental node — a register in the language.') +
+hDef('line','Datum Line','Inert geometry, not a logic step. Press-drag-release; hold Shift for a 45° constraint.') +
+hDef('rect','Square','Hollow — only the border is clickable, so you can still grab whatever sits inside it.') +
+hDef('circle','Circle','Solid, dashed or dotted. Hollow like the square. Hold Shift for a perfect circle.') +
+hDef('triangle','Triangle','Outline or filled. An outline triangle is hollow; a filled one is not.') +
+hDef('arrow','Arrow','A solid directional marker. Press-drag-release.') +
+hDef('text','Text','Click to place, type, Enter. Resizing scales the real font size, not just the box.') +
+hDef('image','Block Element','An uploaded image, carried as a first-class element with full metadata.') + `
+<h3>Every element carries data</h3>
+<p>Double-click to open its dialogue: <b>Display Name</b>, <b>Data String</b> (the instruction it represents), <b>Source Path</b>, <b>Notation(s)</b>, <b>Legitimizing Agent</b>, <b>Numeric Designation</b>, <b>Priority</b>, and <b>Outline</b>. Toggle the metadata buttons to show any of these on the canvas as flags.</p>` },
+
+        { id:'logic', t:'Logic Lines & Steps', h:`
+<h3>Connecting</h3>
+<ul>
+<li><b>Connect Block Elements</b> — click one element then another. Lines are numbered in execution order and chain automatically.</li>
+<li><b>Double-click a step number</b> to change it. Two lines sharing a number run <b>simultaneously</b>.</li>
+<li><b>Merge Into One Step</b> — click two lines to give them the same number.</li>
+<li><b>Drag a step indicator</b> to bend the line · <b>Ctrl+click</b> it to curve.</li>
+<li><b>H</b> while hovering a line hides it.</li>
+</ul>
+` + hFig('Two elements joined by a numbered logic line. The badge is the step number — drag it to bend the line, double-click it to renumber.',
+`<svg viewBox="0 0 420 120" style="width:100%; max-width:420px; display:block; margin:0 auto;">
+  <circle cx="60" cy="60" r="20" fill="#1b2530" stroke="#78909C" stroke-width="2"/>
+  <circle cx="360" cy="60" r="20" fill="#1b2530" stroke="#78909C" stroke-width="2"/>
+  <line x1="80" y1="60" x2="185" y2="60" stroke="#2196F3" stroke-width="3"/>
+  <line x1="235" y1="60" x2="340" y2="60" stroke="#2196F3" stroke-width="3"/>
+  <circle cx="210" cy="60" r="17" fill="#0f1419" stroke="#2196F3" stroke-width="2.5"/>
+  <text x="210" y="66" fill="#eceff1" font-size="14" font-weight="bold" text-anchor="middle">1</text>
+  <polygon points="262,60 248,53 248,67" fill="#2196F3"/>
+  <text x="60" y="100" fill="#546e7a" font-size="10" text-anchor="middle">from</text>
+  <text x="360" y="100" fill="#546e7a" font-size="10" text-anchor="middle">to</text>
+  <text x="210" y="32" fill="#546e7a" font-size="10" text-anchor="middle">step number</text>
+</svg>`) + `
+<h3>Reading the program</h3>
+<p><b>Data String</b> panel lists steps in order. <b>⇱ Pop Out</b> opens it larger and editable. <b>Code Execute</b> opens the Data Parser — it strips every element to its data string in execution order, with a provenance lane showing where each line came from.</p>` },
+
+        { id:'assets', t:'Assets & Grouping', h:`
+<h3>Making assets</h3>
+<ul>
+<li><b>Lasso</b> a set, then <b>Make Asset</b> — saved to the Asset Drawer with a thumbnail.</li>
+<li><b>Place</b> drops a saved asset back on canvas as one grouped element.</li>
+<li><b>⊟ badge</b> on a group deconstructs it. Edit the freed parts, then <b>Regroup</b>.</li>
+<li>Regroup only creates a <b>new</b> asset if you actually changed something — open and close it untouched and nothing is duplicated.</li>
+</ul>
+<h3>Folders</h3>
+<p><b>+ Folder</b> in the drawer creates one. <b>Drag any asset card onto a folder tab</b> to file it. Deleting a folder returns its assets to Unfiled — assets are never destroyed.</p>
+<h3>Meshes, sockets, welding</h3>
+` +
+hDef('group','Grouped Asset','Several elements bound into one. The dashed orange frame marks it; the ⊟ badge breaks it apart again.') +
+hDef('mesh','Neuromorphic Mesh','A generated lattice of sockets joined by datum lines. Resizing scales the whole lattice.') +
+hDef('socket','Socket','A vector flagged as a connector. Meshes and grouped assets plug into it; it turns dark once it holds both.') +
+hDef('fusion','Fusion Vector','A vector that can bond to another. Snaps and locks when two line up — press B to break the bond.') +
+hDef('weld','Welded Asset','A socket and everything plugged into it, fused permanently. Cannot be deconstructed.') + `` },
+
+        { id:'cart', t:'Cartridges & Ports', h:`
+<h3>Data Cartridges</h3>
+` +
+hDef('cartridge','Data Cartridge','A container with an allow-list: it accepts only the element types you tick. Double-click the canvas in Cartridge mode to place one.') +
+hDef('port','Port','Loads someone else\'s cartridge and filters it — only the types your port allows will materialise.') + `
+<ul>
+<li><b>Collect Data</b> — click a cartridge, then click elements to load them in.</li>
+<li><b>Data Branch</b> — pulsing web from each cartridge to its contents.</li>
+<li><b>Show Links</b> — triangle trail from element edge to cartridge edge.</li>
+<li><b>Read only</b> — exported contents are locked against editing by whoever loads them.</li>
+<li><b>Export</b> writes a portable cartridge file.</li>
+</ul>
+<h3>Ports</h3>
+<p>A <b>Port</b> loads someone else's cartridge and <b>filters it</b> — only the types your port allows will materialise. Change the port's allow-list later and it re-filters from the stored package, so nothing is lost. Use <b>Edit Port</b> mode and double-click the port to change it.</p>` },
+
+        { id:'measure', t:'Rulers & Measurement', h:`
+<h3>Rulers</h3>
+` + hDef('ruler','Ruler Guide','A horizontal or vertical reference line. Everything can be measured against it.') + `
+<ul>
+<li><b>+ H Ruler / + V Ruler</b> drop a guide. Drag to reposition.</li>
+<li><b>Right-click</b>, <b>double-click</b>, or <b>Shift+click</b>… careful: Shift+click <b>hides</b>; right-click and double-click <b>delete</b>.</li>
+<li><b>🔒 Rulers</b> anchors them all — locked rulers render amber and cannot be dragged.</li>
+<li><b>👁 Hidden</b> slider sets how visible a hidden ruler is. 0% is truly invisible; raise it to find one and Shift+click it back.</li>
+</ul>
+` + hFig('The three ruler gestures. Shift hides, right-click and double-click delete, and a locked ruler unlocks on its first gesture instead.',
+`<svg viewBox="0 0 430 150" style="width:100%; max-width:430px; display:block; margin:0 auto;">
+  <line x1="20" y1="42" x2="410" y2="42" stroke="#2196F3" stroke-width="2"/>
+  <text x="20" y="32" fill="#546e7a" font-size="10">normal ruler — drag to move</text>
+  <line x1="20" y1="82" x2="410" y2="82" stroke="#FFB300" stroke-width="2" stroke-dasharray="9 5"/>
+  <text x="34" y="72" fill="#546e7a" font-size="10">locked — cannot be dragged</text>
+  <text x="22" y="86" font-size="11">🔒</text>
+  <line x1="20" y1="122" x2="410" y2="122" stroke="#90A4AE" stroke-width="1" stroke-dasharray="3 9" opacity="0.45"/>
+  <text x="20" y="112" fill="#546e7a" font-size="10">hidden — ghosted, opacity is yours to set</text>
+</svg>`) + `
+<h3>Dimensioning</h3>
+<ul>
+<li><b>Elem↔Elem</b> — each element to its nearest neighbour. <b>Elem↔Ruler</b> — to the nearest guides.</li>
+<li><b>Dim: Center/Edge</b> — measure from centres or edges.</li>
+<li><b>Center Mode</b> drops a red anchor; <b>Center Dims</b> measures everything to it.</li>
+<li><b>Compass</b> shows each element's bearing to the world origin.</li>
+</ul>` },
+
+        { id:'find', t:'Finding Things', h:`
+<h3>When you cannot see it</h3>
+<ul>
+<li><b>Hidden Radar</b> — cursor readout with arrows and distances to hidden elements.</li>
+<li><b>Element Radar</b> — the same for visible elements.</li>
+<li><b>Proximity Glow</b> — hidden elements brighten as your cursor nears their centre. The <b>Glow Radius</b> slider sets the range.</li>
+<li><b>Proximity Border</b> — their borders fade in as you near their edge.</li>
+<li><b>Hidden Outline</b> — cycle the dashed ghost outline: 100% / 50% / off.</li>
+<li><b>Hover Info</b> — an element's data card appears as you hover it.</li>
+</ul>
+<h3>Priority colours</h3>
+` + hRow(
+  '<span style="display:inline-flex;align-items:center;gap:7px;margin-right:18px;"><span style="width:13px;height:13px;border-radius:50%;background:#4FC3F7;"></span><span style="color:#4FC3F7;font-weight:700;">Low</span></span>' +
+  '<span style="display:inline-flex;align-items:center;gap:7px;margin-right:18px;"><span style="width:13px;height:13px;border-radius:50%;background:#F8BBD0;"></span><span style="color:#F8BBD0;font-weight:700;">Medium</span></span>' +
+  '<span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:13px;height:13px;border-radius:50%;background:#F44336;"></span><span style="color:#F44336;font-weight:700;">High</span></span>'
+) + `
+<h3>Flags</h3>
+<p>Metadata toggles (Mem Info, Path, Filename, Notations, Legit Agent, Mem Alloc, priority flags) draw labels on the canvas. Flags never overlap — the engine solves their placement for you. <b>⚑ Flags</b> mode lets you drag any flag exactly where you want it, and the <b>Arrows ▲▼</b> control changes the gap between stacked flags.</p>` },
+
+        { id:'tools', t:'The Tool Panels', h:`
+<h3>All of them dock, pin, dim and collapse</h3>
+<ul>
+<li><b>🧮 Calc</b> — a full engineering calculator. Trig, logs, factorials (including fractional, via the gamma function), nCr/nPr, variadics. <b>NOTE</b> field annotates a calculation, and <b>Send to Formula</b> files it in the Notes Reader.</li>
+<li><b>✎ Scratch Pad</b> — a typewriter page. Paste images straight from the clipboard, drop files, links become live, checklists you can tick, multiple pages. <b>⚫</b> attaches selected text to a selected element; <b>=</b> solves maths in place; <b>📷</b> drops a picture of the canvas into your notes.</li>
+<li><b>🌐 Browser</b> — pages load inside the panel. Sites that refuse embedding open with <b>Pop Out</b>.</li>
+<li><b>▶ Media</b> — YouTube or local video. Each click spawns another player.</li>
+<li><b>⛃ Checkers</b> — a real minimax AI with alpha-beta pruning. Three depths.</li>
+<li><b>🕘 Clock</b> — clock, stopwatch, timestamps, and an alarm that blinks the whole UI.</li>
+<li><b>📖 Notes Reader</b> — every notation in the engine in one list, with priority flags and a formula library you can drag onto the canvas.</li>
+</ul>
+<h3>Pinning</h3>
+<p><b>📌 Pin</b> anchors a panel to <b>canvas space</b> — it moves and scales when you pan and zoom, as if it were part of your work. Pinned media and browser panels fade their chrome until you hover them.</p>` },
+
+        { id:'watch', t:'Watching the Engine', h:`
+<h3>◉ Pulse — the engine's vital signs</h3>
+<p>Four dots that blink on <b>real measured work</b>:</p>
+<ul>
+<li><b>CPU</b> — time spent inside the draw loop this frame. Green under half the frame budget, amber, then red as it approaches 16.7 ms.</li>
+<li><b>MEM</b> — JS heap movement. Magenta normally, orange on large allocations.</li>
+<li><b>GPU</b> — canvas raster work; brighter on multi-draw bursts.</li>
+<li><b>DOM</b> — interface mutations per frame. This is the one no other gauge can see: layout thrash costs you frames without touching CPU, memory, or the canvas. Mostly dark is healthy.</li>
+</ul>
+` + hFig('The Pulse pill. Each dot lights only when that kind of work actually happens.',
+`<div style="display:flex; justify-content:center;">
+  <span style="display:inline-flex; align-items:center; gap:13px; padding:8px 16px; border:2px solid #263238; border-radius:20px; background:#11161b;">
+    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#3fb950;box-shadow:0 0 9px #3fb950;"></span><span style="font:700 9px Arial;letter-spacing:1.3px;color:#5b6b75;">CPU</span></span>
+    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#E040FB;box-shadow:0 0 9px #E040FB;"></span><span style="font:700 9px Arial;letter-spacing:1.3px;color:#5b6b75;">MEM</span></span>
+    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#29b6f6;box-shadow:0 0 9px #29b6f6;"></span><span style="font:700 9px Arial;letter-spacing:1.3px;color:#5b6b75;">GPU</span></span>
+    <span style="display:inline-flex; align-items:center; gap:5px;"><span style="width:9px;height:9px;border-radius:50%;background:#1b2a33;"></span><span style="font:700 9px Arial;letter-spacing:1.3px;color:#5b6b75;">DOM</span></span>
+    <span style="font:9px ui-monospace,monospace;color:#37474F;">60fps · 2.1ms · 1847 nodes</span>
+  </span>
+</div>`) + `
+<p style="color:#78909C; font-size:12px;">Above: CPU, MEM and GPU active; DOM dark — the healthy state, because the canvas paints pixels rather than rearranging the interface.</p>
+<h3>Other instruments</h3>
+<ul>
+<li><b>♥ Health</b> — a one-line verdict: stable, strained, or critical.</li>
+<li><b>📊 Perf</b> — the full monitor: FPS, heap, scene graph, memory breakdown, DOM, timing, environment.</li>
+<li><b>🗂 Assets</b> — the Asset Manager. Every element, panel and widget with its exact byte cost, rolled into one total.</li>
+</ul>
+` + hFig('An Asset Manager row. Hover the ⓘ for the full data card; the footer totals the engine and everything in it.',
+`<div style="max-width:360px; margin:0 auto; background:#fff; border-radius:9px; overflow:hidden; font-family:Arial;">
+  <div style="background:#673AB7; color:#fff; padding:8px 12px; font-weight:700; font-size:12px;">🗂 Asset Browser</div>
+  <div style="padding:8px 10px;">
+    <div style="display:flex; align-items:center; gap:8px; margin:2px 0 6px;">
+      <span style="color:#7e57c2; font-size:10px;">▼</span>
+      <span style="font-weight:700; color:#4527a0; font-size:10px; letter-spacing:.4px;">VECTORS / PRIMERS</span>
+      <span style="background:#ede7f6; color:#5e35b1; border-radius:9px; padding:1px 7px; font-size:10px; font-weight:700;">3</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:8px; background:#f3edfb; border:1px solid #d1c4e9;">
+      <span style="display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:7px; background:#eee; font-size:14px;">⚫</span>
+      <span style="display:flex; flex-direction:column; flex:1;">
+        <span style="font-weight:600; color:#222; font-size:12px;">Node 1</span>
+        <span style="font-size:10px; color:#999;">412 B · 📌 pinned</span>
+      </span>
+      <span style="color:#b39ddb; font-size:12px;">ⓘ</span>
+    </div>
+  </div>
+  <div style="border-top:1px solid #e0d7f0; padding:7px 12px; background:#faf7ff; font-size:10px; color:#333;">
+    <div style="display:flex; justify-content:space-between;"><span style="color:#888;">🧩 OTOM application</span><b>866 KB</b></div>
+    <div style="display:flex; justify-content:space-between;"><span style="color:#888;">📦 All assets</span><b>21 KB</b></div>
+    <div style="display:flex; justify-content:space-between; border-top:1px solid #e0d7f0; margin-top:4px; padding-top:4px;"><b style="color:#4527a0;">Σ App + Assets</b><b style="color:#4527a0;">887 KB</b></div>
+  </div>
+</div>`) + `
+<ul>
+<li><b>FLUSH</b> reclaims caches · <b>☠ PURGE</b> is a deep reclamation, and <b>AUTO</b> runs it on a timer when you are idle.</li>
+</ul>` },
+
+        { id:'save', t:'Saving & Snapshots', h:`
+<h3>Three ways to keep your work</h3>
+<ul>
+<li><b>Save Engine</b> — full state to a named .json file.</li>
+<li><b>⚡ Snapshot</b> — a panic save. Captures <b>everything</b>: canvas, connections, notations, assets, folders, rulers, open panels, their positions and opacities, calculator history, scratch pad pages, stopwatch, alarms.</li>
+<li><b>⏱ Auto</b> — snapshots on a timer: 5, 10, 20, 40 or 60 minutes. Silent and unattended; it waits until you are idle so it never interrupts a drag.</li>
+</ul>
+<h3>Restoring</h3>
+<p><b>⤺ Load Snapshot</b> rebuilds the session and shows a full inventory of what came back, grouped by canvas, state, library, and windows. <b>Hover any row</b> for detail. It waits for you — press <b>Continue</b> or <b>Esc</b> when you are ready.</p>
+<p style="color:#78909C;">If your browser is set to ask where to save each file, downloads will prompt. Turn that off in your browser's download settings and snapshots land silently.</p>` },
+
+        { id:'keys', t:'Keys & Gestures', h:`
+<h3>Keyboard</h3>
+` + hRow(
+  hKey('Alt') + ' + click &nbsp;&nbsp;' + hKey('Ctrl') + hKey('Z') + ' &nbsp;&nbsp;' +
+  hKey('Shift') + hKey('G') + ' &nbsp;&nbsp;' + hKey('H') + hKey('P') + hKey('B') + hKey('N') +
+  ' &nbsp;&nbsp;' + hKey('←') + hKey('→') + hKey('↑') + hKey('↓') + ' &nbsp;&nbsp;' + hKey('Esc') + hKey('Del')
+) + `
+<table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+<tr><td style="padding:4px 0; color:#26C6DA; width:150px;"><b>Left Alt + click</b></td><td>Radial menu at cursor</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Ctrl+Z / Ctrl+Shift+Z</b></td><td>Undo / redo</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Arrows</b></td><td>Nudge selection (Shift = 10×)</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Shift+G</b></td><td>Ad hoc group the selection</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>H</b></td><td>Hide element or hovered line</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>P</b></td><td>Pin / unpin</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>B</b></td><td>Break a fusion bond</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>N</b></td><td>Open the selected element's dialogue</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Delete</b></td><td>Remove selection</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Esc</b></td><td>Clear selection / cancel mode</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>F11</b></td><td>Fullscreen</td></tr>
+</table>
+<h3>Mouse</h3>
+<ul>
+<li><b>Double-click canvas</b> — new vector · <b>Double-click element</b> — its dialogue</li>
+<li><b>Middle-click</b> — canvas notation</li>
+<li><b>Ctrl+drag</b> — duplicate · <b>Shift+drag corner</b> — resize</li>
+<li><b>Shift+click ruler</b> — hide · <b>right-click ruler</b> — delete</li>
+</ul>` },
+
+        { id:'trouble', t:'If Something Looks Wrong', h:`
+<h3>Quick answers</h3>
+<ul>
+<li><b>An element vanished</b> — it is probably hidden. Turn on <b>Hidden Radar</b> or raise <b>Hidden Outline</b>. The Asset Manager lists every element whether visible or not.</li>
+<li><b>A ruler vanished</b> — raise the <b>👁 Hidden</b> opacity slider.</li>
+<li><b>Cannot drag something</b> — it may be <b>pinned</b> (press P) or a ruler may be <b>locked</b>.</li>
+<li><b>Cannot lasso something</b> — hidden elements are deliberately excluded.</li>
+<li><b>The engine feels heavy</b> — open <b>Pulse</b> and see which dot is hot, then <b>Perf</b> for the detail. <b>PURGE</b> reclaims memory.</li>
+<li><b>A panel is in the wrong place</b> — switching between horizontal and vertical UI re-anchors everything; panels you popped out stay where you put them.</li>
+</ul>
+<h3>The golden rule</h3>
+<p>The Asset Manager knows everything the engine holds, down to the byte. If you cannot see something, ask it there first.</p>` }
+        ];
+
+        var helpPinned = false, helpAnchor = { x: 0, y: 0, w: 0, h: 0 };
+
+        // Pin anchors the manual into CANVAS space: it moves and scales with the camera,
+        // so it can sit beside the work it describes instead of floating over it.
+        function toggleHelpPin() {
+            const p = document.getElementById('helpPanel');
+            const b = document.getElementById('helpPinBtn');
+            const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
+            helpPinned = !helpPinned;
+            if (helpPinned) {
+                helpAnchor = {
+                    x: (r.left - rect.left - camera.x) / camera.zoom,
+                    y: (r.top - rect.top - camera.y) / camera.zoom,
+                    w: r.width / camera.zoom,
+                    h: r.height / camera.zoom
+                };
+                p.style.transform = 'none';
+                p.style.resize = 'none';
+                b.textContent = '📌 Unpin';
+                b.style.background = '#FFB300'; b.style.color = '#000';
+                helpSyncPinned();
+            } else {
+                p.style.resize = 'both';
+                p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
+                p.style.width = helpAnchor.w ? (helpAnchor.w * camera.zoom) + 'px' : '720px';
+                p.style.height = helpAnchor.h ? (helpAnchor.h * camera.zoom) + 'px' : '74vh';
+                b.textContent = '📌 Pin';
+                b.style.background = 'rgba(38,198,218,.14)'; b.style.color = '#26C6DA';
+            }
+        }
+
+        function helpSyncPinned() {
+            if (!helpPinned) return;
+            const p = document.getElementById('helpPanel');
+            const rect = canvas.getBoundingClientRect();
+            p.style.left = (rect.left + camera.x + helpAnchor.x * camera.zoom) + 'px';
+            p.style.top = (rect.top + camera.y + helpAnchor.y * camera.zoom) + 'px';
+            p.style.width = (helpAnchor.w * camera.zoom) + 'px';
+            p.style.height = (helpAnchor.h * camera.zoom) + 'px';
+        }
+
+        function toggleHelp() {
+            helpOpen = !helpOpen;
+            const p = document.getElementById('helpPanel');
+            p.style.display = helpOpen ? 'flex' : 'none';
+            document.getElementById('helpBtn').style.background = helpOpen ? '#00838F' : '#37474F';
+            if (helpOpen && !p.dataset.built) { buildHelp(); p.dataset.built = '1'; }
+        }
+
+        // Copies a manual section — its markup, SVG diagrams, button replicas and all —
+        // into a brand new Scratch Pad page. The pad stores rich HTML, so the graphics
+        // survive intact rather than degrading to plain text.
+        // ═══════════════════════════════════════════════════════════════════
+        // 📄 DOC PANELS — a manual page dropped onto the canvas as a real object.
+        // Draggable, pinnable into canvas space, dimmable, and counted by the Asset
+        // Manager like everything else the engine holds.
+        // ═══════════════════════════════════════════════════════════════════
+        var docPanels = [];   // { el, title, html, pinned, anchor, bytes }
+
+        function syncDocPanels() {
+            if (!docPanels.some(d => d.pinned)) return;
+            const rect = canvas.getBoundingClientRect();
+            docPanels.forEach(d => {
+                if (!d.pinned) return;
+                const a = d.anchor;
+                d.el.style.left = (rect.left + camera.x + a.x * camera.zoom) + 'px';
+                d.el.style.top = (rect.top + camera.y + a.y * camera.zoom) + 'px';
+                d.el.style.width = (a.w * camera.zoom) + 'px';
+                d.el.style.height = (a.h * camera.zoom) + 'px';
+            });
+        }
+
+        function newDocPanel(title, html) {
+            const n = docPanels.length;
+            const el = document.createElement('div');
+            el.style.cssText = 'position:fixed; left:' + (140 + n * 26) + 'px; top:' + Math.min(150 + n * 26, window.innerHeight - 260) + 'px; ' +
+                'width:460px; height:420px; min-width:240px; min-height:160px; resize:both; overflow:hidden; z-index:1520; ' +
+                'background:#f4ecdc; border:1px solid #b6a894; border-radius:12px; box-shadow:0 16px 44px rgba(0,0,0,.42); ' +
+                'display:flex; flex-direction:column; font-family:Arial,sans-serif;';
+            el.innerHTML =
+                '<div class="docHead" style="display:flex; align-items:center; gap:6px; padding:7px 10px; background:linear-gradient(180deg,#3a332c,#2b2622); color:#e8dfd2; cursor:move; user-select:none;">' +
+                  '<span style="font:700 10px Arial; letter-spacing:1.6px; color:#d7c9b0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">📄 ' + title.replace(/</g, '&lt;') + '</span>' +
+                  '<button class="docPin" title="Pin to the canvas" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(215,201,176,.14); color:#d7c9b0; border-radius:5px;">📌 Pin</button>' +
+                  '<span style="font-size:9px; letter-spacing:1px; color:#8d8172;">OP</span>' +
+                  '<input class="docOp" type="range" min="20" max="100" value="100" style="width:48px;">' +
+                  '<button class="docClose" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(215,201,176,.14); color:#d7c9b0; border-radius:5px;">✕</button>' +
+                '</div>' +
+                '<div class="docBody" style="flex:1 1 auto; overflow:auto; padding:16px 20px; color:#2f2a24; font:13px/1.7 Arial;">' + html + '</div>';
+            document.body.appendChild(el);
+
+            let bytes = 0;
+            try { bytes = new Blob([html]).size; } catch (e) { bytes = html.length; }
+            const rec = { el: el, title: title, html: html, pinned: false, bytes: bytes,
+                          anchor: { x: 0, y: 0, w: 460, h: 420 }, free: { w: 460, h: 420 } };
+            docPanels.push(rec);
+
+            const q = s => el.querySelector(s);
+            q('.docOp').oninput = ev => { el.style.opacity = ev.target.value / 100; };
+            q('.docClose').onclick = () => {
+                el.remove();
+                docPanels = docPanels.filter(x => x !== rec);
+                if (document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser();
+            };
+
+            const pin = q('.docPin');
+            pin.onclick = () => {
+                const rect = canvas.getBoundingClientRect(), r = el.getBoundingClientRect();
+                rec.pinned = !rec.pinned;
+                if (rec.pinned) {
+                    rec.free = { w: r.width, h: r.height };
+                    rec.anchor = { x: (r.left - rect.left - camera.x) / camera.zoom,
+                                   y: (r.top - rect.top - camera.y) / camera.zoom,
+                                   w: r.width / camera.zoom, h: r.height / camera.zoom };
+                    el.style.resize = 'none';
+                    pin.textContent = '📌 Unpin'; pin.style.background = '#FFB300'; pin.style.color = '#000';
+                    syncDocPanels();
+                } else {
+                    el.style.resize = 'both';
+                    el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
+                    el.style.width = rec.free.w + 'px'; el.style.height = rec.free.h + 'px';
+                    pin.textContent = '📌 Pin'; pin.style.background = 'rgba(215,201,176,.14)'; pin.style.color = '#d7c9b0';
+                }
+                if (document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser();
+            };
+
+            // drag by header while unpinned
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                el.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 120)) + 'px';
+                el.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 44)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            q('.docHead').addEventListener('pointerdown', ev => {
+                if (rec.pinned) return;
+                if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT') return;
+                const r = el.getBoundingClientRect();
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+
+            if (document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser();
+            return rec;
+        }
+
+        function helpSectionToPad(i, btn) {
+            const sec = HELP_DOC[i];
+            if (!sec) return;
+            // build the page: a heading, then the section's own rendered markup
+            const stamp = new Date().toLocaleString();
+            const html =
+                '<div style="border-left:3px solid #00838F; padding:2px 0 2px 12px; margin:0 0 12px;">' +
+                '<div style="font:700 16px Courier New,monospace; color:#2f2a24;">' + sec.t + '</div>' +
+                '<div style="font:11px Courier New,monospace; color:#7b6a52;">OTOM Operator Manual · copied ' + stamp + '</div>' +
+                '</div>' + sec.h +
+                '<div style="margin:14px 0; border-top:1px dashed #b6a894;"></div>';
+
+            // a NEW page every time, named for the section
+            let name = sec.t, n = 2;
+            while (padPages.some(p => p.name === name)) name = sec.t + ' ' + (n++);
+            if (typeof padOpen !== 'undefined' && padOpen && document.getElementById('padPage')) {
+                padPages[padActive].html = document.getElementById('padPage').innerHTML;
+            }
+            padPages.push({ id: Date.now(), name: name, html: html });
+            padActive = padPages.length - 1;
+
+            if (typeof padOpen !== 'undefined' && !padOpen) togglePad();
+            else if (typeof padLoadPage === 'function') padLoadPage();
+
+            if (btn) {
+                const old2 = btn.textContent;
+                btn.textContent = '✓ Sent to "' + name + '"';
+                btn.style.background = 'linear-gradient(180deg,#69F0AE,#00A86B)';
+                setTimeout(() => { btn.textContent = old2; btn.style.background = 'linear-gradient(180deg,#26C6DA,#00838F)'; }, 1800);
+            }
+        }
+
+        function buildHelp() {
+            const nav = document.getElementById('helpNav');
+            const body = document.getElementById('helpBody');
+            const style = '<style>#helpBody h3{color:#26C6DA;font:700 12px Arial;letter-spacing:1.4px;margin:20px 0 8px;text-transform:uppercase}' +
+                '#helpBody h3:first-child{margin-top:0}#helpBody p{margin:0 0 10px}#helpBody ul{margin:0 0 12px;padding-left:20px}' +
+                '#helpBody li{margin:5px 0}#helpBody b{color:#eceff1}</style>';
+            const show = (i) => {
+                body.innerHTML = style + '<div style="font:700 17px Arial;color:#eceff1;margin-bottom:14px;">' + HELP_DOC[i].t + '</div>' + HELP_DOC[i].h +
+                    '<div style="margin:26px 0 6px; padding-top:16px; border-top:1px solid #1b2530; display:flex; align-items:center; gap:12px;">' +
+                    '<button id="helpToPad" style="margin:0; padding:9px 16px; font:700 12px Arial; letter-spacing:.4px; ' +
+                    'background:linear-gradient(180deg,#26C6DA,#00838F); color:#04231d; border-radius:8px; cursor:pointer;">' +
+                    '✎ Send this page to the Scratch Pad</button>' +
+                    '<span style="color:#546e7a; font:11px Arial;">Copies this section — text and graphics — into a new pad page.</span></div>' +
+                    '<div style="margin:0 0 10px; display:flex; align-items:center; gap:12px;">' +
+                    '<button id="helpToCanvas" style="margin:0; padding:9px 16px; font:700 12px Arial; letter-spacing:.4px; ' +
+                    'background:linear-gradient(180deg,#FFB74D,#EF6C00); color:#3a2408; border-radius:8px; cursor:pointer;">' +
+                    '📄 Drop this page on the canvas</button>' +
+                    '<span style="color:#546e7a; font:11px Arial;">Places it as a real object — draggable, pinnable, dimmable, counted.</span></div>';
+                body.scrollTop = 0;
+                // wire the send button for THIS section
+                const sendBtn = body.querySelector('#helpToPad');
+                if (sendBtn) sendBtn.onclick = () => helpSectionToPad(i, sendBtn);
+                const canvasBtn = body.querySelector('#helpToCanvas');
+                if (canvasBtn) canvasBtn.onclick = () => {
+                    const sec = HELP_DOC[i];
+                    newDocPanel(sec.t, '<div style="font:700 15px Arial; color:#2f2a24; margin-bottom:10px; padding-bottom:8px; border-bottom:2px solid #c0392b;">' +
+                        sec.t + '</div>' + sec.h);
+                    const old3 = canvasBtn.textContent;
+                    canvasBtn.textContent = '✓ Placed on canvas';
+                    canvasBtn.style.background = 'linear-gradient(180deg,#A5D6A7,#2E7D32)';
+                    setTimeout(() => { canvasBtn.textContent = old3; canvasBtn.style.background = 'linear-gradient(180deg,#FFB74D,#EF6C00)'; }, 1800);
+                };
+                Array.from(nav.children).forEach((c, j) => {
+                    c.style.background = j === i ? 'rgba(38,198,218,.12)' : 'transparent';
+                    c.style.color = j === i ? '#26C6DA' : '#78909C';
+                    c.style.borderLeft = (j === i ? '3px solid #26C6DA' : '3px solid transparent');
+                });
+            };
+            nav.innerHTML = '';
+            HELP_DOC.forEach((s, i) => {
+                const d = document.createElement('div');
+                d.textContent = s.t;
+                d.style.cssText = 'padding:9px 14px; cursor:pointer; font:12px Arial; color:#78909C; border-left:3px solid transparent; transition:background .12s;';
+                d.onmouseenter = () => { if (d.style.color !== 'rgb(38, 198, 218)') d.style.background = 'rgba(255,255,255,.03)'; };
+                d.onmouseleave = () => { const on = d.style.borderLeftColor === 'rgb(38, 198, 218)'; d.style.background = on ? 'rgba(38,198,218,.12)' : 'transparent'; };
+                d.onclick = () => show(i);
+                nav.appendChild(d);
+            });
+            show(0);
+
+            // search jumps to the first section that mentions the term and marks hits
+            document.getElementById('helpSearch').addEventListener('input', function () {
+                const q = this.value.trim().toLowerCase();
+                if (!q) { show(0); return; }
+                const i = HELP_DOC.findIndex(s => (s.t + ' ' + s.h).toLowerCase().indexOf(q) >= 0);
+                if (i < 0) { body.innerHTML = '<div style="color:#546e7a; padding:20px 0;">Nothing found for “' + q.replace(/</g, '&lt;') + '”.</div>'; return; }
+                show(i);
+                try {
+                    const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+                    body.innerHTML = body.innerHTML.replace(/(>[^<]*)/g, m => m.replace(re, '<mark style="background:#26C6DA;color:#04231d;">$1</mark>'));
+                } catch (e) {}
+            });
+
+            // drag by header
+            const p = document.getElementById('helpPanel');
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                p.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 160)) + 'px';
+                p.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 50)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            document.getElementById('helpHead').addEventListener('pointerdown', ev => {
+                if (helpPinned) return;
+                if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'INPUT') return;
+                const r = p.getBoundingClientRect();
+                p.style.transform = 'none'; p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+        }
+
         function addFormula() {            const tEl = document.getElementById('formTitle');
             const nEl = document.getElementById('formName');
             const noEl = document.getElementById('formNotes');
@@ -11019,6 +11664,32 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         totalBytes += bBytes;
                     });
                 }
+            }
+
+            // 📄 Doc panels — manual pages living on the canvas as real objects
+            if (typeof docPanels !== 'undefined' && docPanels.length) {
+                section('Doc Panels', docPanels.length);
+                let docBytes = 0;
+                docPanels.forEach((d, di) => {
+                    const r4 = d.el.getBoundingClientRect();
+                    const surf = Math.round(r4.width * r4.height * 4);
+                    const total = (d.bytes || 0) + surf;
+                    docBytes += total;
+                    const P4 = [
+                        ['Source', 'Operator Manual'],
+                        ['Section', d.title],
+                        ['Content', formatBytes(d.bytes || 0)],
+                        ['Surface buffer', formatBytes(surf)],
+                        ['Size', Math.round(r4.width) + ' × ' + Math.round(r4.height) + ' px'],
+                        ['Opacity', d.el.style.opacity ? Math.round(parseFloat(d.el.style.opacity) * 100) + '%' : '100%'],
+                        ['Pinned', d.pinned ? 'yes — anchored to canvas' : 'no'],
+                        ['Memory', formatBytes(total)]
+                    ];
+                    row(chip('📄', '#efe7d8'), d.title,
+                        'manual page · ' + formatBytes(total) + (d.pinned ? ' · 📌 pinned' : ''),
+                        d.title, P4, () => { d.el.style.outline = '3px solid #FFB300'; setTimeout(() => d.el.style.outline = 'none', 900); }, '#EF6C00');
+                });
+                totalBytes += docBytes;
             }
 
             // ▶ Media players — every open player reports its own footprint
