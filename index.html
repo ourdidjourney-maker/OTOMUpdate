@@ -6147,13 +6147,20 @@ ctx.fillText(conn.number.toString(), midX, midY);
             link.download = (auto ? 'OTOM_autosnap_' : 'OTOM_snapshot_') + stamp + '.json';
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            // brief non-blocking flash so it's clear it fired, without slowing the escape
+            // A MANUAL snapshot earns a banner: the operator asked for it and wants
+            // confirmation. An AUTO snapshot must not steal attention — it gets a small
+            // corner pip in the periphery instead, and fades fast.
             const flash = document.createElement('div');
-            flash.textContent = auto ? '⏱ Auto-snapshot saved' : '⚡ Snapshot saved';
-            flash.style.cssText = 'position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:200000; background:#2E7D32; color:#fff; font:700 13px Arial; padding:8px 16px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.35); pointer-events:none; opacity:0; transition:opacity .15s;';
+            if (auto) {
+                flash.innerHTML = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#69F0AE;box-shadow:0 0 7px #69F0AE;margin-right:6px;vertical-align:middle;"></span>auto-saved';
+                flash.style.cssText = 'position:fixed; right:14px; bottom:12px; z-index:200000; background:rgba(20,32,26,.82); color:#B9F6CA; font:600 10px Arial; letter-spacing:.6px; padding:4px 10px; border-radius:11px; pointer-events:none; opacity:0; transition:opacity .35s;';
+            } else {
+                flash.textContent = '⚡ Snapshot saved';
+                flash.style.cssText = 'position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:200000; background:#2E7D32; color:#fff; font:700 13px Arial; padding:8px 16px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.35); pointer-events:none; opacity:0; transition:opacity .15s;';
+            }
             document.body.appendChild(flash);
             requestAnimationFrame(() => flash.style.opacity = '1');
-            setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 200); }, 1400);
+            setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 400); }, auto ? 900 : 1400);
         }
         function loadSnapshot() { document.getElementById('snapshotInput').click(); }
 
@@ -6351,50 +6358,247 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (s.calc && s.calc.open) wins.push('Calculator' + (s.calc.history && s.calc.history.length ? ' (' + s.calc.history.length + ' calcs)' : ''));
             if (Array.isArray(s.media) && s.media.length) wins.push(s.media.length + ' Media Player' + (s.media.length > 1 ? 's' : ''));
 
-            const steps = [
-                { label: 'Elements', n: nImg, ico: '◆' },
-                { label: 'Connections', n: nConn, ico: '⛓' },
-                { label: 'Canvas Notations', n: nNote, ico: '💭' },
-                { label: 'Notes Reader entries', n: nMsg, ico: '📖' },
-                { label: 'Assets', n: nAsset, ico: '▤' }
-            ].filter(st => st.n > 0);
-            wins.forEach(w => steps.push({ label: w, n: 1, ico: '🪟', win: true }));
+            // Break the payload down by what it actually contains, so the operator can
+            // SEE what came back rather than trusting a progress bar.
+            const imgs = data.images || [];
+            const kindOf = e => e.kind || (e.isDot ? 'dot' : 'image');
+            const tally = {};
+            imgs.forEach(e => {
+                const k = e.isMesh ? 'mesh' : kindOf(e);
+                tally[k] = (tally[k] || 0) + 1;
+            });
+            const KLBL = { dot: 'Vectors', image: 'Block elements', line: 'Datum lines', rect: 'Squares',
+                           circle: 'Circles', triangle: 'Triangles', arrow: 'Arrows', text: 'Text',
+                           group: 'Grouped assets', mesh: 'Meshes', cartridge: 'Data cartridges', port: 'Ports' };
+            const KICO = { dot: '⚫', image: '🖼', line: '─', rect: '▭', circle: '◯', triangle: '△',
+                           arrow: '➤', text: 'T', group: '⊞', mesh: '◈', cartridge: '▤', port: '⎔' };
+
+            const steps = [];
+            const fmtB = b => { if (!b) return '0 B'; const u = ['B','KB','MB','GB'];
+                const i2 = Math.floor(Math.log(b) / Math.log(1024));
+                return (b / Math.pow(1024, i2)).toFixed(i2 ? 1 : 0) + ' ' + u[i2]; };
+            const bytesOf = o => { try { return JSON.stringify(o).length; } catch (e) { return 0; } };
+
+            // Per-kind rows carry the actual members, so hovering can report them.
+            Object.keys(tally).sort().forEach(k => {
+                const members = imgs.filter(e => (e.isMesh ? 'mesh' : kindOf(e)) === k);
+                let by = 0; members.forEach(m => by += bytesOf(m));
+                const named = members.filter(m => m.name);
+                const rows = [
+                    ['Count', members.length],
+                    ['Named', named.length + ' of ' + members.length],
+                    ['Hidden', members.filter(m => m.hidden).length],
+                    ['Pinned', members.filter(m => m.pinned).length],
+                    ['With notations', members.filter(m => m.notations).length],
+                    ['Priority flagged', members.filter(m => m.priority).length],
+                    ['Memory', fmtB(by)]
+                ];
+                if (named.length) rows.push(['Names', named.slice(0, 8).map(m => m.name).join(', ') + (named.length > 8 ? ' …' : '')]);
+                const ds = members.map(m => m.numDesignation).filter(Boolean);
+                if (ds.length) rows.push(['Designations', ds.slice(0, 10).map(d => '#' + d).join(' ') + (ds.length > 10 ? ' …' : '')]);
+                steps.push({ label: KLBL[k] || k, n: tally[k], ico: KICO[k] || '•', grp: 'CANVAS', meta: rows });
+            });
+            const nGuides = (data.guides || []).length;
+            const nForm = (data.formulaLibrary || []).length;
+            const nHidden = imgs.filter(e => e.hidden).length;
+            const nPinned = imgs.filter(e => e.pinned).length;
+            const nNotes = imgs.filter(e => e.notations).length;
+            const nPri = imgs.filter(e => e.priority).length;
+            if (nConn) {
+                const cn = data.connections || [];
+                const stepsN = [...new Set(cn.map(c => c.number))].length;
+                const sim = cn.filter(c => c.simultaneous).length;
+                steps.push({ label: 'Logic lines', n: nConn, ico: '⛓', grp: 'CANVAS', meta: [
+                    ['Lines', nConn], ['Distinct steps', stepsN],
+                    ['Simultaneous', sim], ['Curved', cn.filter(c => c.curved).length],
+                    ['Hidden', cn.filter(c => c.hidden).length],
+                    ['Port links', cn.filter(c => c.portLink).length]
+                ]});
+            }
+            if (nGuides) {
+                const gs = data.guides || [];
+                steps.push({ label: 'Rulers', n: nGuides, ico: '↔', grp: 'CANVAS', meta: [
+                    ['Horizontal', gs.filter(g => g.axis === 'h').length],
+                    ['Vertical', gs.filter(g => g.axis === 'v').length],
+                    ['Locked', gs.filter(g => g.locked).length],
+                    ['Hidden', gs.filter(g => g.hidden).length],
+                    ['Positions', gs.slice(0, 8).map(g => g.axis + Math.round(g.pos)).join(', ') + (gs.length > 8 ? ' …' : '')]
+                ]});
+            }
+            if (nNote) {
+                const ns = data.canvasNotes || [];
+                steps.push({ label: 'Canvas notations', n: nNote, ico: '💭', grp: 'CANVAS', meta: [
+                    ['Notations', nNote],
+                    ['First', (ns[0] && ns[0].text ? ns[0].text.slice(0, 60) : '—')],
+                    ['Latest', (ns[ns.length - 1] && ns[ns.length - 1].text ? ns[ns.length - 1].text.slice(0, 60) : '—')],
+                    ['Memory', fmtB(bytesOf(ns))]
+                ]});
+            }
+
+            if (nHidden) steps.push({ label: 'Hidden elements', n: nHidden, ico: '🙈', grp: 'STATE', meta: [
+                ['Hidden', nHidden + ' of ' + totalEls],
+                ['At 70%', imgs.filter(e => e.hidden && (e.hiddenLevel || 0) === 0).length],
+                ['At 15%', imgs.filter(e => e.hidden && e.hiddenLevel === 1).length],
+                ['Fully off', imgs.filter(e => e.hidden && e.hiddenLevel === 2).length],
+                ['Names', imgs.filter(e => e.hidden && e.name).slice(0, 6).map(e => e.name).join(', ') || '—']
+            ]});
+            if (nPinned) steps.push({ label: 'Pinned elements', n: nPinned, ico: '📌', grp: 'STATE', meta: [
+                ['Pinned', nPinned], ['Cannot be dragged', 'until unpinned'],
+                ['Names', imgs.filter(e => e.pinned && e.name).slice(0, 6).map(e => e.name).join(', ') || '—']
+            ]});
+            if (nNotes) steps.push({ label: 'Carrying notations', n: nNotes, ico: '✎', grp: 'STATE', meta: [
+                ['Elements', nNotes],
+                ['Sample', (imgs.find(e => e.notations) || {}).notations ? imgs.find(e => e.notations).notations.slice(0, 70) : '—'],
+                ['With agent', imgs.filter(e => e.agent).length]
+            ]});
+            if (nPri) steps.push({ label: 'Priority flagged', n: nPri, ico: '⚑', grp: 'STATE', meta: [
+                ['High', imgs.filter(e => e.priority === 'high').length],
+                ['Medium', imgs.filter(e => e.priority === 'medium').length],
+                ['Low', imgs.filter(e => e.priority === 'low').length],
+                ['Names', imgs.filter(e => e.priority && e.name).slice(0, 6).map(e => e.name).join(', ') || '—']
+            ]});
+
+            if (nAsset) {
+                const as = data.savedAssets || [];
+                steps.push({ label: 'Saved assets', n: nAsset, ico: '▤', grp: 'LIBRARY', meta: [
+                    ['Assets', nAsset],
+                    ['Total parts', as.reduce((a, x) => a + ((x.elements || []).length), 0)],
+                    ['Welded', as.filter(x => x.welded).length],
+                    ['Filed in folders', as.filter(x => x.folder).length],
+                    ['Names', as.slice(0, 8).map(x => x.name).join(', ') + (as.length > 8 ? ' …' : '')],
+                    ['Memory', fmtB(bytesOf(as))]
+                ]});
+            }
+            if ((data.assetFolders || []).length) steps.push({ label: 'Asset folders', n: data.assetFolders.length, ico: '📁', grp: 'LIBRARY' });
+            if (nMsg) {
+                const ms = data.engineMessages || [];
+                steps.push({ label: 'Engine messages', n: nMsg, ico: '📖', grp: 'LIBRARY', meta: [
+                    ['Messages', nMsg],
+                    ['High priority', ms.filter(m => m.priority === 'high').length],
+                    ['With agent', ms.filter(m => m.agent).length],
+                    ['Latest', (ms[ms.length - 1] || {}).text ? ms[ms.length - 1].text.slice(0, 70) : '—']
+                ]});
+            }
+            if (nForm) {
+                const fs = data.formulaLibrary || [];
+                steps.push({ label: 'Formulas', n: nForm, ico: 'ƒ', grp: 'LIBRARY', meta: [
+                    ['Formulas', nForm],
+                    ['Titles', fs.slice(0, 6).map(x => x.title || '(untitled)').join(', ')],
+                    ['Latest', (fs[fs.length - 1] || {}).text || '—']
+                ]});
+            }
+            if (data.background) steps.push({ label: 'Background image', n: 1, ico: '🌄', grp: 'LIBRARY' });
+
+            wins.forEach(w => steps.push({ label: w, n: 1, ico: '🪟', win: true, grp: 'WINDOWS' }));
+
+            const totalEls = imgs.length;
 
             const ov = document.createElement('div');
             ov.style.cssText = 'position:fixed; inset:0; z-index:300000; display:flex; align-items:center; justify-content:center; background:rgba(8,11,16,0.86); backdrop-filter:blur(3px); opacity:0; transition:opacity .3s;';
             const card = document.createElement('div');
             card.style.cssText = 'width:440px; max-width:92vw; background:linear-gradient(160deg,#161d24,#0d1117); border:1px solid #263238; border-radius:16px; box-shadow:0 24px 70px rgba(0,0,0,.6); padding:26px 28px; font-family:Arial,sans-serif; color:#eceff1;';
-            card.innerHTML = '<div style="font-weight:800; font-size:18px; letter-spacing:.3px; display:flex; align-items:center; gap:10px; margin-bottom:4px;"><span style="font-size:22px;">⚡</span> Restoring Snapshot</div>' +
-                '<div style="color:#78909C; font-size:12px; margin-bottom:18px;">Rebuilding your session…</div>' +
-                '<div id="lrBar" style="height:6px; background:#1c2530; border-radius:6px; overflow:hidden; margin-bottom:18px;"><div id="lrFill" style="height:100%; width:0%; background:linear-gradient(90deg,#00897B,#26C6DA); transition:width .35s cubic-bezier(.4,.0,.2,1);"></div></div>' +
-                '<div id="lrList" style="display:flex; flex-direction:column; gap:9px; max-height:44vh; overflow:auto;"></div>';
+            const when = data.timestamp ? new Date(data.timestamp).toLocaleString() : 'unknown date';
+            card.innerHTML = '<div style="font-weight:800; font-size:18px; letter-spacing:.3px; display:flex; align-items:center; gap:10px; margin-bottom:3px;"><span style="font-size:22px;">⚡</span> Restoring Snapshot</div>' +
+                '<div style="color:#78909C; font-size:12px; margin-bottom:14px;">Taken ' + when + ' · ' + totalEls + ' elements</div>' +
+                '<div id="lrBar" style="height:6px; background:#1c2530; border-radius:6px; overflow:hidden; margin-bottom:14px;"><div id="lrFill" style="height:100%; width:0%; background:linear-gradient(90deg,#00897B,#26C6DA); transition:width .35s cubic-bezier(.4,.0,.2,1);"></div></div>' +
+                '<div id="lrList" style="display:flex; flex-direction:column; gap:6px; max-height:46vh; overflow:auto; padding-right:4px;"></div>' +
+                '<div id="lrFoot" style="display:none; margin-top:16px; padding-top:14px; border-top:1px solid #1f2a33; align-items:center; gap:12px;">' +
+                  '<span id="lrSummary" style="flex:1; color:#78909C; font-size:11px; line-height:1.5;"></span>' +
+                  '<button id="lrGo" style="margin:0; padding:9px 22px; font:700 13px Arial; background:linear-gradient(180deg,#26C6DA,#00897B); color:#04231d; border-radius:9px; cursor:pointer;">Continue</button>' +
+                '</div>';
             ov.appendChild(card); document.body.appendChild(ov);
+            // hover card lives above the overlay so it is never clipped by the list
+            const lrTip = document.createElement('div');
+            lrTip.style.cssText = 'position:fixed; display:none; z-index:300001; pointer-events:none; max-width:340px; ' +
+                'background:#0d1117; border:1px solid #26343d; border-left:3px solid #26C6DA; border-radius:10px; ' +
+                'box-shadow:0 14px 40px rgba(0,0,0,.65); padding:11px 13px; font:12px Arial; color:#eceff1;';
+            document.body.appendChild(lrTip);
+            const lrTipMove = (x, y) => {
+                let lx = x + 18, ly = y + 18;
+                if (lx + lrTip.offsetWidth > window.innerWidth - 10) lx = x - lrTip.offsetWidth - 18;
+                if (ly + lrTip.offsetHeight > window.innerHeight - 10) ly = Math.max(10, window.innerHeight - lrTip.offsetHeight - 10);
+                lrTip.style.left = Math.max(10, lx) + 'px';
+                lrTip.style.top = ly + 'px';
+            };
             requestAnimationFrame(() => ov.style.opacity = '1');
             const list = card.querySelector('#lrList');
             const fill = card.querySelector('#lrFill');
 
-            let i = 0;
+            let i = 0, _lastGrp = '';
             const total = Math.max(1, steps.length);
             const tick = () => {
                 if (i >= steps.length) {
                     fill.style.width = '100%';
-                    setTimeout(() => {
+                    // The reveal no longer evaporates. It reports what came back and
+                    // waits — the operator decides when to return to the canvas.
+                    const foot = card.querySelector('#lrFoot');
+                    const sum = card.querySelector('#lrSummary');
+                    const bits = [];
+                    if (totalEls) bits.push(totalEls + ' elements');
+                    if (nConn) bits.push(nConn + ' logic lines');
+                    if (nAsset) bits.push(nAsset + ' assets');
+                    if (wins.length) bits.push(wins.length + ' window' + (wins.length > 1 ? 's' : ''));
+                    sum.innerHTML = '<span style="color:#26C6DA; font-weight:700;">✓ Session restored</span><br>' +
+                        (bits.join(' · ') || 'Empty snapshot') +
+                        '<br><span style="color:#37474F;">Hover any row for detail · Esc or Continue to return</span>';
+                    foot.style.display = 'flex';
+                    const go = card.querySelector('#lrGo');
+                    const close = () => {
+                        window.removeEventListener('keydown', esc);
+                        lrTip.remove();
                         ov.style.opacity = '0';
                         setTimeout(() => { ov.remove(); if (done) done(); }, 320);
-                    }, 420);
+                    };
+                    const esc = (ev) => { if (ev.key === 'Escape' || ev.key === 'Enter') { ev.preventDefault(); close(); } };
+                    go.onclick = close;
+                    window.addEventListener('keydown', esc);
+                    go.focus();
                     return;
                 }
                 const st = steps[i];
+                if (st.grp && st.grp !== _lastGrp) {
+                    _lastGrp = st.grp;
+                    const hd = document.createElement('div');
+                    hd.textContent = st.grp;
+                    hd.style.cssText = 'color:#455a64; font:700 9px Arial; letter-spacing:1.6px; margin:8px 0 2px;';
+                    list.appendChild(hd);
+                }
                 const row = document.createElement('div');
-                row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; background:#131a21; border:1px solid #1f2a33; border-radius:9px; opacity:0; transform:translateY(6px); transition:opacity .28s, transform .28s;';
-                row.innerHTML = '<span style="display:flex; align-items:center; gap:10px; font-size:13px;"><span style="font-size:16px;">' + st.ico + '</span>' + st.label + '</span>' +
+                row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 12px; background:#131a21; border:1px solid #1f2a33; border-radius:8px; opacity:0; transform:translateY(6px); transition:opacity .24s, transform .24s;';
+                row.innerHTML = '<span style="display:flex; align-items:center; gap:10px; font-size:12.5px;"><span style="font-size:15px; width:18px; text-align:center;">' + st.ico + '</span>' + st.label + '</span>' +
                     '<span style="font-weight:800; color:#26C6DA; font-size:13px;">' + (st.win ? '✓ open' : st.n) + '</span>';
+                // hover card: inspect what actually came back in this category
+                if (st.meta && st.meta.length) {
+                    row.style.cursor = 'help';
+                    row.addEventListener('mouseenter', (ev) => {
+                        row.style.background = '#1b2530';
+                        row.style.borderColor = '#26C6DA';
+                        const esc2 = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                        let html = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:7px; border-bottom:1px solid #26343d;">' +
+                            '<span style="font-size:16px;">' + st.ico + '</span>' +
+                            '<span style="font-weight:700; color:#26C6DA; font-size:13px;">' + esc2(st.label) + '</span></div>';
+                        st.meta.forEach(([k2, v2]) => {
+                            html += '<div style="display:flex; gap:10px; margin:4px 0;">' +
+                                '<span style="color:#607d8b; min-width:104px; flex:0 0 auto; font-weight:600;">' + esc2(k2) + '</span>' +
+                                '<span style="color:#eceff1; word-break:break-word;">' + esc2(v2) + '</span></div>';
+                        });
+                        lrTip.innerHTML = html;
+                        lrTip.style.display = 'block';
+                        lrTipMove(ev.clientX, ev.clientY);
+                    });
+                    row.addEventListener('mousemove', (ev) => lrTipMove(ev.clientX, ev.clientY));
+                    row.addEventListener('mouseleave', () => {
+                        row.style.background = '#131a21';
+                        row.style.borderColor = '#1f2a33';
+                        lrTip.style.display = 'none';
+                    });
+                }
                 list.appendChild(row);
                 requestAnimationFrame(() => { row.style.opacity = '1'; row.style.transform = 'translateY(0)'; });
                 list.scrollTop = list.scrollHeight;
                 i++;
                 fill.style.width = Math.round((i / total) * 100) + '%';
-                setTimeout(tick, 320);   // medium speed
+                setTimeout(tick, Math.max(90, 320 - steps.length * 12));   // scales with detail
             };
             setTimeout(tick, 260);
         }
