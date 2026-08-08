@@ -2167,6 +2167,7 @@
             const infoSection = document.getElementById('infoSection');
             const toggleBtn = document.getElementById('toggleInfoBtn');
 
+            invalidateUiBottom();
             if (infoSection.style.display === 'none') {
                 infoSection.style.display = 'block';
                 toggleBtn.textContent = '▼';
@@ -4066,6 +4067,20 @@
         // ========================================
         // 🎨 DRAW EVERYTHING
         // ========================================
+        // The toolbar's height is stable between layout changes, but reading
+        // getBoundingClientRect() inside draw() forces a synchronous reflow EVERY frame.
+        // Cache it and invalidate on the events that can actually move it.
+        var _uiBottomCache = -1;
+        function uiBottomEdge() {
+            if (_uiBottomCache < 0) {
+                const el = document.getElementById('controls');
+                _uiBottomCache = el ? el.getBoundingClientRect().bottom : 0;
+            }
+            return _uiBottomCache;
+        }
+        function invalidateUiBottom() { _uiBottomCache = -1; }
+        window.addEventListener('resize', invalidateUiBottom);
+
         function draw() {
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -4492,8 +4507,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
 
             // datum lines render first so vectors always sit on top of them
-            const _order = images.slice().sort((a, b) =>
-                ((elKind(a) === 'line') ? 0 : 1) - ((elKind(b) === 'line') ? 0 : 1));
+            // Datum lines first so vectors sit on top. This was a slice()+sort() every
+            // frame; a stable sort on a two-value key is just a partition, so do it in
+            // one O(n) pass with no comparator calls. Identical ordering, less work.
+            const _order = [];
+            for (let i = 0; i < images.length; i++) if (elKind(images[i]) === 'line') _order.push(images[i]);
+            for (let i = 0; i < images.length; i++) if (elKind(images[i]) !== 'line') _order.push(images[i]);
             _order.forEach(image => {
                 // Viewport cull: nothing off-screen costs draw or collision work
                 if (!inView(image, 80)) return;
@@ -5063,7 +5082,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     ctx.font = `bold ${11 / z}px Arial`;
                     ctx.textBaseline = 'middle';
                     // Keep top-anchored labels just below the UI panel (screen-space, zoom-safe)
-                    const uiBottom = document.getElementById('controls').getBoundingClientRect().bottom + 12;
+                    const uiBottom = uiBottomEdge() + 12;
                     const topWorldY = (uiBottom - camera.y) / z;
                     const tag = (txt, x, y, align) => {
                         ctx.textAlign = align;
@@ -5104,7 +5123,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     ctx.font = `bold ${11 / z}px Arial`;
                     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                     ctx.setLineDash([]);
-                    const uiB = document.getElementById('controls').getBoundingClientRect().bottom + 34;
+                    const uiB = uiBottomEdge() + 34;
                     const dim = (ax, ay, bx, by, label) => {
                         ctx.strokeStyle = '#2196F3'; ctx.lineWidth = 1.5 / z;
                         ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
@@ -5293,7 +5312,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const zA = camera.zoom;
                 const groups = {};
                 _adhocBadges = []; _adhocBoxes = [];
-                images.forEach(im => { if (im.adhocGroup) (groups[im.adhocGroup] = groups[im.adhocGroup] || []).push(im); });
+                let _anyAdhoc = false;
+                for (let i = 0; i < images.length; i++) { if (images[i].adhocGroup) { _anyAdhoc = true; break; } }
+                if (_anyAdhoc) images.forEach(im => { if (im.adhocGroup) (groups[im.adhocGroup] = groups[im.adhocGroup] || []).push(im); });
                 Object.keys(groups).forEach(id => {
                     const set = groups[id];
                     if (set.length < 2) { set.forEach(m => { delete m.adhocGroup; }); return; }
@@ -5557,7 +5578,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
             {
                 const zn = camera.zoom;
                 _padBadgeHits = [];
-                images.forEach(im => {
+                // cheap guard: most canvases carry no attached notes at all
+                let _anyPadRef = false;
+                for (let i = 0; i < images.length; i++) { if (images[i].padRefs && images[i].padRefs.length) { _anyPadRef = true; break; } }
+                if (_anyPadRef) images.forEach(im => {
                     if (!im.padRefs || !im.padRefs.length || im.hidden || !inView(im, 60)) return;
                     const live = im.padRefs.filter(r => (typeof padPages !== 'undefined') && padPages.some(p => p.id === r.page));
                     if (!live.length) return;
@@ -5707,7 +5731,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
 
             // 🧭 Origin marker (0,0) — the point every compass bearing references
-            if (compassMode || compassArrow) {
+            if (compassMode) {
                 const z = camera.zoom;
                 ctx.save();
                 ctx.strokeStyle = '#00695C'; ctx.lineWidth = 1.6 / z;
@@ -5729,7 +5753,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
 
             // 🧭 COMPASS — bearing from each element toward world origin (0,0)
-            if (compassMode || compassArrow) {
+            // compassArrow is a SUB-OPTION of the compass, not a trigger. It defaults to
+            // true, so the old `||` ran a full per-element bearing pass every frame with
+            // the compass switched off — measuring text and running collision tests for
+            // badges nobody asked for.
+            if (compassMode) {
                 const z = camera.zoom;
                 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
                 ctx.save();
@@ -10749,6 +10777,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
             // Every panel that docks to the toolbar must be re-anchored, or it keeps
             // the coordinates from the layout it was opened in and ends up stranded.
+            invalidateUiBottom();
             reanchorAllPanels();
         }
 
