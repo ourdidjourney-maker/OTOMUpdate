@@ -530,6 +530,9 @@
         <button title="Drop a horizontal ruler guide across the canvas" onclick="addGuide('h')" style="background: #2196F3;">+ H Ruler</button>
         <button title="Drop a vertical ruler guide down the canvas" onclick="addGuide('v')" style="background: #2196F3;">+ V Ruler</button>
         <button id="rulerLockBtn" title="Anchor all rulers in place — locked rulers cannot be dragged" onclick="toggleRulerLock()" style="background: #455A64; font-size:11px; padding:6px 8px;">🔓 Rulers: Free</button>
+        <span style="font-size:11px; color:#333;" title="How visible hidden rulers are. 0% is invisible; raise it to find and shift-click them back on.">👁 Hidden</span>
+        <input type="range" id="rulerHiddenOpacity" min="0" max="100" value="35" step="5" oninput="setRulerHiddenOpacity(this.value)" style="width:70px; vertical-align:middle;" title="Hidden ruler opacity">
+        <span id="rulerHiddenVal" style="font-size:11px; color:#333; width:56px; display:inline-block;">35% · 0</span>
         <button title="Delete every ruler on the canvas" onclick="clearGuides()" style="background: #455A64; font-size:11px; padding:6px 8px;">🗑 Rulers</button>
         <button title="Show spacing between rulers and mark their crossings" id="rulerRadarBtn" onclick="toggleRulerRadar()" style="background: #455A64;">Ruler Radar: OFF</button>
         <button title="Cursor readout of distance to the nearest rulers" id="rulerMouseBtn" onclick="toggleRulerMouse()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Mouse↔Ruler: ON</button>
@@ -675,6 +678,10 @@
                 <span style="display:inline-flex; align-items:center; gap:5px;">
                     <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">GPU</span>
+                </span>
+                <span style="display:inline-flex; align-items:center; gap:5px;">
+                    <span id="pulseDom" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">DOM</span>
                 </span>
                 <span id="pulseRate" style="font:9px 'Courier New',monospace; color:#37474F; letter-spacing:.5px;"></span>
             </span>
@@ -2217,25 +2224,34 @@
             nameModalHoverMode = false;
             nameModal.style.opacity = '1';
             nameModal.style.pointerEvents = 'auto';
-            // The dialogue no longer chases the cursor. It opens centred and stays put,
-            // then clamps itself to the viewport once its real height is known, so it
-            // can never be cut off by the bottom of the canvas.
-            nameModal.style.transform = 'translate(-50%, -50%)';
-            nameModal.style.left = '50%';
-            nameModal.style.top = '50%';
-            requestAnimationFrame(() => {
+            // Opens AT THE CURSOR — no wasted travel. It is then nudged the minimum
+            // amount needed to stay fully on screen, measured from its REAL size rather
+            // than a hardcoded guess (the old 470px guess is what pushed it off-screen,
+            // and centring it was an overcorrection that cost the operator hand travel).
+            nameModal.style.transform = 'none';
+            nameModal.style.maxHeight = (window.innerHeight - 24) + 'px';
+            nameModal.style.overflowY = 'auto';
+            const px = (cx !== undefined) ? cx : window.innerWidth / 2;
+            const py = (cy !== undefined) ? cy : window.innerHeight / 2;
+            // provisional placement so the browser can lay it out and give a real size
+            nameModal.style.left = (px + 14) + 'px';
+            nameModal.style.top = (py + 14) + 'px';
+            nameModal.style.display = 'block';
+            {
                 const r = nameModal.getBoundingClientRect();
-                if (r.height > window.innerHeight - 20) {
-                    // taller than the screen: pin to the top and let it scroll
-                    nameModal.style.transform = 'translateX(-50%)';
-                    nameModal.style.top = '10px';
-                    nameModal.style.maxHeight = (window.innerHeight - 20) + 'px';
-                    nameModal.style.overflowY = 'auto';
-                } else {
-                    nameModal.style.maxHeight = '';
-                    nameModal.style.overflowY = '';
-                }
-            });
+                const w = r.width || 320, hgt = r.height || 400;
+                const pad = 12;
+                // prefer right of the cursor; flip left only if it would overflow
+                let lx = px + 14;
+                if (lx + w > window.innerWidth - pad) lx = px - w - 14;
+                lx = Math.max(pad, Math.min(lx, window.innerWidth - w - pad));
+                // prefer below the cursor; flip above only if it would overflow
+                let ly = py + 14;
+                if (ly + hgt > window.innerHeight - pad) ly = py - hgt - 14;
+                ly = Math.max(pad, Math.min(ly, window.innerHeight - hgt - pad));
+                nameModal.style.left = lx + 'px';
+                nameModal.style.top = ly + 'px';
+            }
             nameInput.value = image.name || '';
             fullNameInput.value = image.fullName || '';
             document.getElementById('pathInput').value = image.sourcePath || image.filePath || '';
@@ -3081,9 +3097,10 @@
                         ? Math.abs(mgy - (g.pos * camera.zoom + camera.y)) < 10
                         : Math.abs(mgx - (g.pos * camera.zoom + camera.x)) < 10;
                     if (!near) continue;
+                    // Shift-click hides / unhides. Deleting is right-click or
+                    // double-click, so nothing is lost by rebinding shift here.
+                    if (e.shiftKey) { g.hidden = !g.hidden; if (typeof updateRulerHiddenCount === 'function') updateRulerHiddenCount(); saveState(); draw(); return; }
                     if (g.locked) continue;          // anchored: not grabbable
-                    // Shift-click a ruler to delete it outright
-                    if (e.shiftKey) { guides = guides.filter(x => x !== g); saveState(); draw(); return; }
                     draggingGuide = g; return;
                 }
             }
@@ -4924,8 +4941,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const z = camera.zoom;
                 ctx.font = `bold ${11 / z}px Arial`;
                 const vis = images.filter(im => inView(im, 100));
-                const vg = guides.filter(g => g.axis === 'v').map(g => g.pos);
-                const hg = guides.filter(g => g.axis === 'h').map(g => g.pos);
+                const vg = guides.filter(g => g.axis === 'v' && !g.hidden).map(g => g.pos);
+                const hg = guides.filter(g => g.axis === 'h' && !g.hidden).map(g => g.pos);
 
                 if (elemDimRuler && guides.length) {
                     const dimV = (im, gx) => {
@@ -5009,7 +5026,15 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 ctx.lineWidth = 1 / camera.zoom;
                 guides.forEach(g => {
                     ctx.save();
-                    if (g.locked) {
+                    if (g.hidden) {
+                        // Visibility of a hidden ruler is the operator's call, not a
+                        // hardcoded guess. 0 = truly invisible; anything above is findable.
+                        if (rulerHiddenOpacity <= 0) { ctx.restore(); return; }
+                        ctx.globalAlpha = rulerHiddenOpacity;
+                        ctx.strokeStyle = '#90A4AE';
+                        ctx.setLineDash([3 / camera.zoom, 9 / camera.zoom]);
+                        ctx.lineWidth = 1 / camera.zoom;
+                    } else if (g.locked) {
                         ctx.strokeStyle = '#FFB300';
                         ctx.setLineDash([9 / camera.zoom, 5 / camera.zoom]);
                         ctx.lineWidth = 1.6 / camera.zoom;
@@ -5022,7 +5047,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (g.axis === 'h') { ctx.moveTo(visibleLeft, g.pos); ctx.lineTo(visibleRight, g.pos); }
                     else { ctx.moveTo(g.pos, visibleTop); ctx.lineTo(g.pos, visibleBottom); }
                     ctx.stroke();
-                    if (g.locked) {   // padlock marker at the near edge
+                    if (g.locked && !g.hidden) {   // padlock marker at the near edge
                         ctx.setLineDash([]);
                         ctx.fillStyle = '#FFB300';
                         ctx.font = 'bold ' + (12 / camera.zoom) + 'px Arial';
@@ -5050,14 +5075,14 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         ctx.strokeRect(bx - pad, y - th / 2 - pad, w + pad * 2, th + pad * 2);
                         ctx.fillStyle = '#0d47a1'; ctx.fillText(txt, x, y);
                     };
-                    const hp = guides.filter(g => g.axis === 'h').map(g => g.pos).sort((a, b) => a - b);
+                    const hp = guides.filter(g => g.axis === 'h' && !g.hidden).map(g => g.pos).sort((a, b) => a - b);
                     for (let i = 0; i < hp.length; i++) {
                         const parts = [];
                         if (i > 0) parts.push('↑' + Math.round((hp[i] - hp[i - 1]) * z) + 'px');
                         if (i < hp.length - 1) parts.push('↓' + Math.round((hp[i + 1] - hp[i]) * z) + 'px');
                         if (parts.length) tag(parts.join('  '), visibleLeft + 16 / z, hp[i], 'left');
                     }
-                    const vp = guides.filter(g => g.axis === 'v').map(g => g.pos).sort((a, b) => a - b);
+                    const vp = guides.filter(g => g.axis === 'v' && !g.hidden).map(g => g.pos).sort((a, b) => a - b);
                     for (let i = 0; i < vp.length; i++) {
                         const parts = [];
                         if (i > 0) parts.push('←' + Math.round((vp[i] - vp[i - 1]) * z) + 'px');
@@ -5092,13 +5117,13 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         ctx.fillStyle = '#0d47a1'; ctx.fillText(label, mx, my);
                     };
                     // Vertical rulers → horizontal dimension bars (stacked below the UI)
-                    const vpp = guides.filter(g => g.axis === 'v').map(g => g.pos).sort((a, b) => a - b);
+                    const vpp = guides.filter(g => g.axis === 'v' && !g.hidden).map(g => g.pos).sort((a, b) => a - b);
                     for (let i = 1; i < vpp.length; i++) {
                         const wy = (uiB + (i - 1) * 26 - camera.y) / z;
                         dim(vpp[i - 1], wy, vpp[i], wy, Math.round((vpp[i] - vpp[i - 1]) * z) + 'px');
                     }
                     // Horizontal rulers → vertical dimension bars (stacked near the left)
-                    const hpp = guides.filter(g => g.axis === 'h').map(g => g.pos).sort((a, b) => a - b);
+                    const hpp = guides.filter(g => g.axis === 'h' && !g.hidden).map(g => g.pos).sort((a, b) => a - b);
                     for (let i = 1; i < hpp.length; i++) {
                         const wx = ((40 + (i - 1) * 26) - camera.x) / z;
                         dim(wx, hpp[i - 1], wx, hpp[i], Math.round((hpp[i] - hpp[i - 1]) * z) + 'px');
@@ -5884,9 +5909,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 formulaLibrary: formulaLibrary.map(f => ({ id: f.id, title: f.title || '', text: f.text, notations: f.notations || '', agent: f.agent || '', ts: f.ts })),
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
+                rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
                 assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '*',
-                guides: (typeof guides !== 'undefined') ? guides.map(g => ({ axis: g.axis, pos: g.pos, id: g.id, locked: !!g.locked })) : [],
+                guides: (typeof guides !== 'undefined') ? guides.map(g => ({ axis: g.axis, pos: g.pos, id: g.id, locked: !!g.locked, hidden: !!g.hidden })) : [],
                 grid: (typeof showGrid !== 'undefined') ? showGrid : true,
                 background: (typeof background !== 'undefined' && background && background.src) ? {
                     src: background.src, x: background.x, y: background.y, width: background.width, height: background.height, opacity: (typeof bgOpacity !== 'undefined' ? bgOpacity : 1)
@@ -6327,6 +6353,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     flagDrag = engineData.flagDrag || {};
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
                         setTimeout(() => {
+                            if (typeof engineData.rulerHiddenOpacity === 'number') {
+                                rulerHiddenOpacity = engineData.rulerHiddenOpacity;
+                                const sl = document.getElementById('rulerHiddenOpacity');
+                                if (sl) sl.value = Math.round(rulerHiddenOpacity * 100);
+                            }
+                            if (typeof updateRulerHiddenCount === 'function') updateRulerHiddenCount();
                             const b = document.getElementById('rulerLockBtn');
                             if (b && guides.length) {
                                 const allLocked = guides.every(g => g.locked);
@@ -6338,7 +6370,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         guides = engineData.guides.map(g => ({
                             axis: g.axis, pos: g.pos,
                             id: g.id != null ? g.id : Date.now() + Math.random(),
-                            locked: !!g.locked
+                            locked: !!g.locked, hidden: !!g.hidden
                         }));
                     }
                     formulaLibrary = (engineData.formulaLibrary || []).map(f => ({
@@ -6867,8 +6899,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
             // Mouse↔Ruler is its OWN toggle: it must not be gated by Ruler Radar,
             // which controls the on-rail spacing labels, not the cursor readout.
             if (!rulerMouseRadar || guides.length === 0) { el.style.display = 'none'; return; }
-            const hs = guides.filter(g => g.axis === 'h').map(g => g.pos * camera.zoom + camera.y).sort((a, b) => a - b);
-            const vs = guides.filter(g => g.axis === 'v').map(g => g.pos * camera.zoom + camera.x).sort((a, b) => a - b);
+            const hs = guides.filter(g => g.axis === 'h' && !g.hidden).map(g => g.pos * camera.zoom + camera.y).sort((a, b) => a - b);
+            const vs = guides.filter(g => g.axis === 'v' && !g.hidden).map(g => g.pos * camera.zoom + camera.x).sort((a, b) => a - b);
             const m = [];
             if (rulerDiagonal && hs.length && vs.length) {
                 // Point diagonally toward the nearest H∩V crossing, single arrow + straight-line distance
@@ -6894,7 +6926,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function addGuide(axis) {
             const cx = (canvas.width / 2 - camera.x) / camera.zoom;
             const cy = (canvas.height / 2 - camera.y) / camera.zoom;
-            guides.push({ axis, pos: axis === 'h' ? cy : cx, id: Date.now() + Math.random(), locked: false });
+            guides.push({ axis, pos: axis === 'h' ? cy : cx, id: Date.now() + Math.random(), locked: false, hidden: false });
+            updateRulerHiddenCount();
             saveState();
             draw();
         }
@@ -6911,6 +6944,23 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 b.style.color = anyFree ? '#212121' : '#fff';
             }
             saveState(); draw();
+        }
+
+        // Hidden rulers are ghosted, not gone: this brightens them so they can be
+        // found and shift-clicked back on. It also keeps a live count on the button.
+        var rulerHiddenOpacity = 0.35;   // 0..1, operator-controlled
+        function setRulerHiddenOpacity(v) {
+            rulerHiddenOpacity = Math.max(0, Math.min(1, parseInt(v, 10) / 100));
+            updateRulerHiddenCount();
+            draw();
+        }
+        function updateRulerHiddenCount() {
+            const lbl = document.getElementById('rulerHiddenVal');
+            if (!lbl) return;
+            const n = guides.filter(g => g.hidden).length;
+            lbl.textContent = Math.round(rulerHiddenOpacity * 100) + '% · ' + n;
+            lbl.style.color = n ? '#E65100' : '#333';
+            lbl.style.fontWeight = n ? '700' : '400';
         }
 
         function clearGuides() {
@@ -10406,8 +10456,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
             if (guides.length) {
                 section('Rulers', guides.length);
-                guides.filter(g => g.axis === 'h').forEach(g => row(chip('↔', '#e3f2fd'), 'Horizontal Ruler', 'y = ' + Math.round(g.pos) + ' · ' + formatBytes(objBytes(g)), 'Horizontal Ruler', [['Axis', 'Horizontal'], ['y', Math.round(g.pos)], ['Memory', formatBytes(objBytes(g))]]));
-                guides.filter(g => g.axis === 'v').forEach(g => row(chip('↕', '#e3f2fd'), 'Vertical Ruler', 'x = ' + Math.round(g.pos) + ' · ' + formatBytes(objBytes(g)), 'Vertical Ruler', [['Axis', 'Vertical'], ['x', Math.round(g.pos)], ['Memory', formatBytes(objBytes(g))]]));
+                guides.filter(g => g.axis === 'h').forEach(g => row(chip('↔', '#e3f2fd'), 'Horizontal Ruler', 'y = ' + Math.round(g.pos) + (g.hidden ? ' · hidden' : '') + (g.locked ? ' · 🔒' : '') + ' · ' + formatBytes(objBytes(g)), 'Horizontal Ruler', [['Axis', 'Horizontal'], ['y', Math.round(g.pos)], ['Hidden', g.hidden ? 'yes' : 'no'], ['Locked', g.locked ? 'yes' : 'no'], ['Memory', formatBytes(objBytes(g))]]));
+                guides.filter(g => g.axis === 'v').forEach(g => row(chip('↕', '#e3f2fd'), 'Vertical Ruler', 'x = ' + Math.round(g.pos) + (g.hidden ? ' · hidden' : '') + (g.locked ? ' · 🔒' : '') + ' · ' + formatBytes(objBytes(g)), 'Vertical Ruler', [['Axis', 'Vertical'], ['x', Math.round(g.pos)], ['Hidden', g.hidden ? 'yes' : 'no'], ['Locked', g.locked ? 'yes' : 'no'], ['Memory', formatBytes(objBytes(g))]]));
             }
             if (centerPoint) { section('Center Anchor', 1); row(chip('🎯', '#ffebee'), 'Center', 'x ' + Math.round(centerPoint.x) + ', y ' + Math.round(centerPoint.y) + ' · ' + formatBytes(objBytes(centerPoint)), 'Center Anchor', [['x', Math.round(centerPoint.x)], ['y', Math.round(centerPoint.y)], ['Memory', formatBytes(objBytes(centerPoint))]]); }
 
@@ -13055,6 +13105,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
         // MEM = JS heap movement between samples, GPU = canvas raster work per frame.
         var pulseOn = false, _pulseHeap = 0, _pulseDraws = 0, _pulseRAF = null;
         var _pulseMemHold = 0, _pulseMemMag = 0;
+        var _pulseDomHold = 0, _pulseDomMag = 0, _pulseDomCount = 0, _pulseDomObs = null, _pulseDomPeak = 0;
 
         function togglePulse() {
             pulseOn = !pulseOn;
@@ -13077,8 +13128,28 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }
                 _pulseHeap = (performance.memory ? performance.memory.usedJSHeapSize : 0);
                 _pulseDraws = PERF.draws;
+                // DOM — watch real mutations. This is the signal an HTML dev cares about:
+                // node churn and attribute thrash are the usual cause of jank that never
+                // shows up in CPU or GPU numbers.
+                if (!_pulseDomObs && typeof MutationObserver !== 'undefined') {
+                    // Ignore our OWN writes. The pulse pill rewrites its dots and readout
+                    // every frame, so without this filter the observer watches itself and
+                    // the light sits permanently on — measuring nothing but its own noise.
+                    const pill = document.getElementById('pulseTab');
+                    _pulseDomObs = new MutationObserver(muts => {
+                        for (let i = 0; i < muts.length; i++) {
+                            const t = muts[i].target;
+                            if (pill && t && pill.contains(t.nodeType === 1 ? t : t.parentNode)) continue;
+                            _pulseDomCount++;
+                        }
+                    });
+                    _pulseDomObs.observe(document.body, {
+                        childList: true, subtree: true, attributes: true, characterData: true
+                    });
+                }
                 pulseLoop();
             }
+            if (!pulseOn && _pulseDomObs) { _pulseDomObs.disconnect(); _pulseDomObs = null; _pulseDomCount = 0; }
             pt.style.display = pulseOn ? 'block' : 'none';
             document.getElementById('pulseBtn').style.background = pulseOn ? '#00897B' : '#263238';
         }
@@ -13130,8 +13201,23 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 _pulseDraws = PERF.draws;
             } else pulseRest('pulseGpu');
 
+            // DOM — mutations observed since the last frame. Held like MEM, because
+            // mutation bursts land on a single frame and would otherwise be invisible.
+            if (_pulseDomCount > 0) {
+                _pulseDomHold = 6;
+                _pulseDomMag = Math.min(1, _pulseDomCount / 120);
+                if (_pulseDomCount > _pulseDomPeak) _pulseDomPeak = _pulseDomCount;
+                _pulseDomCount = 0;
+            }
+            if (_pulseDomHold > 0) {
+                _pulseDomHold--;
+                // teal = light churn · amber = heavy · red = thrash
+                pulseFire('pulseDom', _pulseDomMag > 0.7 ? '#f85149' : _pulseDomMag > 0.3 ? '#d29922' : '#00E5C0', 1);
+            } else pulseRest('pulseDom');
+
             const r = document.getElementById('pulseRate');
-            if (r) r.textContent = (PERF.fps || 0) + 'fps · ' + dt.toFixed(1) + 'ms';
+            if (r) r.textContent = (PERF.fps || 0) + 'fps · ' + dt.toFixed(1) + 'ms · ' +
+                document.getElementsByTagName('*').length + ' nodes';
 
             _pulseRAF = requestAnimationFrame(pulseLoop);
         }
