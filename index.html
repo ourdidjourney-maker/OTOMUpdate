@@ -778,6 +778,11 @@
             <div id="notesReaderHead" style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:#0288D1; color:#fff;">
                 <span style="font-weight:bold; font-size:13px; flex:1;">📖 NOTATIONS READER</span>
                 <input id="notesReaderSearch" type="text" placeholder="filter…" oninput="renderNotesReader()" style="width:110px; padding:4px 8px; font-size:11px; border:none; border-radius:5px;">
+                <span style="display:inline-flex; gap:3px;">
+                    <button onclick="setNotesPriFilter('low')" id="nrPriLow" title="Show only Low priority" style="margin:0; padding:3px 7px; font-size:10px; background:rgba(255,255,255,.25); border-radius:4px;">⚑L</button>
+                    <button onclick="setNotesPriFilter('medium')" id="nrPriMed" title="Show only Medium priority" style="margin:0; padding:3px 7px; font-size:10px; background:rgba(255,255,255,.25); border-radius:4px;">⚑M</button>
+                    <button onclick="setNotesPriFilter('high')" id="nrPriHigh" title="Show only High priority" style="margin:0; padding:3px 7px; font-size:10px; background:rgba(255,255,255,.25); border-radius:4px;">⚑H</button>
+                </span>
                 <span id="notesReaderCount" style="font-size:11px; opacity:.85;"></span>
                 <button onclick="popOutNotesReader()" title="Pop the reader out into a free-floating, draggable window" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">⇱ Pop Out</button>
                 <button onclick="toggleNotesReader()" style="margin:0; padding:4px 9px; font-size:12px; background:rgba(255,255,255,.25); border-radius:5px;">✕</button>
@@ -785,13 +790,19 @@
             <div id="notesComposer" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; background:#E1F5FE; border-bottom:1px solid #B3E5FC;">
                 <input id="engMsgText" type="text" placeholder="Engine message for the reader…" style="flex:1 1 210px; min-width:150px; padding:6px 9px; font-size:12px; border:1px solid #81D4FA; border-radius:5px;">
                 <input id="engMsgAgent" type="text" placeholder="Legitimizing agent" style="flex:0 1 150px; min-width:110px; padding:6px 9px; font-size:12px; border:1px solid #81D4FA; border-radius:5px;">
+                <select id="engMsgPri" title="Priority for this message" style="flex:0 0 auto; padding:6px 7px; font-size:12px; border:1px solid #81D4FA; border-radius:5px;">
+                    <option value="">No priority</option>
+                    <option value="low">⚑ Low</option>
+                    <option value="medium">⚑ Medium</option>
+                    <option value="high">⚑ High</option>
+                </select>
                 <button onclick="addEngineMessage()" style="margin:0; padding:6px 14px; font-size:12px; background:#0288D1; color:#fff; border-radius:5px;">＋ Post</button>
             </div>
             <div id="formulaComposer" style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 10px; background:#F3E5F5; border-bottom:1px solid #E1BEE7;">
                 <input id="formTitle" type="text" placeholder="Title" style="flex:0 1 130px; min-width:100px; padding:6px 9px; font-size:12px; border:1px solid #CE93D8; border-radius:5px;">
                 <input id="formName" type="text" placeholder="Formula data string…" style="flex:1 1 190px; min-width:140px; padding:6px 9px; font-size:12px; border:1px solid #CE93D8; border-radius:5px;">
                 <input id="formNotes" type="text" placeholder="Notes" style="flex:1 1 140px; min-width:110px; padding:6px 9px; font-size:12px; border:1px solid #CE93D8; border-radius:5px;">
-                <input id="formAuthor" type="text" placeholder="Author" style="flex:0 1 120px; min-width:90px; padding:6px 9px; font-size:12px; border:1px solid #CE93D8; border-radius:5px;">
+                <input id="formAuthor" type="text" placeholder="Legitimizing Agent" style="flex:0 1 120px; min-width:90px; padding:6px 9px; font-size:12px; border:1px solid #CE93D8; border-radius:5px;">
                 <button onclick="addFormula()" style="margin:0; padding:6px 14px; font-size:12px; background:#8E24AA; color:#fff; border-radius:5px;">＋ Formula</button>
             </div>
             <div id="notesReaderBody" style="flex:1 1 auto; overflow-y:auto; padding:10px 12px; background:#fafafa;"></div>
@@ -3247,6 +3258,8 @@
                     }
                     selectedImage = image;
                     if (selectedGroup.length && selectedGroup.indexOf(image) < 0) selectedGroup = [];
+                    // an ad hoc group moves as one, so clicking any member selects them all
+                    if (image.adhocGroup) selectedGroup = images.filter(el => el.adhocGroup === image.adhocGroup);
                     // picking a plugged element up releases it from its socket,
                     // so it can be moved away, or dropped straight back in
                     if (image.socketId) {
@@ -4816,7 +4829,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (image.title)     rows.push(['Title', image.title, '#6A1B9A']);
                     rows.push(['Data', image.text || '', '#8E24AA']);
                     if (image.notations) rows.push(['Notes', image.notations, '#3F51B5']);
-                    if (image.agent)     rows.push(['Author', image.agent, '#00897B']);
+                    if (image.agent)     rows.push(['La=', image.agent, '#00897B']);
                     const p = 4 / z, th = 16 / z, boxH = th + p * 2, step = boxH + (2 + flagGap) / z;
                     const lx = (image.x - image.width / 2) + (_fOff ? _fOff.dx : 0);
                     let ly = image.y + image.height / 2 + (6 + flagGap) / z + (_fOff ? _fOff.dy : 0);
@@ -5864,7 +5877,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     agent: n.agent || '', priority: n.priority || '', numDesignation: n.numDesignation,
                     width: n.width || 40, height: n.height || 40, rotation: n.rotation || 0
                 })),
-                engineMessages: engineMessages.map(m => ({ id: m.id, text: m.text, agent: m.agent || '', ts: m.ts, snapshot: m.snapshot || null })),
+                engineMessages: engineMessages.map(m => ({ id: m.id, text: m.text, agent: m.agent || '', priority: m.priority || '', ts: m.ts, snapshot: m.snapshot || null })),
                 formulaLibrary: formulaLibrary.map(f => ({ id: f.id, title: f.title || '', text: f.text, notations: f.notations || '', agent: f.agent || '', ts: f.ts })),
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
@@ -6235,7 +6248,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     }));
                     engineMessages = (engineData.engineMessages || []).map(m => ({
                         id: m.id != null ? m.id : Date.now() + Math.random(),
-                        text: m.text || '', agent: m.agent || '', ts: m.ts || Date.now(), snapshot: m.snapshot || null
+                        text: m.text || '', agent: m.agent || '', priority: m.priority || '', ts: m.ts || Date.now(), snapshot: m.snapshot || null
                     }));
                     flagDrag = engineData.flagDrag || {};
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
@@ -7903,10 +7916,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 id: Date.now() + Math.random(),
                 text: text,
                 agent: (agEl.value || '').trim(),
+                priority: (function () { const p = document.getElementById('engMsgPri'); return p ? p.value : ''; })(),
                 ts: Date.now(),
                 snapshot: healthSnapshot()
             });
             txtEl.value = ''; agEl.value = '';
+            const pEl = document.getElementById('engMsgPri'); if (pEl) pEl.value = '';
             renderNotesReader();
         }
 
@@ -9355,6 +9370,20 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
 
         let notesReaderOpen = false;
+        var notesPriFilter = '';   // '', 'low', 'medium', 'high'
+
+        function setNotesPriFilter(p) {
+            notesPriFilter = (notesPriFilter === p) ? '' : p;
+            const map = { low: 'nrPriLow', medium: 'nrPriMed', high: 'nrPriHigh' };
+            Object.keys(map).forEach(k => {
+                const b = document.getElementById(map[k]);
+                if (!b) return;
+                const on = notesPriFilter === k;
+                b.style.background = on ? PRIORITY_COLORS[k] : 'rgba(255,255,255,.25)';
+                b.style.color = (on && k === 'medium') ? '#333' : '#fff';
+            });
+            renderNotesReader();
+        }
 
         // Re-anchor a control-attached panel when the UI is docked left (vertical),
         // since #controls is hidden there and top:100% anchors collapse.
@@ -9491,6 +9520,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     ts: m.ts,
                     ref: null,
                     msgId: m.id,
+                    priority: m.priority || '',
+                    when: m.ts || 0,
                     snapshot: m.snapshot || null
                 });
             });
@@ -9506,6 +9537,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         label: 'Canvas Notation',
                         text: txt,
                         num: n.numDesignation,
+                        priority: n.priority || '',
+                        when: n.lastEdited || n.id || 0,
                         ref: n
                     });
                 });
@@ -9523,13 +9556,19 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     label: 'Notation (' + nm + ' + hover metadata)',
                     text: im.notations,
                     num: im.numDesignation,
+                    priority: im.priority || '',
+                    when: im.lastEdited || im.id || 0,
                     ref: im
                 });
             });
 
-            const filtered = q
+            // newest at the top, oldest at the bottom
+            rows.sort((a, b) => (b.when || 0) - (a.when || 0));
+
+            let filtered = q
                 ? rows.filter(r => (r.label + ' ' + r.text + ' ' + (r.agent || '')).toLowerCase().indexOf(q) >= 0)
                 : rows;
+            if (notesPriFilter) filtered = filtered.filter(r => r.priority === notesPriFilter);
 
             document.getElementById('notesReaderCount').textContent =
                 filtered.length + (filtered.length === 1 ? ' note' : ' notes');
@@ -9566,7 +9605,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                             '<span data-del="' + f.id + '" title="Delete this formula" style="flex:0 0 auto; color:#B39DDB; font-size:14px; cursor:pointer; padding:0 4px;">✕</span>';
                         row.addEventListener('dragstart', (ev) => { ev.dataTransfer.setData('text/formula-id', String(f.id)); ev.dataTransfer.effectAllowed = 'copy'; });
                         row.querySelector('[data-del]').addEventListener('click', (ev) => { ev.stopPropagation(); deleteFormula(f.id); });
-                        row.addEventListener('mouseenter', (ev) => { row.style.background = '#f3e5f5'; notesTip(f.title || 'Formula', [(f.title ? ['Title', f.title] : ['', '']), ['Data string', f.text], (f.notations ? ['Notes', f.notations] : ['', '']), (f.agent ? ['Author', f.agent] : ['', '']), ['Created', when]].filter(p => p[0]), ev.clientX, ev.clientY); });
+                        row.addEventListener('mouseenter', (ev) => { row.style.background = '#f3e5f5'; notesTip(f.title || 'Formula', [(f.title ? ['Title', f.title] : ['', '']), ['Data string', f.text], (f.notations ? ['Notes', f.notations] : ['', '']), (f.agent ? ['Legitimizing Agent', f.agent] : ['', '']), ['Created', when]].filter(p => p[0]), ev.clientX, ev.clientY); });
                         row.addEventListener('mousemove', (ev) => notesTipMove(ev.clientX, ev.clientY));
                         row.addEventListener('mouseleave', () => { row.style.background = '#faf5fc'; notesTipHide(); });
                         body.appendChild(row);
@@ -9589,10 +9628,16 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const isCanvas = r.kind === 'canvas';
                 const accent = r.kind === 'engine' ? '#00897B' : r.kind === 'canvas' ? '#0288D1' : '#C2185B';
                 const row = document.createElement('div');
-                row.style.cssText = 'display:flex; gap:10px; align-items:flex-start; padding:8px 10px; margin:5px 0; background:#fff; border:1px solid #eee; border-left:4px solid ' + accent + '; border-radius:7px; cursor:pointer;';
+                const pcol = PRIORITY_COLORS[r.priority] || '';
+                row.style.cssText = 'display:flex; gap:10px; align-items:flex-start; padding:8px 10px; margin:5px 0; background:#fff; border:1px solid #eee; border-left:4px solid ' + (pcol || accent) + '; border-radius:7px; cursor:pointer;';
+                // NOTE: row.innerHTML is assigned below, so the flag must be built INTO
+                // the markup — appending a node here would simply be overwritten.
+                const priFlag = r.priority
+                    ? '<span title="' + PRIORITY_LABELS[r.priority] + ' priority" style="flex:0 0 auto; display:inline-flex; align-items:center; gap:4px; padding:1px 8px; border-radius:10px; background:' + pcol + '; color:' + (r.priority === 'medium' ? '#4a2c37' : '#fff') + '; font:700 10px Arial; letter-spacing:.5px; white-space:nowrap;">⚑ ' + PRIORITY_LABELS[r.priority].toUpperCase() + '</span>'
+                    : '';
                 if (r.kind === 'engine') {
                     const when = new Date(r.ts).toLocaleString();
-                    row.innerHTML =
+                    row.innerHTML = priFlag +
                         '<span style="color:' + accent + '; font-weight:700; font-size:12px; white-space:nowrap; flex:0 0 auto;">Engine Message:</span>' +
                         '<span style="color:#222; font-size:13px; word-break:break-word; flex:1;">' + esc(r.text) +
                         '<span style="display:block; margin-top:2px; color:#78909C; font-size:11px;">' +
@@ -9604,7 +9649,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         + '</span></span>' +
                         '<span onclick="event.stopPropagation(); deleteEngineMessage(' + r.msgId + ')" title="Delete this engine message" style="flex:0 0 auto; color:#B0BEC5; font-size:14px; cursor:pointer; padding:0 4px;">✕</span>';
                 } else {
-                    row.innerHTML =
+                    row.innerHTML = priFlag +
                         '<span style="color:' + accent + '; font-weight:700; font-size:12px; white-space:nowrap; flex:0 0 auto;">' + esc(r.label) + ':</span>' +
                         '<span style="color:#222; font-size:13px; word-break:break-word;">' +
                         '<span style="color:' + accent + '; font-weight:700;">#</span>' + esc(r.text) + '</span>' +
@@ -9614,7 +9659,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     row.style.background = '#f1f8fd';
                     if (r.kind === 'element' && r.ref) notesTip(r.label, notePairs(r.ref), ev.clientX, ev.clientY);
                     else if (r.kind === 'engine') {
-                        const pairs = [['Message', r.text], (r.agent ? ['Legit agent', r.agent] : ['', '']), ['Posted', new Date(r.ts).toLocaleString()]];
+                        const pairs = [['Message', r.text], (r.priority ? ['Priority', PRIORITY_LABELS[r.priority]] : ['', '']), (r.agent ? ['Legit agent', r.agent] : ['', '']), ['Posted', new Date(r.ts).toLocaleString()]];
                         if (r.snapshot) {
                             const s = r.snapshot, b = s.breakdown || {};
                             pairs.push(['Health', s.status + ' · ' + s.fps + 'fps' + (s.heapPct != null ? ' · ' + s.heapPct + '% mem' : '')]);
