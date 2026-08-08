@@ -599,6 +599,7 @@
         <button title="Restore a canvas from a saved .json engine file" onclick="document.getElementById('loadInput').click()" style="background: #00BCD4;">Load Engine</button>
         <button title="Panic-save the ENTIRE engine instantly to a timestamped file" onclick="takeSnapshot()" style="background: #FF6D00;">⚡ Snapshot</button>
         <button title="Restore a previously taken snapshot" onclick="loadSnapshot()" style="background: #FF8F00;">⤺ Load Snapshot</button>
+        <button id="autoSnapBtn" onclick="cycleAutoSnapshot()" title="Take a snapshot automatically on a timer" style="background: #455A64; font-size:11px; padding:6px 8px;">⏱ Auto: OFF</button>
         <button title="Open the Asset Manager — every element and its data" onclick="openAssetBrowser()" style="background: #673AB7;">🗂 Assets</button>
         <button title="Wipe the canvas and start over" onclick="resetEngine()" style="background: #F44336;">🔄 Reset Engine</button>
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
@@ -5967,27 +5968,69 @@ ctx.fillText(conn.number.toString(), midX, midY);
             };
         }
 
+        // Themed filename prompt — the host blocks native prompt(), so this reuses the
+        // confirm modal shell. Returns a filesystem-safe name via callback.
+        function askFileName(title, preset, ext, onOk) {
+            const modal = document.getElementById('confirmModal');
+            const body = document.getElementById('confirmModalBody');
+            const ok = document.getElementById('confirmOkBtn');
+            const cancel = document.getElementById('confirmCancelBtn');
+            document.getElementById('confirmModalTitle').textContent = title;
+            body.innerHTML = '<div style="margin-bottom:8px; color:#555; font-size:13px;">File name:</div>' +
+                '<div style="display:flex; align-items:center; gap:6px;">' +
+                '<input id="saveNameInput" type="text" style="flex:1; min-width:0; padding:9px 11px; font-size:14px; ' +
+                'border:1px solid #90CAF9; border-radius:7px; outline:none;">' +
+                '<span style="color:#90A4AE; font-size:13px;">.' + ext + '</span></div>';
+            ok.textContent = 'Save';
+            ok.style.background = '#2E7D32';
+            cancel.style.display = '';
+            modal.style.display = 'flex';
+            const inp = document.getElementById('saveNameInput');
+            inp.value = preset || '';
+            setTimeout(() => { inp.focus(); inp.select(); }, 30);
+            const close = () => {
+                modal.style.display = 'none';
+                ok.onclick = null; cancel.onclick = null; modal.onclick = null;
+                ok.style.background = '#C62828';
+            };
+            const commit = () => {
+                let v = (inp.value || '').trim().replace(/[^\w\-. ]+/g, '_').replace(/\s+/g, '_');
+                close();
+                if (!v) v = preset;
+                if (onOk) onOk(v);
+            };
+            inp.addEventListener('keydown', ev => {
+                ev.stopPropagation();
+                if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+                if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+            });
+            ok.onclick = commit;
+            cancel.onclick = close;
+            modal.onclick = ev => { if (ev.target === modal) close(); };
+        }
+
         function saveEngine() {
-            const engineData = buildEnginePayload();
-
-            const jsonString = JSON.stringify(engineData, null, 2);
-
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `otom_engine_${Date.now()}.json`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-
-            if (typeof showConfirm === 'function') showConfirm({ title: 'Engine Saved', body: 'The full engine state was written to a file.', okText: 'OK', danger: false, hideCancel: true });
+            const d = new Date(), pad = n => String(n).padStart(2, '0');
+            const preset = 'otom_engine_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+            askFileName('💾 Save Engine', preset, 'json', (name) => {
+                const engineData = buildEnginePayload();
+                const jsonString = JSON.stringify(engineData, null, 2);
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = name + '.json';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                if (typeof showConfirm === 'function') showConfirm({ title: 'Engine Saved', body: 'Written to "' + name + '.json".', okText: 'OK', danger: false, hideCancel: true });
+            });
         }
 
         // ⚡ SNAPSHOT — one-click panic save: capture the ENTIRE engine state and
         // auto-download instantly. No dialog, no naming, timestamped filename.
-        function takeSnapshot() {
+        function takeSnapshot(auto) {
             const payload = buildEnginePayload();
             payload.snapshot = true;
             const d = new Date();
@@ -5997,18 +6040,47 @@ ctx.fillText(conn.number.toString(), midX, midY);
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'OTOM_snapshot_' + stamp + '.json';
+            link.download = (auto ? 'OTOM_autosnap_' : 'OTOM_snapshot_') + stamp + '.json';
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(url);
             // brief non-blocking flash so it's clear it fired, without slowing the escape
             const flash = document.createElement('div');
-            flash.textContent = '⚡ Snapshot saved';
+            flash.textContent = auto ? '⏱ Auto-snapshot saved' : '⚡ Snapshot saved';
             flash.style.cssText = 'position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:200000; background:#2E7D32; color:#fff; font:700 13px Arial; padding:8px 16px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.35); pointer-events:none; opacity:0; transition:opacity .15s;';
             document.body.appendChild(flash);
             requestAnimationFrame(() => flash.style.opacity = '1');
             setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 200); }, 1400);
         }
         function loadSnapshot() { document.getElementById('snapshotInput').click(); }
+
+        // ⏱ AUTO-SNAPSHOT — unattended timed snapshots. Filenames stay timestamped
+        // (no prompt), so nothing ever interrupts the work. Fires only when the
+        // operator has been idle a moment, so it can never land mid-drag.
+        const AUTO_SNAP_STEPS = [0, 5, 10, 20, 40, 60];   // minutes; 0 = off
+        var autoSnapIdx = 0, autoSnapTimer = null, autoSnapLast = 0;
+
+        function cycleAutoSnapshot() {
+            autoSnapIdx = (autoSnapIdx + 1) % AUTO_SNAP_STEPS.length;
+            const m = AUTO_SNAP_STEPS[autoSnapIdx];
+            const b = document.getElementById('autoSnapBtn');
+            if (b) {
+                b.textContent = m ? '⏱ Auto: ' + m + 'm' : '⏱ Auto: OFF';
+                b.style.background = m ? '#FF6D00' : '#455A64';
+            }
+            if (autoSnapTimer) { clearInterval(autoSnapTimer); autoSnapTimer = null; }
+            if (m) {
+                autoSnapLast = Date.now();
+                autoSnapTimer = setInterval(() => {
+                    // don't fire mid-interaction, mid-alarm, or over a modal
+                    if (typeof lastInteraction !== 'undefined' && Date.now() - lastInteraction < 6000) return;
+                    if (typeof alarmRinging !== 'undefined' && alarmRinging) return;
+                    const cm = document.getElementById('confirmModal');
+                    if (cm && cm.style.display === 'flex') return;
+                    takeSnapshot(true);
+                    autoSnapLast = Date.now();
+                }, m * 60 * 1000);
+            }
+        }
 
         // Restore open windows, widgets, positions, opacities from a saved session block.
         function restoreSession(data) {
@@ -6631,7 +6703,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         else if (pk === 'circle') { ctx.strokeStyle = inkColor(p.color) || '#000'; ctx.lineWidth = Math.max(0.5, p.thickness || 3); if (p.dashStyle === 'dotted') ctx.setLineDash([Math.max(0.5,(p.thickness||3)*0.6), 4/camera.zoom]); else if (p.dashStyle === 'dashed') ctx.setLineDash([7/camera.zoom, 5/camera.zoom]); else ctx.setLineDash([]); ctx.beginPath(); ctx.ellipse(0, 0, p.width / 2, p.height / 2, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
                         else if (pk === 'triangle') { const hw=p.width/2,hh=p.height/2; ctx.beginPath(); ctx.moveTo(0,-hh); ctx.lineTo(hw,hh); ctx.lineTo(-hw,hh); ctx.closePath(); if(p.triStyle==='filled'){ctx.fillStyle=inkColor(p.color)||'#000';ctx.fill();} ctx.strokeStyle=inkColor(p.color)||'#000'; ctx.lineWidth=Math.max(0.5,p.thickness||3); ctx.stroke(); }
                         else if (pk === 'arrow') { const L2=p.width,t2=Math.max(2,p.thickness||6),hd=Math.min(L2*0.42,t2*4.2),hw2=t2*2.1; ctx.fillStyle=p.color||'#111'; ctx.beginPath(); ctx.moveTo(-L2/2,-t2/2); ctx.lineTo(L2/2-hd,-t2/2); ctx.lineTo(L2/2-hd,-hw2); ctx.lineTo(L2/2,0); ctx.lineTo(L2/2-hd,hw2); ctx.lineTo(L2/2-hd,t2/2); ctx.lineTo(-L2/2,t2/2); ctx.closePath(); ctx.fill(); }
-                        else if (pk === 'text') { ctx.fillStyle = inkColor(p.color); ctx.font = (p.fontSize || 24) + 'px ' + (p.font || 'Arial'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.text || 'Text', 0, 0); }
+                        else if (pk === 'text') { ctx.fillStyle = inkColor(p.color); ctx.font = (p.fontSize || 24) + 'px ' + fontStack(p.font); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(p.text || 'Text', 0, 0); }
                         else if (p.img) { ctx.drawImage(p.img, -p.width / 2, -p.height / 2, p.width, p.height); }
                     } catch (e) {}
                     ctx.restore();
@@ -6684,7 +6756,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }
             } else if (k === 'text') {
                 ctx.fillStyle = inkColor(im.color);
-                ctx.font = `${im.fontSize || im.height || 24}px ${im.font || 'Arial'}`;
+                ctx.font = (im.fontSize || im.height || 24) + 'px ' + fontStack(im.font);
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(im.text || 'Text', 0, 0);
             } else if (im.img) {
@@ -6874,8 +6946,17 @@ ctx.fillText(conn.number.toString(), midX, midY);
             } else { doDelete(); }
         }
 
+        // A canvas font string is CSS: a family containing spaces MUST be quoted, or the
+        // whole assignment is silently ignored and the previous font stays in effect.
+        // Uploaded fonts are usually named with spaces, which is why they appeared to
+        // "not load" and why measureText returned useless widths.
+        function fontStack(fam) {
+            const f = (fam || 'Arial').trim();
+            return /^[\w-]+$/.test(f) ? f : '"' + f.replace(/"/g, '') + '"';
+        }
+
         function measureTextWidth(txt, size, font) {
-            ctx.save(); ctx.font = `${size}px ${font}`;
+            ctx.save(); ctx.font = size + 'px ' + fontStack(font);
             const w = ctx.measureText(txt || 'Text').width; ctx.restore();
             return Math.max(20, w);
         }
@@ -10616,6 +10697,59 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 controls.style.display = 'block';
                 vpanel.style.display = 'none';
             }
+            // Every panel that docks to the toolbar must be re-anchored, or it keeps
+            // the coordinates from the layout it was opened in and ends up stranded.
+            reanchorAllPanels();
+        }
+
+        // Re-anchor every open toolbar-docked panel for the CURRENT ui layout.
+        function reanchorAllPanels() {
+            const show = el => el && el.style.display && el.style.display !== 'none';
+            try {
+                // centre-docked panels
+                const centre = [
+                    ['notesReader', typeof notesReaderOpen !== 'undefined' && notesReaderOpen, false],
+                    ['calcPanel',  typeof calcOpen !== 'undefined' && calcOpen,  typeof calcPopped !== 'undefined' && calcPopped],
+                    ['padPanel',   typeof padOpen !== 'undefined' && padOpen,    typeof padPopped !== 'undefined' && padPopped]
+                ];
+                centre.forEach(([id, isOpen, popped]) => {
+                    const el = document.getElementById(id);
+                    if (!el || !isOpen || popped) return;
+                    reanchorPanel(el, { left: '50%', transform: 'translateX(-50%)' });
+                });
+
+                // right-docked: the asset drawer
+                const dr = document.getElementById('assetDrawer');
+                if (dr && typeof assetDrawerOpen !== 'undefined' && assetDrawerOpen) reanchorPanel(dr, { right: '0' });
+
+                // left-docked pill: health
+                const ht = document.getElementById('healthTab');
+                if (ht && show(ht)) {
+                    if (verticalUI) {
+                        const vr = document.getElementById('vpanel').getBoundingClientRect();
+                        ht.style.position = 'fixed'; ht.style.left = (vr.right + 14) + 'px';
+                        ht.style.top = vr.top + 'px'; ht.style.right = 'auto';
+                        ht.style.marginTop = '0'; ht.style.zIndex = '1700';
+                    } else {
+                        ht.style.position = 'absolute'; ht.style.left = '0'; ht.style.right = 'auto';
+                        ht.style.top = '100%'; ht.style.marginTop = '8px'; ht.style.transform = 'none';
+                    }
+                }
+
+                // centre pill: pulse
+                const pt = document.getElementById('pulseTab');
+                if (pt && show(pt)) {
+                    if (verticalUI) {
+                        const vr = document.getElementById('vpanel').getBoundingClientRect();
+                        pt.style.position = 'fixed'; pt.style.left = (vr.right + 14) + 'px';
+                        pt.style.top = (vr.top + 46) + 'px'; pt.style.right = 'auto';
+                        pt.style.transform = 'none'; pt.style.marginTop = '0';
+                    } else {
+                        pt.style.position = 'absolute'; pt.style.left = '50%'; pt.style.right = 'auto';
+                        pt.style.top = '100%'; pt.style.transform = 'translateX(-50%)'; pt.style.marginTop = '8px';
+                    }
+                }
+            } catch (e) { /* layout repair must never break the toggle */ }
         }
         function setVpanelOpacity(o) { document.getElementById('vpanel').style.opacity = o; }
 
@@ -11162,7 +11296,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     else if (k === 'circle') { g.strokeStyle = e.color || '#000'; g.lineWidth = Math.max(1, e.thickness || 3); if (e.dashStyle === 'dotted') g.setLineDash([Math.max(1,(e.thickness||3)*0.6),4]); else if (e.dashStyle === 'dashed') g.setLineDash([7,5]); else g.setLineDash([]); g.beginPath(); g.ellipse(0, 0, e.width / 2, e.height / 2, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
                     else if (k === 'triangle') { const hw=e.width/2,hh=e.height/2; g.beginPath(); g.moveTo(0,-hh); g.lineTo(hw,hh); g.lineTo(-hw,hh); g.closePath(); if(e.triStyle==='filled'){g.fillStyle=e.color||'#000';g.fill();} g.strokeStyle=e.color||'#000'; g.lineWidth=Math.max(1,e.thickness||3); g.stroke(); }
                     else if (k === 'arrow') { const L2=e.width,t2=Math.max(2,e.thickness||6),hd=Math.min(L2*0.42,t2*4.2),hw2=t2*2.1; g.fillStyle=e.color||'#111'; g.beginPath(); g.moveTo(-L2/2,-t2/2); g.lineTo(L2/2-hd,-t2/2); g.lineTo(L2/2-hd,-hw2); g.lineTo(L2/2,0); g.lineTo(L2/2-hd,hw2); g.lineTo(L2/2-hd,t2/2); g.lineTo(-L2/2,t2/2); g.closePath(); g.fill(); }
-                    else if (k === 'text') { g.fillStyle = e.color || '#111'; g.font = (e.fontSize || 24) + 'px ' + (e.font || 'Arial'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(e.text || 'Text', 0, 0); }
+                    else if (k === 'text') { g.fillStyle = e.color || '#111'; g.font = (e.fontSize || 24) + 'px ' + fontStack(e.font); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(e.text || 'Text', 0, 0); }
                     else if (e.img) { g.drawImage(e.img, -e.width / 2, -e.height / 2, e.width, e.height); }
                 } catch (err) {}
                 g.restore();
@@ -11592,13 +11726,16 @@ ctx.fillText(conn.number.toString(), midX, midY);
         }
         function saveAssetsFile() {
             if (!savedAssets.length) { showConfirm({title:'Asset Library', body:'No assets to save yet — lasso some elements and Make Asset first.', okText:'OK', danger:false, hideCancel:true}); return; }
-            const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSETS', version: 1, assets: savedAssets }, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url; link.download = 'otom_assets_' + Date.now() + '.json';
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            showConfirm({title:'⇪ Library Exported', body:'Exported all ' + savedAssets.length + ' asset(s) to a portable file.', okText:'Done', danger:false, hideCancel:true});
+            const d = new Date(), pad = n => String(n).padStart(2, '0');
+            askFileName('⇪ Export Asset Library', 'otom_assets_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()), 'json', (name) => {
+                const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSETS', version: 1, assets: savedAssets }, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url; link.download = name + '.json';
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showConfirm({title:'⇪ Library Exported', body:'Exported ' + savedAssets.length + ' asset(s) to "' + name + '.json".', okText:'Done', danger:false, hideCancel:true});
+            });
         }
 
         // Export a SINGLE asset (or the selected one) as its own portable file
@@ -11606,14 +11743,16 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (!savedAssets.length) { showConfirm({title:'Asset Library', body:'No assets to export yet.', okText:'OK', danger:false, hideCancel:true}); return; }
             const a = (i === undefined) ? savedAssets[savedAssets.length - 1] : savedAssets[i];
             if (!a) return;
-            const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSET', version: 1, assets: [a] }, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'asset_' + (a.name || 'untitled').replace(/[^\w\-]+/g, '_') + '.json';
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            showConfirm({title:'⇪ Asset Exported', body:'Exported "' + (a.name || 'untitled') + '" to a portable file.', okText:'Done', danger:false, hideCancel:true});
+            askFileName('⇪ Export Asset', 'asset_' + (a.name || 'untitled').replace(/[^\w\-]+/g, '_'), 'json', (name) => {
+                const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSET', version: 1, assets: [a] }, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = name + '.json';
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showConfirm({title:'⇪ Asset Exported', body:'Exported "' + (a.name || 'untitled') + '" to "' + name + '.json".', okText:'Done', danger:false, hideCancel:true});
+            });
         }
 
         document.getElementById('assetLoadInput').addEventListener('change', function (e) {
