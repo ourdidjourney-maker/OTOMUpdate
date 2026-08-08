@@ -10875,6 +10875,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     padWords += tx ? tx.split(/\s+/).length : 0;
                 });
                 probe.innerHTML = '';
+                // An untouched pad is not an asset. Report only when it actually holds
+                // something: words, images, captures, element links, maths, or extra pages.
+                // An untouched pad is not an asset. Report only when it actually holds
+                // something: words, images, captures, element links, maths, or extra pages.
+                const _padUsed = padWords || padImgs || padChips || padMath || padCaps || padBoxes || padPages.length > 1;
+                if (_padUsed) {
                 section('Scratch Pad', padPages.length);
                 // live element references, resolved against the canvas
                 const refs = [];
@@ -10932,7 +10938,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     });
                     (curBody || c).appendChild(tr);
                 }
-                totalBytes += padBytes;
+                }
+                if (_padUsed) totalBytes += padBytes;
             }
 
             // ⛃ Checkers panel — a live canvas widget, so it reports its footprint
