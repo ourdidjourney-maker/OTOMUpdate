@@ -6555,8 +6555,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (set.length < 2) return;
                     let L2 = Infinity, T2 = Infinity, R2 = -Infinity, B2 = -Infinity, ports = 0;
                     set.forEach(m => {
-                        L2 = Math.min(L2, m.x - m.width / 2); R2 = Math.max(R2, m.x + m.width / 2);
-                        T2 = Math.min(T2, m.y - m.height / 2); B2 = Math.max(B2, m.y + m.height / 2);
+                        // rotated extents, or the frame cuts through a rotated member
+                        const _c = Math.abs(Math.cos(m.rotation || 0)), _s = Math.abs(Math.sin(m.rotation || 0));
+                        const _hw = (m.width * _c + m.height * _s) / 2;
+                        const _hh = (m.width * _s + m.height * _c) / 2;
+                        L2 = Math.min(L2, m.x - _hw); R2 = Math.max(R2, m.x + _hw);
+                        T2 = Math.min(T2, m.y - _hh); B2 = Math.max(B2, m.y + _hh);
                         ports += vecFusePts(m).length;
                     });
                     ctx.strokeStyle = '#00BFA5'; ctx.lineWidth = 2 / zv;
@@ -6604,8 +6608,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (set.length < 2) return;
                     let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
                     set.forEach(m => {
-                        L = Math.min(L, m.x - m.width / 2); R = Math.max(R, m.x + m.width / 2);
-                        T = Math.min(T, m.y - m.height / 2); B = Math.max(B, m.y + m.height / 2);
+                        const _c = Math.abs(Math.cos(m.rotation || 0)), _s = Math.abs(Math.sin(m.rotation || 0));
+                        const _hw = (m.width * _c + m.height * _s) / 2;
+                        const _hh = (m.width * _s + m.height * _c) / 2;
+                        L = Math.min(L, m.x - _hw); R = Math.max(R, m.x + _hw);
+                        T = Math.min(T, m.y - _hh); B = Math.max(B, m.y + _hh);
                     });
                     const flash = Math.max(...set.map(m => m._fuseFlash || 0));
                     ctx.save();
@@ -6697,8 +6704,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (set.length < 2) { set.forEach(m => { delete m.adhocGroup; }); return; }
                     let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
                     set.forEach(m => {
-                        L = Math.min(L, m.x - m.width / 2); R = Math.max(R, m.x + m.width / 2);
-                        T = Math.min(T, m.y - m.height / 2); B = Math.max(B, m.y + m.height / 2);
+                        const _c = Math.abs(Math.cos(m.rotation || 0)), _s = Math.abs(Math.sin(m.rotation || 0));
+                        const _hw = (m.width * _c + m.height * _s) / 2;
+                        const _hh = (m.width * _s + m.height * _c) / 2;
+                        L = Math.min(L, m.x - _hw); R = Math.max(R, m.x + _hw);
+                        T = Math.min(T, m.y - _hh); B = Math.max(B, m.y + _hh);
                     });
                     ctx.save();
                     ctx.strokeStyle = '#5E35B1';
@@ -14391,6 +14401,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 el.id = nid;
                 el.x = gp.x + (p.ox * c2 - p.oy * s2);
                 el.y = gp.y + (p.ox * s2 + p.oy * c2);
+                // The part's stored rotation is relative to the GROUP. Only its position
+                // was being rotated here, so a freed part snapped back to the group's
+                // un-rotated orientation — a datum line in a rotated asset flipped back
+                // to horizontal the moment it was deconstructed.
+                el.rotation = (gp.rotation || 0) + (p.rotation || 0);
                 el.pinned = false;
                 el.fromAsset = gp.assetName || gp.name || '';
                 // Deconstructing a MESH: carry its identity on every freed part so a
@@ -15784,6 +15799,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         var pulseOn = false, _pulseHeap = 0, _pulseDraws = 0, _pulseRAF = null;
         var _pulseMemHold = 0, _pulseMemMag = 0;
         var _pulseHeapBase = 0;
+        var _pulseCpuDraws = 0, _pulseCpuHold = 0, _pulseCpuCol = '#3fb950', _pulseCpuMag = 0;
         var _pulseDomHold = 0, _pulseDomMag = 0, _pulseDomCount = 0, _pulseDomObs = null, _pulseDomPeak = 0;
 
         function togglePulse() {
@@ -15807,6 +15823,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 }
                 _pulseHeap = (performance.memory ? performance.memory.usedJSHeapSize : 0);
                 _pulseDraws = PERF.draws;
+                _pulseCpuDraws = PERF.draws; _pulseCpuHold = 0;
                 // DOM — watch real mutations. This is the signal an HTML dev cares about:
                 // node churn and attribute thrash are the usual cause of jank that never
                 // shows up in CPU or GPU numbers.
@@ -15857,12 +15874,24 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         function pulseLoop() {
             if (!pulseOn) { if (_pulseRAF) cancelAnimationFrame(_pulseRAF); _pulseRAF = null; return; }
 
-            // CPU — time actually spent inside draw() this frame
-            const dt = PERF.lastDrawMs || 0;
-            if (dt > 0.35) {
-                const load = Math.min(1, dt / 16.7);
-                pulseFire('pulseCpu', load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950', load);
-            } else pulseRest('pulseCpu');
+            // CPU — time spent inside draw() SINCE THE LAST PULSE FRAME.
+            // PERF.lastDrawMs is sticky: it only changes when draw() runs, so on an idle
+            // canvas it held its final value and the dot stayed lit indefinitely,
+            // reporting an old frame as if it were current. Now the dot only fires when
+            // a draw has actually happened since the previous check.
+            const drewThisFrame = PERF.draws !== _pulseCpuDraws;
+            _pulseCpuDraws = PERF.draws;
+            if (drewThisFrame) {
+                const dt = PERF.lastDrawMs || 0;
+                if (dt > 0.35) {
+                    const load = Math.min(1, dt / 16.7);
+                    _pulseCpuHold = 2;   // brief hold so a single heavy frame is visible
+                    _pulseCpuCol = load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950';
+                    _pulseCpuMag = load;
+                }
+            }
+            if (_pulseCpuHold > 0) { _pulseCpuHold--; pulseFire('pulseCpu', _pulseCpuCol, _pulseCpuMag); }
+            else pulseRest('pulseCpu');
 
             // MEM — heap moved since the last sample
             const M = performance.memory;
@@ -15913,7 +15942,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             } else pulseRest('pulseDom');
 
             const r = document.getElementById('pulseRate');
-            if (r) r.textContent = (PERF.fps || 0) + 'fps · ' + dt.toFixed(1) + 'ms · ' +
+            if (r) r.textContent = (PERF.fps || 0) + 'fps · ' + (PERF.lastDrawMs || 0).toFixed(1) + 'ms · ' +
                 document.getElementsByTagName('*').length + ' nodes';
 
             _pulseRAF = requestAnimationFrame(pulseLoop);
@@ -16609,15 +16638,27 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const mine = vecFusePts(moved);
             if (!mine.length) return null;
             let maxPitch = VEC_FUSE_RANGE;
-            const mL = moved.x - moved.width / 2 - maxPitch, mR = moved.x + moved.width / 2 + maxPitch;
-            const mT = moved.y - moved.height / 2 - maxPitch, mB = moved.y + moved.height / 2 + maxPitch;
+            // Rotated extents. width/height are the UNROTATED dimensions, so a long
+            // thin asset turned 90 degrees still reported a wide, short box — and the
+            // rejection below threw away perfectly valid neighbours before their
+            // fusion points were ever compared. This is why fusing stopped working
+            // the moment an asset was rotated.
+            const ext = (el) => {
+                const ca = Math.abs(Math.cos(el.rotation || 0)), sa = Math.abs(Math.sin(el.rotation || 0));
+                return { hw: ((el.width || 0) * ca + (el.height || 0) * sa) / 2,
+                         hh: ((el.width || 0) * sa + (el.height || 0) * ca) / 2 };
+            };
+            const me = ext(moved);
+            const mL = moved.x - me.hw - maxPitch, mR = moved.x + me.hw + maxPitch;
+            const mT = moved.y - me.hh - maxPitch, mB = moved.y + me.hh + maxPitch;
             let best = null, bestD2 = Infinity;
             for (let i = 0; i < images.length; i++) {
                 const o = images[i];
                 if (o === moved) continue;
                 if (o.vFusionId && o.vFusionId === moved.vFusionId) continue;
-                if (o.x + o.width / 2 < mL || o.x - o.width / 2 > mR ||
-                    o.y + o.height / 2 < mT || o.y - o.height / 2 > mB) continue;
+                const oe = ext(o);
+                if (o.x + oe.hw < mL || o.x - oe.hw > mR ||
+                    o.y + oe.hh < mT || o.y - oe.hh > mB) continue;
                 const theirs = vecFusePts(o);
                 if (!theirs.length) continue;
                 for (let a = 0; a < mine.length; a++) {
@@ -16726,8 +16767,12 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (!moved || !moved.isMesh) return null;
             const pitch = meshPitch(moved);
             const lim = pitch * 0.65, lim2 = lim * lim;
-            const mL = moved.x - moved.width / 2 - pitch, mR = moved.x + moved.width / 2 + pitch;
-            const mT = moved.y - moved.height / 2 - pitch, mB = moved.y + moved.height / 2 + pitch;
+            // same rotated-extent correction as vector fusion
+            const _ca = Math.abs(Math.cos(moved.rotation || 0)), _sa = Math.abs(Math.sin(moved.rotation || 0));
+            const _hw = (moved.width * _ca + moved.height * _sa) / 2;
+            const _hh = (moved.width * _sa + moved.height * _ca) / 2;
+            const mL = moved.x - _hw - pitch, mR = moved.x + _hw + pitch;
+            const mT = moved.y - _hh - pitch, mB = moved.y + _hh + pitch;
             let mine = null, best = null, bestD2 = Infinity;
             for (let i = 0; i < images.length; i++) {
                 const o = images[i];
