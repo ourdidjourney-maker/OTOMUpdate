@@ -11315,11 +11315,39 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>▶ Media</b> — YouTube or local video. Each click spawns another player.</li>
 <li><b>⛃ Checkers</b> — a real minimax AI with alpha-beta pruning. Three depths.</li>
 <li><b>🕘 Clock</b> — clock, stopwatch, timestamps, and an alarm that blinks the whole UI.</li>
+<li><b>📅 Calendar</b> — due dates, meetings and milestones. Events attach to canvas elements, which then wear the date and turn red when it passes.</li>
 <li><b>⏻ Recovery</b> — the crash net. Writes a restorable point of the whole session; offered back automatically if OTOM closes without a save.</li>
 <li><b>📖 Notes Reader</b> — every notation in the engine in one list, with priority flags and a formula library you can drag onto the canvas.</li>
 </ul>
 <h3>Pinning</h3>
 <p><b>📌 Pin</b> anchors a panel to <b>canvas space</b> — it moves and scales when you pan and zoom, as if it were part of your work. Pinned media and browser panels fade their chrome until you hover them.</p>` },
+
+        { id:'cal', t:'The Calendar', h:`
+<h3>A schedule that lives with the work</h3>
+<p>Press <b>📅 Calendar</b> and a month grid opens, docked to the toolbar like every other panel. Coloured dots mark the days that carry something; <b>today is ringed in blue</b>, and any day holding an overdue item is <b>ringed in red</b>. Click a day and its events list down the right-hand side.</p>
+<p><b>＋ NEW EVENT</b> opens the editor: a date, an optional time, a kind, a title, and any details you want. Five kinds, each with its own colour so the grid reads at a glance:</p>
+` + hRow(
+  '<span style="display:inline-flex;align-items:center;gap:7px;margin-right:16px;"><span style="width:11px;height:11px;border-radius:50%;background:#EF5350;"></span><b style="color:#EF5350;">Due date</b></span>' +
+  '<span style="display:inline-flex;align-items:center;gap:7px;margin-right:16px;"><span style="width:11px;height:11px;border-radius:50%;background:#4FC3F7;"></span><b style="color:#4FC3F7;">Meeting</b></span>' +
+  '<span style="display:inline-flex;align-items:center;gap:7px;margin-right:16px;"><span style="width:11px;height:11px;border-radius:50%;background:#66BB6A;"></span><b style="color:#66BB6A;">Task</b></span>' +
+  '<span style="display:inline-flex;align-items:center;gap:7px;margin-right:16px;"><span style="width:11px;height:11px;border-radius:50%;background:#FFA726;"></span><b style="color:#FFA726;">Milestone</b></span>' +
+  '<span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:11px;height:11px;border-radius:50%;background:#BA68C8;"></span><b style="color:#BA68C8;">Note</b></span>'
+) + `
+<p>Tick an event to mark it done, ✕ to delete it, click it to edit. <b>Today</b> in the header jumps you back whenever you have wandered off into next March.</p>
+
+<h3>Attaching an event to an element — the part that matters</h3>
+<p>A date in a calendar is a reminder. A date <b>on the thing itself</b> is a deadline you cannot miss. Select an element on the canvas, then create an event: the editor offers a checkbox — <i>Attach to the selected element</i>. Tick it, and the two are bound.</p>
+<p>From that moment the element <b>wears its date on the canvas</b>, in the event's own colour, right beside it. When the date passes the badge <b>turns red</b>. You do not have to open anything or remember to check; the deadline is simply visible on the work it belongs to, in the place you are already looking.</p>
+<ul>
+<li>The event row names the element and <b>flies the camera to it</b> when you click that line.</li>
+<li>The element's <b>hover card</b> lists every event attached to it, flagging anything overdue.</li>
+<li>If the element is later deleted, the event says so plainly rather than pointing at nothing.</li>
+<li>An element can carry several events — the badge shows the nearest and a <b>+2</b> for the rest.</li>
+</ul>
+
+<h3>Where it is counted</h3>
+<p>The <b>Asset Manager</b> reports the schedule like everything else: total events, a breakdown by kind, how many are <b>overdue</b>, how many are done, how many are attached to elements, what is next up, and its memory — with the ten nearest events listed underneath, overdue ones in red. It all persists in Save and Snapshot, so your schedule survives a reload exactly as your canvas does.</p>
+<p style="color:#78909C;">The panel behaves like the rest: <b>⇱ Pop Out</b> to float it, <b>📌 Pin</b> to anchor it into canvas space so it moves and scales with your work, an opacity slider to dim it, and <b>▼</b> to collapse it to its header.</p>` },
 
         { id:'watch', t:'Watching the Engine', h:`
 <h3>◉ Pulse — the engine's vital signs</h3>
@@ -11440,6 +11468,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>Cannot lasso something</b> — hidden elements are deliberately excluded.</li>
 <li><b>The engine feels heavy</b> — open <b>Pulse</b> and see which dot is hot, then <b>Perf</b> for the detail. <b>PURGE</b> reclaims memory and reports exactly what it freed.</li>
 <li><b>A model will not select</b> — it may have been <b>watermarked</b>. Watermarked geometry is part of the canvas, not an element, and that is permanent. The Asset Manager still lists it under Watermarks.</li>
+<li><b>A red date is stuck on an element</b> — that is an overdue calendar event. Open <b>📅 Calendar</b>, find it in the day list, and tick it done or move the date.</li>
 <li><b>I closed the tab and lost everything</b> — reopen OTOM. If a recovery point exists it is offered on startup. Press <b>⏻ Recovery</b> at any time to write one now or pull the stored one back.</li>
 <li><b>Text says the wrong thing</b> — double-click it. The dialogue has a Text content field; editing it re-measures the box.</li>
 <li><b>MEM or DOM never lights</b> — that is the healthy state. Both ignore the engine's own clock and readouts, and MEM only fires on real allocation spikes.</li>
