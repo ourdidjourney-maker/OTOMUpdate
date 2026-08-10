@@ -539,6 +539,7 @@
         <button title="Drag a box to select multiple elements at once" id="lassoBtn" onclick="toggleLasso()" style="background: #6A1B9A;">⬚ Lasso</button>
         <button onclick="groupToAsset()" style="background: #FF6F00;" title="Turn the lasso selection into a reusable Asset">⊞ Make Asset</button>
         <button onclick="reconstructAsset()" style="background: #FF6F00;" title="Rebuild into one grouped asset. After a deconstruction this creates a NEW asset in the drawer.">⊟ Regroup</button>
+        <button onclick="watermarkSelection()" style="background: #546E7A;" title="PERMANENT: strip the selected model's data and burn its shape into the canvas as grid-coloured geometry">◈ Watermark</button>
         <button id="drawerBtn" onclick="toggleAssetDrawer()" style="background: #FF6F00;" title="Open the embedded Asset drawer">▤ Asset Drawer ▼</button>
         <span class="gsep" data-grp="GUIDES"></span>
         <button title="Drop a horizontal ruler guide across the canvas" onclick="addGuide('h')" style="background: #2196F3;">+ H Ruler</button>
@@ -1305,6 +1306,7 @@
                 { ico: '⛓', label: 'Connect', accent: '#FF8F00', run: () => toggleConnectMode() },
                 { ico: '⊞', label: 'Make Asset', accent: '#FF6F00', run: () => groupToAsset() },
                 { ico: '⊟', label: 'Regroup', accent: '#FF6F00', run: () => reconstructAsset() },
+                { ico: '◈', label: 'Watermark', accent: '#546E7A', run: () => watermarkSelection() },
             ]},
             { ico: '▤', label: 'Cartridge', accent: '#546E7A', sub: [
                 { ico: '▤', label: 'New',     accent: '#546E7A', run: () => toggleCartridgeMode() },
@@ -2650,6 +2652,7 @@
                 images = [];
                 connections = [];
                 canvasNotes = [];
+                if (typeof watermarks !== 'undefined') watermarks = [];
                 engineMessages = [];
                 formulaLibrary = [];
                 railAssignments = [];
@@ -2683,6 +2686,129 @@
         // ========================================
         // UNDO/REDO SYSTEM
         // ========================================
+        // ═══════════════════════════════════════════════════════════════════
+        // ◈ WATERMARK — burn a model into the canvas itself.
+        //
+        // A watermarked model is no longer an ELEMENT. Its metadata is stripped, it
+        // leaves the element list entirely, and it is redrawn in the grid's own colour
+        // at the grid's own line weight — so grid lines appear to run straight through
+        // it and it reads as part of the paper rather than something sitting on it.
+        //
+        // This is deliberately PERMANENT. Nothing undoes it.
+        // ═══════════════════════════════════════════════════════════════════
+        var watermarks = [];   // flattened, metadata-free geometry
+
+        // Reduce anything — element, group, mesh, weld — to bare drawable geometry in
+        // world space. Everything that identifies it is discarded here, on purpose.
+        function watermarkFlatten(el, baseX, baseY, baseRot, out) {
+            const k = elKind(el);
+            if (k === 'group' && Array.isArray(el.parts)) {
+                const c = Math.cos(baseRot || 0), s = Math.sin(baseRot || 0);
+                el.parts.forEach(p => {
+                    const wx = baseX + ((p.ox || 0) * c - (p.oy || 0) * s);
+                    const wy = baseY + ((p.ox || 0) * s + (p.oy || 0) * c);
+                    watermarkFlatten(p, wx, wy, (baseRot || 0) + (p.rotation || 0), out);
+                });
+                return;
+            }
+            // geometry ONLY — no name, no data string, no notations, no agent,
+            // no designation, no priority, no path, no birth stamp, no colour.
+            out.push({
+                kind: k, x: baseX, y: baseY,
+                width: el.width || 0, height: el.height || 0,
+                rotation: baseRot || 0,
+                thickness: el.thickness || 0,
+                triStyle: el.triStyle || '', dashStyle: el.dashStyle || '',
+                text: (k === 'text' ? (el.text || '') : ''),
+                font: (k === 'text' ? (el.font || 'Arial') : ''),
+                fontSize: (k === 'text' ? (el.fontSize || el.height || 24) : 0)
+            });
+        }
+
+        function watermarkSelection() {
+            const sel = (typeof selectedGroup !== 'undefined' && selectedGroup.length)
+                ? selectedGroup.slice()
+                : (selectedImage ? [selectedImage] : []);
+            if (!sel.length) {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '◈ Watermark',
+                    body: 'Select a model first — an element, a lasso selection, an ad hoc group, a mesh or a welded asset.\n\nWatermarking strips its data and burns the shape into the canvas permanently.',
+                    okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+            // include whole ad hoc groups if any member was picked
+            const gids = new Set(sel.map(e => e.adhocGroup).filter(Boolean));
+            const set = new Set(sel);
+            if (gids.size) images.forEach(e => { if (e.adhocGroup && gids.has(e.adhocGroup)) set.add(e); });
+            const members = [...set];
+
+            let parts = 0;
+            members.forEach(m => { parts += (elKind(m) === 'group' && m.parts) ? m.parts.length : 1; });
+
+            showConfirm({
+                title: '◈ Watermark — permanent',
+                body: 'Burn ' + members.length + ' selected item' + (members.length > 1 ? 's' : '') +
+                      ' (' + parts + ' shapes) into the canvas?\n\n' +
+                      '• All metadata is stripped: names, data strings, notations, agents, designations, priorities.\n' +
+                      '• It stops being an element — it cannot be selected, moved, or deleted.\n' +
+                      '• It is redrawn in the grid colour, as part of the canvas.\n\n' +
+                      'THIS CANNOT BE UNDONE.',
+                okText: 'Watermark permanently', danger: true,
+                onConfirm: () => {
+                    const geo = [];
+                    members.forEach(m => watermarkFlatten(m, m.x, m.y, m.rotation || 0, geo));
+                    if (!watermarks) watermarks = [];
+                    watermarks = watermarks.concat(geo);
+
+                    // remove them from the engine entirely
+                    const ids = new Set(members.map(m => m.id));
+                    connections = connections.filter(c => !ids.has(c.from) && !ids.has(c.to));
+                    images = images.filter(im => !ids.has(im.id));
+                    selectedGroup = []; selectedImage = null;
+
+                    // history is cleared for these: an undo must not resurrect them
+                    historyStack = []; historyIndex = -1;
+
+                    if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
+                    updateImageCount(); updateConnectionCount(); updateImageList(); draw();
+                    if (document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser();
+                }
+            });
+        }
+
+        // Drawn immediately after the grid, in the grid's colour and weight, so grid
+        // lines read as continuous through the model.
+        function drawWatermarks() {
+            // draw() runs during startup, before the declaration above has executed,
+            // so build the list on first use rather than assuming it exists.
+            if (typeof watermarks === 'undefined' || !watermarks) return;
+            if (!watermarks.length) return;
+            const z = camera.zoom;
+            ctx.save();
+            ctx.strokeStyle = TH.grid;
+            ctx.fillStyle = TH.grid;
+            ctx.lineWidth = 1 / z;
+            ctx.setLineDash([]);
+            watermarks.forEach(w => {
+                if (!inView(w, 60)) return;
+                ctx.save();
+                ctx.translate(w.x, w.y);
+                ctx.rotate(w.rotation || 0);
+                const hw = w.width / 2, hh = w.height / 2;
+                if (w.kind === 'dot') { ctx.beginPath(); ctx.arc(0, 0, hw, 0, Math.PI * 2); ctx.fill(); }
+                else if (w.kind === 'line') { ctx.beginPath(); ctx.moveTo(-hw, 0); ctx.lineTo(hw, 0); ctx.stroke(); }
+                else if (w.kind === 'rect') { ctx.strokeRect(-hw, -hh, w.width, w.height); }
+                else if (w.kind === 'circle') { ctx.beginPath(); ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2); ctx.stroke(); }
+                else if (w.kind === 'triangle') { ctx.beginPath(); ctx.moveTo(0, -hh); ctx.lineTo(hw, hh); ctx.lineTo(-hw, hh); ctx.closePath(); if (w.triStyle === 'filled') ctx.fill(); else ctx.stroke(); }
+                else if (w.kind === 'arrow') { const L = w.width, t = Math.max(2, w.thickness || 6), hd = Math.min(L * 0.42, t * 4.2), h2 = t * 2.1;
+                    ctx.beginPath(); ctx.moveTo(-L/2,-t/2); ctx.lineTo(L/2-hd,-t/2); ctx.lineTo(L/2-hd,-h2); ctx.lineTo(L/2,0); ctx.lineTo(L/2-hd,h2); ctx.lineTo(L/2-hd,t/2); ctx.lineTo(-L/2,t/2); ctx.closePath(); ctx.fill(); }
+                else if (w.kind === 'text') { ctx.font = (w.fontSize || 24) + 'px ' + fontStack(w.font); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(w.text || '', 0, 0); }
+                else { ctx.strokeRect(-hw, -hh, w.width, w.height); }
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
         function saveState() {
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
             if (historyIndex < historyStack.length - 1) {
@@ -3973,12 +4099,28 @@
                 return;
             }
 
-            if (e.key === 'Delete' && selectedImage) {
-                connections = connections.filter(c =>
-                    c.from !== selectedImage.id && c.to !== selectedImage.id
-                );
-                images = images.filter(img => img !== selectedImage);
+            if (e.key === 'Delete' && (selectedGroup.length || selectedImage)) {
+                // A lasso fills selectedGroup and leaves selectedImage null, so Delete
+                // has to honour BOTH. Ad hoc groups go whole: deleting one member of a
+                // bundle that moves as one should not leave the rest orphaned.
+                const targets = selectedGroup.length ? selectedGroup.slice() : [selectedImage];
+                const gids = new Set(targets.map(t => t.adhocGroup).filter(Boolean));
+                const kill = new Set(targets);
+                if (gids.size) images.forEach(el => { if (el.adhocGroup && gids.has(el.adhocGroup)) kill.add(el); });
+
+                const ids = new Set([...kill].map(el => el.id));
+                connections = connections.filter(c => !ids.has(c.from) && !ids.has(c.to));
+                images = images.filter(img => !kill.has(img));
+
+                // a deleted element must not stay referenced by a socket it was in
+                images.forEach(el => {
+                    if (el.socketLinks) el.socketLinks = el.socketLinks.filter(x => !ids.has(x));
+                    if (el.socketId && ids.has(el.socketId)) el.socketId = null;
+                    if (el.contents) el.contents = el.contents.filter(x => !ids.has(x));
+                });
+
                 selectedImage = null;
+                selectedGroup = [];
                 normalizeStepNumbers();
                 saveState();
                 updateImageCount();
@@ -4155,6 +4297,9 @@
 
             ctx.stroke();
             }
+
+            // Watermarks sit with the grid — part of the canvas, not on it
+            drawWatermarks();
 
             // Background image layer (above grid, below all elements)
             if (background && background.img) {
@@ -6006,6 +6151,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
+                watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
                 assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '*',
                 guides: (typeof guides !== 'undefined') ? guides.map(g => ({ axis: g.axis, pos: g.pos, id: g.id, locked: !!g.locked, hidden: !!g.hidden })) : [],
@@ -6651,6 +6797,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         text: m.text || '', agent: m.agent || '', priority: m.priority || '', ts: m.ts || Date.now(), snapshot: m.snapshot || null
                     }));
                     flagDrag = engineData.flagDrag || {};
+                    watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
                         setTimeout(() => {
                             if (typeof engineData.rulerHiddenOpacity === 'number') {
@@ -8347,7 +8494,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -11666,6 +11813,28 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 }
             }
 
+            // ◈ Watermarks — burnt into the canvas, no longer elements, but still bytes
+            if (typeof watermarks !== 'undefined' && watermarks && watermarks.length) {
+                section('Watermarks', watermarks.length);
+                const wt = {};
+                let wBytes = 0;
+                watermarks.forEach(w => { wt[w.kind] = (wt[w.kind] || 0) + 1; wBytes += objBytes(w); });
+                const wStr = Object.keys(wt).sort().map(k => wt[k] + ' ' + k).join(', ');
+                const P5 = [
+                    ['Shapes', watermarks.length],
+                    ['Breakdown', wStr],
+                    ['State', 'burnt into the canvas — permanent'],
+                    ['Selectable', 'no'],
+                    ['Metadata', 'stripped at watermark time'],
+                    ['Rendered as', 'grid colour, grid weight'],
+                    ['Memory', formatBytes(wBytes)]
+                ];
+                row(chip('◈', '#eceff1'), 'Watermarked geometry',
+                    watermarks.length + ' shapes · ' + formatBytes(wBytes) + ' · permanent',
+                    'Watermarks', P5, null, '#546E7A');
+                totalBytes += wBytes;
+            }
+
             // 📄 Doc panels — manual pages living on the canvas as real objects
             if (typeof docPanels !== 'undefined' && docPanels.length) {
                 section('Doc Panels', docPanels.length);
@@ -14134,6 +14303,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         // MEM = JS heap movement between samples, GPU = canvas raster work per frame.
         var pulseOn = false, _pulseHeap = 0, _pulseDraws = 0, _pulseRAF = null;
         var _pulseMemHold = 0, _pulseMemMag = 0;
+        var _pulseHeapBase = 0;
         var _pulseDomHold = 0, _pulseDomMag = 0, _pulseDomCount = 0, _pulseDomObs = null, _pulseDomPeak = 0;
 
         function togglePulse() {
@@ -14164,11 +14334,21 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     // Ignore our OWN writes. The pulse pill rewrites its dots and readout
                     // every frame, so without this filter the observer watches itself and
                     // the light sits permanently on — measuring nothing but its own noise.
-                    const pill = document.getElementById('pulseTab');
+                    // Exclude the engine's OWN always-on instruments. The clock rewrites
+                    // five properties every frame; the health tab and perf monitor tick
+                    // continuously. That is housekeeping, not application work, and
+                    // counting it pins the light on permanently and hides the real signal.
+                    const selfIds = ['pulseTab', 'clockPanel', 'healthTab', 'perfPanel'];
+                    const selfEls = selfIds.map(id => document.getElementById(id)).filter(Boolean);
                     _pulseDomObs = new MutationObserver(muts => {
                         for (let i = 0; i < muts.length; i++) {
                             const t = muts[i].target;
-                            if (pill && t && pill.contains(t.nodeType === 1 ? t : t.parentNode)) continue;
+                            const node = t && (t.nodeType === 1 ? t : t.parentNode);
+                            let own = false;
+                            for (let j = 0; j < selfEls.length; j++) {
+                                if (node && selfEls[j].contains(node)) { own = true; break; }
+                            }
+                            if (own) continue;
                             _pulseDomCount++;
                         }
                     });
@@ -14209,12 +14389,17 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (M) {
                 const now = M.usedJSHeapSize;
                 const delta = Math.abs(now - _pulseHeap);
-                if (delta > 8192) {
+                // The heap always drifts a little — timers, clock strings, panel updates.
+                // Track that baseline and fire only when something genuinely spikes above
+                // it, so the light reports real allocation instead of idle churn.
+                _pulseHeapBase = _pulseHeapBase * 0.94 + delta * 0.06;
+                const floor = Math.max(65536, _pulseHeapBase * 3);
+                if (delta > floor) {
                     // Hold the blink for a few frames. Heap allocation happens on ONE
                     // frame, so lighting for a single 16ms frame is below the eye's
                     // flicker threshold — that is why it looked imperceptible.
                     _pulseMemHold = 7;
-                    _pulseMemMag = Math.min(1, delta / 1048576);
+                    _pulseMemMag = Math.min(1, delta / Math.max(1048576, floor * 8));
                     _pulseHeap = now;
                 }
                 if (_pulseMemHold > 0) {
