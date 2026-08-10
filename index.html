@@ -624,6 +624,16 @@
         <button title="Panic-save the ENTIRE engine instantly to a timestamped file" onclick="takeSnapshot()" style="background: #FF6D00;">⚡ Snapshot</button>
         <button title="Restore a previously taken snapshot" onclick="loadSnapshot()" style="background: #FF8F00;">⤺ Load Snapshot</button>
         <button id="autoSnapBtn" onclick="cycleAutoSnapshot()" title="Take a snapshot automatically on a timer" style="background: #455A64; font-size:11px; padding:6px 8px;">⏱ Auto: OFF</button>
+        <button onclick="recManual()" title="Recovery: force a recovery point now, or restore the last one" style="background: #455A64; font-size:11px; padding:6px 8px;">⏻ Recovery</button>
+        <select id="recMode" onchange="setRecoveryMode(this.value)" title="When a recovery point is written" style="font-size:11px; padding:4px 5px; border-radius:5px;">
+            <option value="edit">On every change</option>
+            <option value="1">Every 1 min</option>
+            <option value="5">Every 5 min</option>
+            <option value="15">Every 15 min</option>
+            <option value="30">Every 30 min</option>
+            <option value="off">Manual only</option>
+        </select>
+        <span id="recStatus" style="font-size:10px; color:#90A4AE; margin-left:2px;">⏻ no recovery point yet</span>
         <button title="Open the Asset Manager — every element and its data" onclick="openAssetBrowser()" style="background: #673AB7;">🗂 Assets</button>
         <button title="Wipe the canvas and start over" onclick="resetEngine()" style="background: #F44336;">🔄 Reset Engine</button>
         <input type="file" id="fileInput" accept="image/*" style="display: none;">
@@ -1357,6 +1367,7 @@
             { ico: '⚙', label: 'Engine', accent: '#9C27B0', sub: [
                 { ico: '💾', label: 'Save',    accent: '#9C27B0', run: () => saveEngine() },
                 { ico: '📂', label: 'Load',    accent: '#00BCD4', run: () => document.getElementById('loadInput').click() },
+                { ico: '⏻', label: 'Recovery', accent: '#455A64', run: () => recManual() },
                 { ico: '⤢', label: 'Auto Size', accent: '#FF9800', run: () => autoSizeCanvas() },
                 { ico: '⟲', label: 'Reset View', accent: '#FF9800', run: () => resetView() },
                 { ico: '⛶', label: 'Fullscreen', accent: '#FF9800', run: () => toggleFullscreen() },
@@ -2855,8 +2866,244 @@
             ctx.restore();
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ⏻ CRASH RECOVERY — the last-ditch net.
+        //
+        // Three layers, because no single one is reliable on its own:
+        //   1. IndexedDB   — holds a full snapshot, hundreds of MB, survives a crash,
+        //                    a closed tab, a power cut. Written on a debounce and on
+        //                    every visibility change (the ONLY event browsers still
+        //                    guarantee fires when a tab goes away).
+        //   2. localStorage — a synchronous fallback for small scenes, written during
+        //                    beforeunload where async writes are not guaranteed.
+        //   3. beforeunload guard — the browser's own "leave site?" prompt, armed only
+        //                    when there is unsaved work, so it never nags for nothing.
+        //
+        // A download cannot be triggered during unload — browsers block it — so the
+        // recovery record is stored instead and offered back on the next open.
+        // ═══════════════════════════════════════════════════════════════════
+        var recoveryDirty = false, _recSaveT = null, _recDB = null, _recLastWrite = 0;
+        var RECOVERY_KEY = 'OTOM_RECOVERY';
+
+        function recOpenDB() {
+            return new Promise(res => {
+                if (_recDB) return res(_recDB);
+                try {
+                    const rq = indexedDB.open('otom_recovery', 1);
+                    rq.onupgradeneeded = ev => {
+                        const db = ev.target.result;
+                        if (!db.objectStoreNames.contains('snap')) db.createObjectStore('snap');
+                    };
+                    rq.onsuccess = ev => { _recDB = ev.target.result; res(_recDB); };
+                    rq.onerror = () => res(null);
+                } catch (e) { res(null); }
+            });
+        }
+
+        function recWrite(reason) {
+            let payload;
+            try { payload = buildEnginePayload(); } catch (e) { return; }
+            payload.recovery = { reason: reason || 'auto', at: Date.now() };
+            const json = JSON.stringify(payload);
+            _recLastWrite = Date.now();
+
+            // primary: IndexedDB, no practical size limit
+            recOpenDB().then(db => {
+                if (!db) return;
+                try {
+                    const tx = db.transaction('snap', 'readwrite');
+                    tx.objectStore('snap').put({ json: json, at: Date.now(), reason: reason || 'auto' }, 'latest');
+                } catch (e) {}
+            });
+
+            // fallback: localStorage, synchronous, but only if it fits
+            try {
+                if (json.length < 4500000) localStorage.setItem(RECOVERY_KEY, json);
+                else localStorage.removeItem(RECOVERY_KEY);
+            } catch (e) { /* quota or private mode — IndexedDB still has it */ }
+
+            recStatus();
+        }
+
+        // How often a point is written. 'edit' = after each change (debounced so a
+        // burst of edits writes once), a number = that many minutes, 'off' = only when
+        // the operator asks, or when the tab is hidden or closed. The close-time write
+        // ALWAYS happens regardless of mode — that is the whole point of the net.
+        var recoveryMode = 'edit', _recTimer = null;
+
+        function setRecoveryMode(m) {
+            recoveryMode = m;
+            clearTimeout(_recSaveT); _recSaveT = null;
+            if (_recTimer) { clearInterval(_recTimer); _recTimer = null; }
+            if (m !== 'edit' && m !== 'off') {
+                const mins = parseFloat(m) || 5;
+                _recTimer = setInterval(() => { if (recoveryDirty) recWrite('timer'); }, mins * 60000);
+            }
+            const sel = document.getElementById('recMode');
+            if (sel && sel.value !== m) sel.value = m;
+            recStatus();
+        }
+
+        // Called by every real edit.
+        function recTouch() {
+            recoveryDirty = true;
+            if (recoveryMode === 'edit') {
+                // debounced: a drag fires saveState many times, this writes once
+                clearTimeout(_recSaveT);
+                _recSaveT = setTimeout(() => recWrite('edit'), 2500);
+            }
+            recStatus();
+        }
+
+        function recStatus() {
+            const el = document.getElementById('recStatus');
+            if (!el) return;
+            const mode = recoveryMode === 'edit' ? 'on change'
+                       : recoveryMode === 'off' ? 'manual' : 'every ' + recoveryMode + 'm';
+            if (!_recLastWrite) {
+                el.textContent = '⏻ no point yet · ' + mode;
+                el.style.color = recoveryDirty ? '#EF6C00' : '#90A4AE';
+                return;
+            }
+            const s = Math.round((Date.now() - _recLastWrite) / 1000);
+            const age = s < 5 ? 'just now' : s < 90 ? s + 's ago' : Math.round(s / 60) + 'm ago';
+            el.textContent = '⏻ ' + age + ' · ' + mode + (recoveryDirty ? ' · unsaved' : '');
+            el.style.color = recoveryDirty ? '#EF6C00' : '#2E7D32';
+        }
+        setInterval(recStatus, 5000);
+
+        function recRead() {
+            return new Promise(res => {
+                recOpenDB().then(db => {
+                    if (!db) return res(recReadLocal());
+                    try {
+                        const tx = db.transaction('snap', 'readonly');
+                        const rq = tx.objectStore('snap').get('latest');
+                        rq.onsuccess = () => res(rq.result || recReadLocal());
+                        rq.onerror = () => res(recReadLocal());
+                    } catch (e) { res(recReadLocal()); }
+                });
+            });
+        }
+        function recReadLocal() {
+            try {
+                const j = localStorage.getItem(RECOVERY_KEY);
+                return j ? { json: j, at: 0, reason: 'local' } : null;
+            } catch (e) { return null; }
+        }
+
+        function recClear() {
+            recoveryDirty = false;
+            recOpenDB().then(db => {
+                if (!db) return;
+                try { db.transaction('snap', 'readwrite').objectStore('snap').delete('latest'); } catch (e) {}
+            });
+            try { localStorage.removeItem(RECOVERY_KEY); } catch (e) {}
+            recStatus();
+        }
+
+        // Feed a recovered payload through the EXISTING load path, so recovery uses the
+        // same tested code as opening a snapshot file — no second restore path to drift.
+        function recRestore(json) {
+            try {
+                const blob = new Blob([json], { type: 'application/json' });
+                const file = new File([blob], 'OTOM_recovered.json', { type: 'application/json' });
+                handleEngineFileLoad({ target: { id: 'snapshotInput', files: [file], value: '' } });
+            } catch (e) {
+                if (typeof showConfirm === 'function') showConfirm({
+                    title: '⏻ Recovery failed', body: e.message, okText: 'OK', danger: true, hideCancel: true });
+            }
+        }
+
+        // Offer whatever was left behind, on the next open.
+        // Manual control: write a point now, or pull the last one back.
+        function recManual() {
+            recRead().then(rec => {
+                const has = !!(rec && rec.json);
+                let info = 'No recovery point stored yet.';
+                if (has) {
+                    try {
+                        const d = JSON.parse(rec.json);
+                        const when = (d.recovery && d.recovery.at) ? new Date(d.recovery.at).toLocaleString() : 'unknown';
+                        info = 'Stored point: ' + (d.images || []).length + ' elements · ' +
+                               (d.connections || []).length + ' logic lines · ' +
+                               (d.savedAssets || []).length + ' assets\nWritten ' + when;
+                    } catch (e) {}
+                }
+                showConfirm({
+                    title: '⏻ Crash Recovery',
+                    body: info + '\n\nOTOM keeps a recovery point automatically while you work — ' +
+                          'on a timer, and whenever the tab is hidden or closed.\n\n' +
+                          'Confirm writes a fresh point now.' + (has ? ' Cancel offers to restore the stored one.' : ''),
+                    okText: 'Write point now', danger: false,
+                    onConfirm: () => { recWrite('manual'); showConfirm({ title: '⏻ Recovery point written',
+                        body: 'Your current work is stored and will be offered back if OTOM closes unexpectedly.',
+                        okText: 'OK', danger: false, hideCancel: true }); },
+                    onCancel: () => {
+                        if (!has) return;
+                        showConfirm({ title: '⏻ Restore stored point',
+                            body: 'Replace the current canvas with the stored recovery point?',
+                            okText: 'Restore', danger: true, onConfirm: () => recRestore(rec.json) });
+                    }
+                });
+            });
+        }
+
+        function recOffer() {
+            recRead().then(rec => {
+                if (!rec || !rec.json) return;
+                let info = '';
+                try {
+                    const d = JSON.parse(rec.json);
+                    const when = (d.recovery && d.recovery.at) ? new Date(d.recovery.at).toLocaleString()
+                               : (rec.at ? new Date(rec.at).toLocaleString() : 'unknown time');
+                    info = (d.images || []).length + ' elements · ' + (d.connections || []).length + ' logic lines · ' +
+                           (d.savedAssets || []).length + ' assets\nLast recovery point: ' + when;
+                    if (!(d.images || []).length && !(d.canvasNotes || []).length) return;  // nothing worth offering
+                } catch (e) { return; }
+                showConfirm({
+                    title: '⏻ Unsaved work found',
+                    body: 'OTOM closed without a save. A recovery point was kept:\n\n' + info +
+                          '\n\nRestore it? Choosing Discard deletes the recovery point permanently.',
+                    okText: 'Restore my work', danger: false,
+                    onConfirm: () => recRestore(rec.json),
+                    onCancel: () => {
+                        showConfirm({ title: '⏻ Discard recovery point',
+                            body: 'Delete the saved work permanently? It cannot be brought back.',
+                            okText: 'Discard', danger: true,
+                            onConfirm: recClear,
+                            onCancel: () => {} });
+                    }
+                });
+            });
+        }
+
+        (function recInit() {
+            // The one event that reliably fires when a tab is hidden or closed.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden' && recoveryDirty) recWrite('hidden');
+            });
+            window.addEventListener('pagehide', () => { if (recoveryDirty) recWrite('pagehide'); });
+
+            // The browser's own guard. Only armed when there is genuinely unsaved work.
+            window.addEventListener('beforeunload', (e) => {
+                if (!recoveryDirty) return;
+                try {
+                    const json = JSON.stringify(buildEnginePayload());
+                    if (json.length < 4500000) localStorage.setItem(RECOVERY_KEY, json);
+                } catch (err) {}
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            });
+
+            // offer anything left over from last time, once the engine is up
+            setTimeout(recOffer, 900);
+        })();
+
         function saveState() {
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
+            if (typeof recTouch === 'function') recTouch();
             if (historyIndex < historyStack.length - 1) {
                 historyStack = historyStack.slice(0, historyIndex + 1);
             }
@@ -6207,6 +6454,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 formulaLibrary: formulaLibrary.map(f => ({ id: f.id, title: f.title || '', text: f.text, notations: f.notations || '', agent: f.agent || '', ts: f.ts })),
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
+                recoveryMode: (typeof recoveryMode !== 'undefined') ? recoveryMode : 'edit',
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
@@ -6349,6 +6597,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
+                recoveryDirty = false;
                 if (typeof showConfirm === 'function') showConfirm({ title: 'Engine Saved', body: 'Written to "' + name + '.json".', okText: 'OK', danger: false, hideCancel: true });
             });
         }
@@ -6366,6 +6615,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             const link = document.createElement('a');
             link.href = url;
             link.download = (auto ? 'OTOM_autosnap_' : 'OTOM_snapshot_') + stamp + '.json';
+            recoveryDirty = false;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(url);
             // A MANUAL snapshot earns a banner: the operator asked for it and wants
@@ -6855,6 +7105,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     }));
                     flagDrag = engineData.flagDrag || {};
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
+                    if (engineData.recoveryMode && typeof setRecoveryMode === 'function') setRecoveryMode(engineData.recoveryMode);
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
                         setTimeout(() => {
                             if (typeof engineData.rulerHiddenOpacity === 'number') {
@@ -10128,7 +10379,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
   hBtn('◯ Draw Circle', '#795548') + hBtn('Connect Block Elements', '#FF9800') +
   hBtn('⬚ Lasso', '#6A1B9A') + hBtn('⊞ Make Asset', '#FF6F00') +
   hBtn('▤ Asset Drawer ▼', '#FF6F00') + hBtn('🗂 Assets', '#673AB7') +
-  hBtn('⚡ Snapshot', '#FF6D00') + hBtn('◉ Pulse', '#263238') + hBtn('? Help', '#37474F')
+  hBtn('◈ Watermark', '#546E7A') + hBtn('⚡ Snapshot', '#FF6D00') + hBtn('◉ Pulse', '#263238') + hBtn('? Help', '#37474F')
 ) + `
 <h3>The philosophy</h3>
 <p>Every tool comes <b>to the cursor</b>. Panels are subordinate to the canvas — they dim, pin, and collapse so your eyes never leave your work. If something makes you look away, that is a bug.</p>` },
@@ -10147,6 +10398,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 <li><b>Click</b> selects · <b>Shift+click</b> adds to a multi-selection.</li>
 <li><b>Lasso</b> — drag a box around several elements.</li>
 <li><b>Arrow keys</b> nudge the selection · <b>Shift+arrows</b> nudge 10×.</li>
+<li><b>Delete</b> removes the whole selection — one element or a lasso of fifty. An ad hoc group goes whole, so a bundle that moves as one is never left half-deleted.</li>
 <li><b>Shift+G</b> — bundle a selection into an <b>Ad Hoc Group</b>. Members keep their identity but move as one. Click any member to select the whole group.</li>
 <li><b>P</b> pins an element in place · <b>H</b> hides it · <b>Delete</b> removes it.</li>
 <li><b>Ctrl+drag</b> duplicates · <b>Ctrl+Z / Ctrl+Shift+Z</b> undo and redo.</li>
@@ -10161,7 +10413,7 @@ hDef('rect','Square','Hollow — only the border is clickable, so you can still 
 hDef('circle','Circle','Solid, dashed or dotted. Hollow like the square. Hold Shift for a perfect circle.') +
 hDef('triangle','Triangle','Outline or filled. An outline triangle is hollow; a filled one is not.') +
 hDef('arrow','Arrow','A solid directional marker. Press-drag-release.') +
-hDef('text','Text','Click to place, type, Enter. Resizing scales the real font size, not just the box.') +
+hDef('text','Text','Click to place, type, Enter. Resizing scales the real font size, not just the box. Double-click it later to rewrite the words or set an exact size — the box re-measures itself.') +
 hDef('image','Block Element','An uploaded image, carried as a first-class element with full metadata.') + `
 <h3>Every element carries data</h3>
 <p>Double-click to open its dialogue: <b>Display Name</b>, <b>Data String</b> (the instruction it represents), <b>Source Path</b>, <b>Notation(s)</b>, <b>Legitimizing Agent</b>, <b>Numeric Designation</b>, <b>Priority</b>, and <b>Outline</b>. Toggle the metadata buttons to show any of these on the canvas as flags.</p>` },
@@ -10199,6 +10451,27 @@ hDef('image','Block Element','An uploaded image, carried as a first-class elemen
 <li><b>⊟ badge</b> on a group deconstructs it. Edit the freed parts, then <b>Regroup</b>.</li>
 <li>Regroup only creates a <b>new</b> asset if you actually changed something — open and close it untouched and nothing is duplicated.</li>
 </ul>
+<h3>Watermarking — burning a model into the canvas</h3>
+<p>Select a model and press <b>◈ Watermark</b>. Its metadata is stripped — names, data strings, notations, agents, designations, priorities, all of it — and the bare shape is redrawn in the <b>grid's own colour at the grid's own line weight</b>, so grid lines read as continuous through it. It becomes part of the paper rather than something sitting on it.</p>
+<p>A watermarked model is <b>no longer an element</b>. It cannot be selected, dragged, hidden or deleted, and it does not appear in the element list. Undo history is cleared at that moment so nothing can resurrect it.</p>
+<p style="color:#EF6C00;"><b>This is permanent.</b> The engine asks once, plainly, and then it is done. Watermarked geometry is still reported in the Asset Manager — it costs bytes, so it is counted like everything else.</p>
+` + hFig('A model before and after watermarking. The shape survives; everything that identified it does not.',
+`<svg viewBox="0 0 420 130" style="width:100%; max-width:420px; display:block; margin:0 auto;">
+  <circle cx="60" cy="55" r="13" fill="#cfd8dc"/>
+  <line x1="73" y1="55" x2="127" y2="55" stroke="#90A4AE" stroke-width="3"/>
+  <circle cx="140" cy="55" r="13" fill="#cfd8dc"/>
+  <rect x="30" y="82" width="76" height="17" fill="#0f1419" stroke="#4CAF50" stroke-width="1.4"/>
+  <text x="68" y="94" fill="#cfd8dc" font-size="10" text-anchor="middle">Node 1 #237</text>
+  <text x="100" y="122" fill="#546e7a" font-size="10" text-anchor="middle">element — named, measured, selectable</text>
+  <text x="212" y="60" fill="#546e7a" font-size="20" text-anchor="middle">→</text>
+  <line x1="255" y1="30" x2="255" y2="105" stroke="#263238" stroke-width="1"/>
+  <line x1="330" y1="30" x2="330" y2="105" stroke="#263238" stroke-width="1"/>
+  <line x1="250" y1="55" x2="410" y2="55" stroke="#263238" stroke-width="1"/>
+  <circle cx="290" cy="55" r="13" fill="#37474F"/>
+  <line x1="303" y1="55" x2="357" y2="55" stroke="#37474F" stroke-width="3"/>
+  <circle cx="370" cy="55" r="13" fill="#37474F"/>
+  <text x="330" y="122" fill="#546e7a" font-size="10" text-anchor="middle">watermark — part of the canvas</text>
+</svg>`) + `
 <h3>Folders</h3>
 <p><b>+ Folder</b> in the drawer creates one. <b>Drag any asset card onto a folder tab</b> to file it. Deleting a folder returns its assets to Unfiled — assets are never destroyed.</p>
 <h3>Meshes, sockets, welding</h3>
@@ -10279,6 +10552,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>▶ Media</b> — YouTube or local video. Each click spawns another player.</li>
 <li><b>⛃ Checkers</b> — a real minimax AI with alpha-beta pruning. Three depths.</li>
 <li><b>🕘 Clock</b> — clock, stopwatch, timestamps, and an alarm that blinks the whole UI.</li>
+<li><b>⏻ Recovery</b> — the crash net. Writes a restorable point of the whole session; offered back automatically if OTOM closes without a save.</li>
 <li><b>📖 Notes Reader</b> — every notation in the engine in one list, with priority flags and a formula library you can drag onto the canvas.</li>
 </ul>
 <h3>Pinning</h3>
@@ -10293,6 +10567,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>GPU</b> — canvas raster work; brighter on multi-draw bursts.</li>
 <li><b>DOM</b> — interface mutations per frame. This is the one no other gauge can see: layout thrash costs you frames without touching CPU, memory, or the canvas. Mostly dark is healthy.</li>
 </ul>
+<h3>What the lights deliberately ignore</h3>
+<p>An instrument that measures itself is worthless. Pulse excludes its own writes and the engine's other always-on readouts — the <b>clock</b>, the <b>health pill</b> and the <b>performance monitor</b> — from the DOM count. The clock alone rewrites five properties every frame; counting it would pin the light on permanently and hide everything real.</p>
+<p><b>MEM</b> works the same way. The heap always drifts a little from timers and panel updates, so the dot tracks that baseline and fires only on genuine spikes above it — pasting an image, generating a mesh, loading a snapshot. A dark MEM light means nothing is being allocated, not that nothing is being measured.</p>
 ` + hFig('The Pulse pill. Each dot lights only when that kind of work actually happens.',
 `<div style="display:flex; justify-content:center;">
   <span style="display:inline-flex; align-items:center; gap:13px; padding:8px 16px; border:2px solid #263238; border-radius:20px; background:#11161b;">
@@ -10336,7 +10613,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 </div>`) + `
 <ul>
 <li><b>FLUSH</b> reclaims caches · <b>☠ PURGE</b> is a deep reclamation, and <b>AUTO</b> runs it on a timer when you are idle.</li>
-</ul>` },
+</ul>
+<h3>Reading a reclamation report</h3>
+<p>Both Flush and Purge finish with an itemised report: undo history, performance buffers, render caches, the flag collision grid, the flag placement cache, and browser caches — each with the bytes it released, and a total.</p>
+<p>Those figures are what the engine <b>released</b>, measured before dropping each structure. They are not a before-and-after reading of the heap, because the browser reclaims lazily: the heap figure often will not move for seconds afterwards, and diffing it reports nothing useful. The heap is still shown at the bottom for reference, but the totals above it are the honest number.</p>` },
 
         { id:'save', t:'Saving & Snapshots', h:`
 <h3>Three ways to keep your work</h3>
@@ -10345,6 +10625,17 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>⚡ Snapshot</b> — a panic save. Captures <b>everything</b>: canvas, connections, notations, assets, folders, rulers, open panels, their positions and opacities, calculator history, scratch pad pages, stopwatch, alarms.</li>
 <li><b>⏱ Auto</b> — snapshots on a timer: 5, 10, 20, 40 or 60 minutes. Silent and unattended; it waits until you are idle so it never interrupts a drag.</li>
 </ul>
+<h3>⏻ Crash recovery — the net under all of it</h3>
+<p>OTOM keeps a <b>recovery point</b> of your whole session in the browser's own database. If the tab is closed, the browser crashes, or the machine loses power, that point is offered back the next time you open the engine.</p>
+<p>It is written on three triggers: your chosen schedule, whenever the tab is <b>hidden</b>, and on <b>close</b> — those last two always happen regardless of the setting, because that is the moment the net is for. If there is unsaved work, the browser's own <b>"leave site?"</b> prompt is armed as a final warning; saving an engine file or taking a snapshot stands it down.</p>
+` + hRow(
+  '<b style="color:#eceff1;">When points are written</b><br><span style="color:#90A4AE; font-size:12px;">' +
+  '<b>On every change</b> — after each edit, debounced so a drag writes once. Safest.<br>' +
+  '<b>Every 1 / 5 / 15 / 30 min</b> — on a timer, only if something changed.<br>' +
+  '<b>Manual only</b> — nothing automatic; still writes when the tab is hidden or closed.</span>'
+) + `
+<p>The readout beside the control tells you where you stand: <b style="color:#2E7D32;">⏻ 12s ago · on change</b> when you are covered, and <b style="color:#EF6C00;">· unsaved</b> in orange when there are edits not yet in a point.</p>
+<p style="color:#78909C;">A browser will not allow a download to start while a tab is closing, so the recovery point is <b>stored</b> rather than downloaded — which is safer anyway, since a stored point cannot be missed.</p>
 <h3>Restoring</h3>
 <p><b>⤺ Load Snapshot</b> rebuilds the session and shows a full inventory of what came back, grouped by canvas, state, library, and windows. <b>Hover any row</b> for detail. It waits for you — press <b>Continue</b> or <b>Esc</b> when you are ready.</p>
 <p style="color:#78909C;">If your browser is set to ask where to save each file, downloads will prompt. Turn that off in your browser's download settings and snapshots land silently.</p>` },
@@ -10365,7 +10656,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>P</b></td><td>Pin / unpin</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>B</b></td><td>Break a fusion bond</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>N</b></td><td>Open the selected element's dialogue</td></tr>
-<tr><td style="padding:4px 0; color:#26C6DA;"><b>Delete</b></td><td>Remove selection</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Delete</b></td><td>Remove the whole selection (lasso or single; ad hoc groups go whole)</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>Esc</b></td><td>Clear selection / cancel mode</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>F11</b></td><td>Fullscreen</td></tr>
 </table>
@@ -10384,7 +10675,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>A ruler vanished</b> — raise the <b>👁 Hidden</b> opacity slider.</li>
 <li><b>Cannot drag something</b> — it may be <b>pinned</b> (press P) or a ruler may be <b>locked</b>.</li>
 <li><b>Cannot lasso something</b> — hidden elements are deliberately excluded.</li>
-<li><b>The engine feels heavy</b> — open <b>Pulse</b> and see which dot is hot, then <b>Perf</b> for the detail. <b>PURGE</b> reclaims memory.</li>
+<li><b>The engine feels heavy</b> — open <b>Pulse</b> and see which dot is hot, then <b>Perf</b> for the detail. <b>PURGE</b> reclaims memory and reports exactly what it freed.</li>
+<li><b>A model will not select</b> — it may have been <b>watermarked</b>. Watermarked geometry is part of the canvas, not an element, and that is permanent. The Asset Manager still lists it under Watermarks.</li>
+<li><b>I closed the tab and lost everything</b> — reopen OTOM. If a recovery point exists it is offered on startup. Press <b>⏻ Recovery</b> at any time to write one now or pull the stored one back.</li>
+<li><b>Text says the wrong thing</b> — double-click it. The dialogue has a Text content field; editing it re-measures the box.</li>
+<li><b>MEM or DOM never lights</b> — that is the healthy state. Both ignore the engine's own clock and readouts, and MEM only fires on real allocation spikes.</li>
 <li><b>A panel is in the wrong place</b> — switching between horizontal and vertical UI re-anchors everything; panels you popped out stay where you put them.</li>
 </ul>
 <h3>The golden rule</h3>
