@@ -639,6 +639,7 @@
         <button title="Play checkers against the engine; pinnable, dimmable, collapsible" id="gameBtn" onclick="toggleCheckers()" style="background: #4E342E;">⛃ Checkers</button>
         <button title="Open the Scratch Pad — notes, images, links, checklists" id="padBtn" onclick="togglePad()" style="background: #455A64;">✎ Scratch Pad</button>
         <button title="Open the clock, stopwatch, alarm and timestamp panel" id="clockBtn" onclick="toggleClock()" style="background: #263238;">🕘 Clock</button>
+        <button title="Calendar: due dates, meetings, and events you can attach to elements" id="calBtn" onclick="toggleCalendar()" style="background: #0277BD;">📅 Calendar</button>
         <span class="gsep" data-grp="SYSTEM"></span>
         <button id="darkBtn" onclick="toggleDarkMode()" style="background: #263238;" title="Dark mode for the whole interface and canvas">🌙 Dark</button>
         <button title="Open the performance monitor: FPS, memory and scene breakdown" id="perfBtn" onclick="togglePerf()" style="background: #263238;">📊 Perf</button>
@@ -815,6 +816,35 @@
                 <div style="padding:0 14px 13px; background:#0a1614;">
                     <div style="font:700 9px/1 Arial; color:#4DB6AC; letter-spacing:1.8px; margin-bottom:6px;">HISTORY <span style="color:#2b4a45; letter-spacing:.5px; font-weight:400;">· click to reuse</span></div>
                     <div id="calcHist" style="max-height:118px; overflow:auto; font:12px 'Courier New',monospace; color:#80CBC4;"></div>
+                </div>
+            </div>
+        </div>
+        <div id="calPanel" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:44%; min-width:430px; height:56vh; min-height:300px; z-index:1585; background:#12171d; border:1px solid #26343d; border-radius:12px; box-shadow:0 20px 54px rgba(0,0,0,.55); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
+            <div id="calHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; user-select:none; border-bottom:1px solid #26343d;">
+                <span style="font:700 11px Arial; letter-spacing:2.2px; color:#4FC3F7; flex:1;">CALENDAR</span>
+                <button id="calTodayBtn" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(79,195,247,.14); color:#4FC3F7; border-radius:5px;">Today</button>
+                <button id="calPinBtn" title="Pin to the canvas" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(79,195,247,.14); color:#4FC3F7; border-radius:5px;">📌 Pin</button>
+                <span style="font-size:9px; letter-spacing:1px; color:#546e7a;">OP</span>
+                <input id="calOp" type="range" min="25" max="100" value="100" style="width:50px;">
+                <button id="calPopBtn" title="Undock into a floating window" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(79,195,247,.14); color:#4FC3F7; border-radius:5px;">⇱ Pop Out</button>
+                <button id="calCollapseBtn" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(79,195,247,.14); color:#4FC3F7; border-radius:5px;">▼</button>
+                <button onclick="toggleCalendar()" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(79,195,247,.14); color:#4FC3F7; border-radius:5px;">✕</button>
+            </div>
+            <div id="calBody" style="display:flex; flex:1 1 auto; min-height:0;">
+                <div style="flex:1 1 auto; display:flex; flex-direction:column; min-width:0; border-right:1px solid #1b2530;">
+                    <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:#0d1117;">
+                        <button id="calPrev" style="margin:0; padding:4px 10px; font-size:13px; background:#1b2530; color:#90A4AE; border-radius:5px;">‹</button>
+                        <span id="calTitle" style="flex:1; text-align:center; font:700 13px Arial; letter-spacing:.6px; color:#eceff1;"></span>
+                        <button id="calNext" style="margin:0; padding:4px 10px; font-size:13px; background:#1b2530; color:#90A4AE; border-radius:5px;">›</button>
+                    </div>
+                    <div id="calGrid" style="flex:1 1 auto; overflow:auto; padding:0 10px 10px;"></div>
+                </div>
+                <div style="width:250px; flex:0 0 auto; display:flex; flex-direction:column; background:#0d1117; min-width:0;">
+                    <div id="calDayLabel" style="padding:9px 12px; font:700 11px Arial; letter-spacing:1.2px; color:#4FC3F7; border-bottom:1px solid #1b2530;"></div>
+                    <div id="calEvents" style="flex:1 1 auto; overflow:auto; padding:8px 10px;"></div>
+                    <div style="padding:8px 10px; border-top:1px solid #1b2530;">
+                        <button id="calAdd" style="width:100%; margin:0; padding:8px; font:700 11px Arial; letter-spacing:.8px; background:linear-gradient(180deg,#4FC3F7,#0277BD); color:#04222e; border-radius:7px;">＋ NEW EVENT</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1397,6 +1427,7 @@
                 { ico: '━', label: 'Primer',  accent: '#1B5E20', run: () => togglePrimerBoard() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
                 { ico: '▤', label: 'Wire',    accent: '#37474F', run: () => toggleTicker() },
+                { ico: '📅', label: 'Calendar', accent: '#0277BD', run: () => toggleCalendar() },
                 { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
                 { ico: '?', label: 'Help',    accent: '#37474F', run: () => toggleHelp() },
                 { ico: '✎', label: 'Scratch', accent: '#455A64', run: () => togglePad() },
@@ -2749,6 +2780,7 @@
                 connections = [];
                 canvasNotes = [];
                 if (typeof watermarks !== 'undefined') watermarks = [];
+                if (typeof calEvents !== 'undefined') calEvents = [];
                 engineMessages = [];
                 formulaLibrary = [];
                 railAssignments = [];
@@ -3517,6 +3549,276 @@
                 setTimeout(() => { item.style.background = ''; }, 600);
                 const tp = document.getElementById('tickerTip');
                 if (tp) tp.style.display = 'none';
+            });
+        })();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // 📅 CALENDAR — due dates, meetings and events, attachable to elements.
+        //
+        // Docks exactly like the Scratch Pad: absolute inside #controls at top:100%,
+        // re-anchored through reanchorPanel so it follows the toolbar into vertical
+        // mode. An event can be bound to a canvas element, which then wears a date
+        // badge and turns red when the date passes.
+        // ═══════════════════════════════════════════════════════════════════
+        var calOpen = false, calPopped = false, calCollapsed = false, calPinned = false;
+        var calAnchor = { x: 0, y: 0 };
+        var calEvents = [];              // { id, date:'YYYY-MM-DD', time, title, note, kind, done, elId }
+        var calView = new Date(), calSel = null;
+
+        const CAL_KINDS = {
+            due:     ['Due date',  '#EF5350'],
+            meeting: ['Meeting',   '#4FC3F7'],
+            task:    ['Task',      '#66BB6A'],
+            note:    ['Note',      '#BA68C8'],
+            release: ['Milestone', '#FFA726']
+        };
+
+        const calKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const calToday = () => calKey(new Date());
+        function calParse(k) { const p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+        function calOverdue(ev) { return !ev.done && ev.date < calToday(); }
+        function calFor(key) { return calEvents.filter(e => e.date === key).sort((a, b) => (a.time || '').localeCompare(b.time || '')); }
+
+        function calRenderGrid() {
+            const g = document.getElementById('calGrid');
+            const t = document.getElementById('calTitle');
+            if (!g) return;
+            const y = calView.getFullYear(), m = calView.getMonth();
+            t.textContent = calView.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+            const first = new Date(y, m, 1).getDay();
+            const days = new Date(y, m + 1, 0).getDate();
+            const today = calToday();
+
+            let html = '<div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:4px;">';
+            ['S','M','T','W','T','F','S'].forEach(d => html += '<div style="text-align:center; font:700 9px Arial; letter-spacing:1px; color:#37474F; padding:4px 0;">' + d + '</div>');
+            html += '</div><div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px;">';
+            for (let i = 0; i < first; i++) html += '<div></div>';
+
+            for (let d = 1; d <= days; d++) {
+                const key = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+                const evs = calFor(key);
+                const isToday = key === today;
+                const isSel = key === calSel;
+                const late = evs.some(calOverdue);
+                let bg = '#131a21', bd = '#1f2a33', col = '#90A4AE';
+                if (isSel) { bg = 'rgba(79,195,247,.16)'; bd = '#4FC3F7'; col = '#eceff1'; }
+                else if (isToday) { bd = '#4FC3F7'; col = '#4FC3F7'; }
+                if (late) bd = '#EF5350';
+                html += '<div data-day="' + key + '" style="position:relative; min-height:46px; padding:5px 6px; cursor:pointer; ' +
+                    'background:' + bg + '; border:1px solid ' + bd + '; border-radius:7px; transition:background .12s;">' +
+                    '<div style="font:' + (isToday ? '700 ' : '') + '11px Arial; color:' + col + ';">' + d + '</div>';
+                if (evs.length) {
+                    html += '<div style="display:flex; gap:2px; flex-wrap:wrap; margin-top:3px;">';
+                    evs.slice(0, 4).forEach(e => {
+                        const c = (CAL_KINDS[e.kind] || CAL_KINDS.note)[1];
+                        html += '<span style="width:5px; height:5px; border-radius:50%; background:' + c +
+                                (e.done ? '; opacity:.3' : '') + ';"></span>';
+                    });
+                    if (evs.length > 4) html += '<span style="font:8px Arial; color:#546e7a;">+' + (evs.length - 4) + '</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            g.innerHTML = html;
+            g.querySelectorAll('[data-day]').forEach(el => {
+                el.onclick = () => { calSel = el.getAttribute('data-day'); calRenderGrid(); calRenderDay(); };
+            });
+        }
+
+        function calRenderDay() {
+            const lbl = document.getElementById('calDayLabel');
+            const box = document.getElementById('calEvents');
+            if (!box) return;
+            if (!calSel) calSel = calToday();
+            const d = calParse(calSel);
+            lbl.textContent = d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase();
+            const evs = calFor(calSel);
+            if (!evs.length) {
+                box.innerHTML = '<div style="color:#37474F; font-size:12px; padding:12px 2px; line-height:1.6;">Nothing scheduled.<br>Add an event, or attach one to a selected element.</div>';
+                return;
+            }
+            box.innerHTML = '';
+            evs.forEach(e => {
+                const k = CAL_KINDS[e.kind] || CAL_KINDS.note;
+                const late = calOverdue(e);
+                const row = document.createElement('div');
+                row.style.cssText = 'padding:8px 9px; margin:5px 0; background:#131a21; border:1px solid #1f2a33; ' +
+                    'border-left:3px solid ' + (late ? '#EF5350' : k[1]) + '; border-radius:7px; cursor:pointer;' +
+                    (e.done ? 'opacity:.5;' : '');
+                const el = e.elId ? images.find(im => String(im.id) === String(e.elId)) : null;
+                row.innerHTML =
+                    '<div style="display:flex; align-items:center; gap:6px;">' +
+                    '<span style="font:700 8px Arial; letter-spacing:1px; color:' + k[1] + '; background:' + k[1] + '22; padding:2px 6px; border-radius:8px;">' + k[0].toUpperCase() + '</span>' +
+                    (e.time ? '<span style="font:11px ui-monospace,monospace; color:#78909C;">' + e.time + '</span>' : '') +
+                    (late ? '<span style="font:700 8px Arial; color:#EF5350; letter-spacing:1px;">OVERDUE</span>' : '') +
+                    '<span style="flex:1;"></span>' +
+                    '<span data-done="' + e.id + '" title="Mark done" style="color:' + (e.done ? '#66BB6A' : '#37474F') + '; font-size:13px;">✓</span>' +
+                    '<span data-del="' + e.id + '" title="Delete" style="color:#546e7a; font-size:11px;">✕</span></div>' +
+                    '<div style="color:#eceff1; font-size:12.5px; margin-top:4px;' + (e.done ? 'text-decoration:line-through;' : '') + '">' +
+                        String(e.title).replace(/</g, '&lt;') + '</div>' +
+                    (e.note ? '<div style="color:#78909C; font-size:11px; margin-top:2px;">' + String(e.note).replace(/</g, '&lt;') + '</div>' : '') +
+                    (el ? '<div data-goto="' + e.elId + '" style="color:#4FC3F7; font-size:10.5px; margin-top:4px;">⚫ ' +
+                        String(el.name || elKind(el)).replace(/</g, '&lt;') + ' — click to fly to it</div>'
+                        : (e.elId ? '<div style="color:#EF5350; font-size:10.5px; margin-top:4px;">⚠ attached element no longer exists</div>' : ''));
+                row.onclick = ev => {
+                    const t = ev.target;
+                    if (t.getAttribute('data-done')) { e.done = !e.done; calSave(); return; }
+                    if (t.getAttribute('data-del')) { calEvents = calEvents.filter(x => x.id !== e.id); calSave(); return; }
+                    if (t.getAttribute('data-goto') && el) {
+                        selectedImage = el; selectedGroup = [];
+                        const r = canvas.getBoundingClientRect();
+                        camera.x = r.width / 2 - el.x * camera.zoom;
+                        camera.y = r.height / 2 - el.y * camera.zoom;
+                        updateImageList(); draw(); return;
+                    }
+                    calEditor(e);
+                };
+                box.appendChild(row);
+            });
+        }
+
+        function calSave() { saveState(); calRenderGrid(); calRenderDay(); draw(); }
+
+        // Create or edit an event. Attaching to the current selection is one checkbox.
+        function calEditor(ev) {
+            const isNew = !ev;
+            const sel = selectedImage;
+            const e = ev || { id: Date.now() + Math.random(), date: calSel || calToday(), time: '', title: '', note: '', kind: 'due', done: false, elId: null };
+            const modal = document.getElementById('confirmModal');
+            const body = document.getElementById('confirmModalBody');
+            const ok = document.getElementById('confirmOkBtn');
+            const cancel = document.getElementById('confirmCancelBtn');
+            document.getElementById('confirmModalTitle').textContent = isNew ? '📅 New event' : '📅 Edit event';
+
+            const attachName = sel ? (sel.name || elKind(sel)) + (sel.numDesignation ? ' #' + sel.numDesignation : '') : null;
+            const boundEl = e.elId ? images.find(im => String(im.id) === String(e.elId)) : null;
+
+            let kindOpts = '';
+            Object.keys(CAL_KINDS).forEach(k => kindOpts += '<option value="' + k + '"' + (e.kind === k ? ' selected' : '') + '>' + CAL_KINDS[k][0] + '</option>');
+
+            body.innerHTML =
+                '<div style="display:flex; gap:8px; margin-bottom:9px;">' +
+                  '<input id="cvDate" type="date" value="' + e.date + '" style="flex:1; padding:8px; font-size:13px; border:1px solid #90CAF9; border-radius:6px;">' +
+                  '<input id="cvTime" type="time" value="' + (e.time || '') + '" style="width:120px; padding:8px; font-size:13px; border:1px solid #90CAF9; border-radius:6px;">' +
+                '</div>' +
+                '<select id="cvKind" style="width:100%; padding:8px; margin-bottom:9px; font-size:13px; border:1px solid #90CAF9; border-radius:6px;">' + kindOpts + '</select>' +
+                '<input id="cvTitle" placeholder="What is it?" value="' + String(e.title).replace(/"/g, '&quot;') + '" style="width:100%; box-sizing:border-box; padding:9px 11px; margin-bottom:9px; font-size:14px; border:1px solid #90CAF9; border-radius:6px;">' +
+                '<textarea id="cvNote" rows="2" placeholder="Details (optional)" style="width:100%; box-sizing:border-box; padding:8px 11px; font-size:13px; border:1px solid #90CAF9; border-radius:6px; resize:vertical;">' + String(e.note || '') + '</textarea>' +
+                (boundEl
+                  ? '<label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:#0277BD; cursor:pointer;">' +
+                    '<input type="checkbox" id="cvKeep" checked style="width:16px;height:16px;"> Keep attached to <b>' + String(boundEl.name || elKind(boundEl)).replace(/</g,'&lt;') + '</b></label>'
+                  : attachName
+                    ? '<label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:#0277BD; cursor:pointer;">' +
+                      '<input type="checkbox" id="cvAttach" style="width:16px;height:16px;"> Attach to the selected element — <b>' + String(attachName).replace(/</g,'&lt;') + '</b></label>'
+                    : '<div style="margin-top:10px; font-size:11px; color:#90A4AE;">Select an element on the canvas first to attach this event to it.</div>');
+
+            ok.textContent = isNew ? 'Add event' : 'Save';
+            ok.style.background = '#0277BD';
+            cancel.style.display = '';
+            modal.style.display = 'flex';
+            setTimeout(() => { const ti = document.getElementById('cvTitle'); if (ti) ti.focus(); }, 30);
+
+            const close = () => { modal.style.display = 'none'; ok.onclick = cancel.onclick = modal.onclick = null; ok.style.background = '#C62828'; };
+            ok.onclick = () => {
+                e.date = document.getElementById('cvDate').value || calToday();
+                e.time = document.getElementById('cvTime').value || '';
+                e.kind = document.getElementById('cvKind').value;
+                e.title = document.getElementById('cvTitle').value.trim() || 'Untitled';
+                e.note = document.getElementById('cvNote').value.trim();
+                const keep = document.getElementById('cvKeep');
+                const att = document.getElementById('cvAttach');
+                if (keep && !keep.checked) e.elId = null;
+                if (att && att.checked && sel) e.elId = sel.id;
+                if (isNew) calEvents.push(e);
+                calSel = e.date;
+                calView = calParse(e.date);
+                close(); calSave();
+            };
+            cancel.onclick = close;
+            modal.onclick = evt => { if (evt.target === modal) close(); };
+        }
+
+        function toggleCalendar() {
+            calOpen = !calOpen;
+            const p = document.getElementById('calPanel');
+            if (calOpen) {
+                if (!calPopped && typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                p.style.display = 'flex';
+                if (!calSel) calSel = calToday();
+                calRenderGrid(); calRenderDay();
+            } else p.style.display = 'none';
+            const b = document.getElementById('calBtn');
+            if (b) b.style.background = calOpen ? '#039BE5' : '#0277BD';
+        }
+
+        function calSyncPinned() {
+            if (!calPinned) return;
+            const p = document.getElementById('calPanel');
+            const rect = canvas.getBoundingClientRect();
+            p.style.left = (rect.left + camera.x + calAnchor.x * camera.zoom) + 'px';
+            p.style.top = (rect.top + camera.y + calAnchor.y * camera.zoom) + 'px';
+        }
+
+        (function calInit() {
+            const p = document.getElementById('calPanel'); if (!p) return;
+            const q = id => document.getElementById(id);
+            q('calPrev').onclick = () => { calView = new Date(calView.getFullYear(), calView.getMonth() - 1, 1); calRenderGrid(); };
+            q('calNext').onclick = () => { calView = new Date(calView.getFullYear(), calView.getMonth() + 1, 1); calRenderGrid(); };
+            q('calTodayBtn').onclick = () => { calView = new Date(); calSel = calToday(); calRenderGrid(); calRenderDay(); };
+            q('calAdd').onclick = () => calEditor(null);
+            q('calOp').oninput = ev => { p.style.opacity = ev.target.value / 100; };
+            q('calCollapseBtn').onclick = () => {
+                calCollapsed = !calCollapsed;
+                q('calBody').style.display = calCollapsed ? 'none' : 'flex';
+                p.style.minHeight = calCollapsed ? '0' : '300px';
+                p.style.height = calCollapsed ? 'auto' : '56vh';
+                p.style.resize = calCollapsed ? 'none' : 'both';
+                q('calCollapseBtn').textContent = calCollapsed ? '▶' : '▼';
+            };
+            q('calPopBtn').onclick = () => {
+                calPopped = !calPopped;
+                if (calPopped) {
+                    const r = p.getBoundingClientRect();
+                    p.style.position = 'fixed'; p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
+                    p.style.transform = 'none'; p.style.marginTop = '0'; p.style.zIndex = '99300';
+                    q('calPopBtn').textContent = '⇲ Dock';
+                } else {
+                    calPinned = false;
+                    q('calPinBtn').textContent = '📌 Pin';
+                    q('calPinBtn').style.background = 'rgba(79,195,247,.14)'; q('calPinBtn').style.color = '#4FC3F7';
+                    if (typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                    p.style.zIndex = '1585';
+                    q('calPopBtn').textContent = '⇱ Pop Out';
+                }
+            };
+            q('calPinBtn').onclick = () => {
+                if (!calPopped) q('calPopBtn').click();
+                calPinned = !calPinned;
+                if (calPinned) {
+                    const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
+                    calAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom, y: (r.top - rect.top - camera.y) / camera.zoom };
+                    q('calPinBtn').textContent = '📌 Unpin';
+                    q('calPinBtn').style.background = '#FFB300'; q('calPinBtn').style.color = '#000';
+                    calSyncPinned();
+                } else {
+                    q('calPinBtn').textContent = '📌 Pin';
+                    q('calPinBtn').style.background = 'rgba(79,195,247,.14)'; q('calPinBtn').style.color = '#4FC3F7';
+                }
+            };
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                p.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 150)) + 'px';
+                p.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 46)) + 'px';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            q('calHead').addEventListener('pointerdown', ev => {
+                if (!calPopped || calPinned) return;
+                if (/^(BUTTON|INPUT|SELECT)$/.test(ev.target.tagName)) return;
+                const r = p.getBoundingClientRect();
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
             });
         })();
 
@@ -6484,6 +6786,45 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 });
             }
 
+            // 📅 DATE BADGE — an element with a calendar event wears its date, and turns
+            // red once that date has passed. A due date you cannot see is not a due date.
+            if (typeof calEvents !== 'undefined' && calEvents.length) {
+                const zc = camera.zoom;
+                const today = calToday();
+                images.forEach(im => {
+                    if (im.hidden || !inView(im, 60)) return;
+                    const evs = calEvents.filter(e => String(e.elId) === String(im.id) && !e.done);
+                    if (!evs.length) return;
+                    evs.sort((a, b) => a.date.localeCompare(b.date));
+                    const e0 = evs[0];
+                    const late = e0.date < today;
+                    const col = late ? '#EF5350' : ((CAL_KINDS[e0.kind] || CAL_KINDS.note)[1]);
+                    const d = calParse(e0.date);
+                    const txt = '📅 ' + d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) +
+                        (e0.time ? ' ' + e0.time : '') + (evs.length > 1 ? '  +' + (evs.length - 1) : '');
+                    ctx.save();
+                    ctx.setLineDash([]);
+                    ctx.font = 'bold ' + (12 / zc) + 'px Arial';
+                    const tw = ctx.measureText(txt).width, pd = 5 / zc, bh = 17 / zc;
+                    const bx = im.x - im.width / 2 - tw - pd * 2 - (10 + flagGap) / zc;
+                    let by = im.y - im.height / 2 - bh - (4 + flagGap) / zc;
+                    const _ck = 'cal:' + im.id;
+                    const _co = flagOffset(_ck);
+                    let px2 = bx + (_co ? _co.dx : 0), py2 = by + (_co ? _co.dy : 0);
+                    if (!_co) { for (let i = 0; i < 30 && rectOccupied(px2 - pd, py2, tw + pd * 2, bh); i++) py2 -= (bh + 2 / zc); }
+                    flagOwner(_ck);
+                    claimRect(px2 - pd, py2, tw + pd * 2, bh);
+                    ctx.fillStyle = TH.box;
+                    ctx.fillRect(px2 - pd, py2, tw + pd * 2, bh);
+                    ctx.strokeStyle = col; ctx.lineWidth = 1.3 / zc;
+                    ctx.strokeRect(px2 - pd, py2, tw + pd * 2, bh);
+                    ctx.fillStyle = col;
+                    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+                    ctx.fillText(txt, px2, py2 + bh / 2);
+                    ctx.restore();
+                });
+            }
+
             // ✎ NOTE BADGE — an element referenced by a Scratch Pad page wears a tag
             // naming that page, so it's obvious on the canvas which note applies.
             {
@@ -6820,6 +7161,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (typeof calcPinned !== 'undefined' && calcPinned) calcSyncPinned();
                     if (typeof chkPinned !== 'undefined' && chkPinned) chkSyncPinned();
                     if (typeof helpPinned !== 'undefined' && helpPinned) helpSyncPinned();
+                    if (typeof calPinned !== 'undefined' && calPinned) calSyncPinned();
                     if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
                 requestAnimationFrame(tick);
             }
@@ -6876,6 +7218,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 recoveryMode: (typeof recoveryMode !== 'undefined') ? recoveryMode : 'edit',
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
+                calEvents: (typeof calEvents !== 'undefined') ? calEvents : [],
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
                 assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '*',
                 guides: (typeof guides !== 'undefined') ? guides.map(g => ({ axis: g.axis, pos: g.pos, id: g.id, locked: !!g.locked, hidden: !!g.hidden })) : [],
@@ -7524,6 +7867,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     }));
                     flagDrag = engineData.flagDrag || {};
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
+                    if (typeof calEvents !== 'undefined') calEvents = Array.isArray(engineData.calEvents) ? engineData.calEvents : [];
                     if (engineData.recoveryMode && typeof setRecoveryMode === 'function') setRecoveryMode(engineData.recoveryMode);
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
                         setTimeout(() => {
@@ -9221,7 +9565,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -11857,6 +12201,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     const host = images.find(x => x.id === im.socketId);
                     if (host) add('◎ Plugged into', host.name || 'Socket');
                 }
+                if (typeof calEvents !== 'undefined') {
+                    calEvents.filter(e => String(e.elId) === String(im.id)).forEach(e => {
+                        const k = (CAL_KINDS[e.kind] || CAL_KINDS.note)[0];
+                        add('📅 ' + k, e.date + (e.time ? ' ' + e.time : '') + ' — ' + e.title +
+                            (e.done ? ' (done)' : (e.date < calToday() ? '  ⚠ OVERDUE' : '')));
+                    });
+                }
                 if (im.padRefs && im.padRefs.length && typeof padPages !== 'undefined') {
                     im.padRefs.filter(r => padPages.some(p => p.id === r.page)).forEach(r => {
                         const p = padPages.find(x => x.id === r.page);
@@ -12584,6 +12935,46 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 }
             }
 
+            // 📅 Calendar — schedule the engine is carrying
+            if (typeof calEvents !== 'undefined' && calEvents.length) {
+                section('Calendar', calEvents.length);
+                const today = calToday();
+                const over = calEvents.filter(e => !e.done && e.date < today).length;
+                const done = calEvents.filter(e => e.done).length;
+                const bound = calEvents.filter(e => e.elId).length;
+                const upcoming = calEvents.filter(e => !e.done && e.date >= today).sort((a,b)=>a.date.localeCompare(b.date));
+                let cBytes = 0; calEvents.forEach(e => cBytes += objBytes(e));
+                const kindT = {}; calEvents.forEach(e => { const k=(CAL_KINDS[e.kind]||CAL_KINDS.note)[0]; kindT[k]=(kindT[k]||0)+1; });
+                const P7 = [
+                    ['Events', calEvents.length],
+                    ['Breakdown', Object.keys(kindT).map(k => kindT[k] + ' ' + k.toLowerCase()).join(', ')],
+                    ['Overdue', over || 'none'],
+                    ['Completed', done],
+                    ['Attached to elements', bound],
+                    ['Next up', upcoming.length ? upcoming[0].date + ' — ' + upcoming[0].title : '—'],
+                    ['Memory', formatBytes(cBytes)]
+                ];
+                row(chip('📅', over ? '#ffebee' : '#e1f5fe'),
+                    'Schedule' + (over ? ' · ' + over + ' overdue' : ''),
+                    calEvents.length + ' event' + (calEvents.length === 1 ? '' : 's') + ' · ' + formatBytes(cBytes),
+                    'Calendar', P7, () => { if (typeof calOpen !== 'undefined' && !calOpen) toggleCalendar(); },
+                    over ? '#EF5350' : '#0277BD');
+                const tr = document.createElement('div');
+                tr.style.cssText = 'font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.6;margin:-1px 0 6px 16px;padding-left:8px;border-left:2px solid #B3E5FC;';
+                calEvents.slice().sort((a,b)=>a.date.localeCompare(b.date)).slice(0,10).forEach((e,i,arr) => {
+                    const last = i === arr.length - 1;
+                    const late = !e.done && e.date < today;
+                    const line = document.createElement('div');
+                    line.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 3px;color:' +
+                        (e.done ? '#bbb' : late ? '#C62828' : '#555') + ';';
+                    line.textContent = (last ? '└─ ' : '├─ ') + e.date + (e.time ? ' ' + e.time : '') + ' · ' +
+                        (CAL_KINDS[e.kind]||CAL_KINDS.note)[0] + ' · ' + e.title + (late ? '  ⚠ overdue' : e.done ? '  ✓' : '');
+                    tr.appendChild(line);
+                });
+                (curBody || c).appendChild(tr);
+                totalBytes += cBytes;
+            }
+
             // ◈ Watermarks — burnt into the canvas, no longer elements, but still bytes
             if (typeof watermarks !== 'undefined' && watermarks && watermarks.length) {
                 section('Watermarks', watermarks.length);
@@ -12729,7 +13120,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const centre = [
                     ['notesReader', typeof notesReaderOpen !== 'undefined' && notesReaderOpen, false],
                     ['calcPanel',  typeof calcOpen !== 'undefined' && calcOpen,  typeof calcPopped !== 'undefined' && calcPopped],
-                    ['padPanel',   typeof padOpen !== 'undefined' && padOpen,    typeof padPopped !== 'undefined' && padPopped]
+                    ['padPanel',   typeof padOpen !== 'undefined' && padOpen,    typeof padPopped !== 'undefined' && padPopped],
+                    ['calPanel',   typeof calOpen !== 'undefined' && calOpen,    typeof calPopped !== 'undefined' && calPopped]
                 ];
                 centre.forEach(([id, isOpen, popped]) => {
                     const el = document.getElementById(id);
