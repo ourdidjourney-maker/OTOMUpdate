@@ -587,8 +587,8 @@
         <button title="Drop a horizontal ruler guide across the canvas" onclick="addGuide('h')" style="background: #2196F3;">+ H Ruler</button>
         <button title="Drop a vertical ruler guide down the canvas" onclick="addGuide('v')" style="background: #2196F3;">+ V Ruler</button>
         <button id="rulerLockBtn" title="Anchor all rulers in place — locked rulers cannot be dragged" onclick="toggleRulerLock()" style="background: #455A64; font-size:11px; padding:6px 8px;">🔓 Rulers: Free</button>
-        <span style="font-size:11px; color:#333;" title="How visible hidden rulers are. 0% is invisible; raise it to find and shift-click them back on.">👁 Hidden</span>
-        <input type="range" id="rulerHiddenOpacity" min="0" max="100" value="35" step="5" oninput="setRulerHiddenOpacity(this.value)" style="width:70px; vertical-align:middle;" title="Hidden ruler opacity">
+        <span style="font-size:11px; color:#333;" title="Dim every ruler. 0% hides them completely; Shift+click a ruler to ghost just that one.">👁 Rulers</span>
+        <input type="range" id="rulerHiddenOpacity" min="0" max="100" value="100" step="5" oninput="setRulerHiddenOpacity(this.value)" style="width:70px; vertical-align:middle;" title="Ruler opacity">
         <span id="rulerHiddenVal" style="font-size:11px; color:#333; width:56px; display:inline-block;">35% · 0</span>
         <button title="Delete every ruler on the canvas" onclick="clearGuides()" style="background: #455A64; font-size:11px; padding:6px 8px;">🗑 Rulers</button>
         <button title="Show spacing between rulers and mark their crossings" id="rulerRadarBtn" onclick="toggleRulerRadar()" style="background: #455A64;">Ruler Radar: OFF</button>
@@ -646,6 +646,15 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <button id="magBtn" onclick="toggleMagnifier()" style="background:#455A64; font-size:11px; padding:6px 9px;" title="Magnifier lens that follows the cursor, with body-cam barrel distortion">🔍 Lens</button>
+        <span id="magCtl" style="display:none; align-items:center; gap:5px; font-size:10px; color:#333;">
+            <span>Zoom</span><input type="range" min="11" max="60" value="16" oninput="setMagZoom(this.value/10)" style="width:56px; vertical-align:middle;">
+            <span id="magZoomVal" style="width:26px; display:inline-block;">1.6×</span>
+            <span>Size</span><input type="range" min="50" max="320" value="130" oninput="setMagRadius(this.value)" style="width:56px; vertical-align:middle;">
+            <span id="magSizeVal" style="width:34px; display:inline-block;">130px</span>
+            <span>Bulge</span><input type="range" min="0" max="100" value="28" oninput="setMagBulge(this.value)" style="width:56px; vertical-align:middle;">
+            <span id="magBulgeVal" style="width:30px; display:inline-block;">28%</span>
+        </span>
         <button id="pulseBtn" onclick="togglePulse()" style="background: #263238; font-size:11px; padding:6px 9px;" title="Live system pulse — dots blink as CPU, memory and GPU work happens">◉ Pulse</button>
         <span class="gsep" data-grp="HISTORY"></span>
 <button title="Step back through your edit history" onclick="undo()" style="background: #FFC107;">↶ Undo (Ctrl+Z)</button>
@@ -1428,6 +1437,7 @@
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
                 { ico: '▤', label: 'Wire',    accent: '#37474F', run: () => toggleTicker() },
                 { ico: '📅', label: 'Calendar', accent: '#0277BD', run: () => toggleCalendar() },
+                { ico: '🔍', label: 'Lens',    accent: '#00838F', run: () => toggleMagnifier() },
                 { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
                 { ico: '?', label: 'Help',    accent: '#37474F', run: () => toggleHelp() },
                 { ico: '✎', label: 'Scratch', accent: '#455A64', run: () => togglePad() },
@@ -1649,6 +1659,10 @@
         let bgMoveMode = false, bgDragging = false;
         let guides = [];           // { axis:'h'|'v', pos } ruler guides
         let draggingGuide = null;
+        // declared here, not beside its setter: draw() reads it during startup, long
+        // before that code is reached, and an undefined globalAlpha is silently ignored
+        // by canvas — which showed up as rulers that would not dim at all.
+        var rulerHiddenOpacity = 1;   // 0..1 — dims ALL rulers; 0 hides them entirely
         let rulerRadar = false;
         let rulerMouseRadar = true;  // mouse-to-ruler cursor readout
         let rulerDiagonal = false;   // 8-way diagonal (toward H∩V intersection) vs 4-way
@@ -3822,6 +3836,153 @@
             });
         })();
 
+        // ═══════════════════════════════════════════════════════════════════
+        // 🔍 MAGNIFIER — a lens that follows the cursor.
+        //
+        // Works by re-sampling the finished frame: the canvas is drawn into itself in
+        // concentric rings, each ring pulled from slightly further out than it is
+        // painted. That radial compression is what produces the barrel distortion of a
+        // body-cam or a fisheye — straight lines bow, and the centre reads sharpest.
+        // ═══════════════════════════════════════════════════════════════════
+        var magOn = false, magZoom = 1.6, magRadius = 130, magBulge = 0.28;
+
+        function toggleMagnifier() {
+            magOn = !magOn;
+            const b = document.getElementById('magBtn');
+            if (b) { b.style.background = magOn ? '#00838F' : '#455A64'; b.textContent = magOn ? '🔍 Lens: ON' : '🔍 Lens'; }
+            const c = document.getElementById('magCtl');
+            if (c) c.style.display = magOn ? 'inline-flex' : 'none';
+            if (magOn && typeof startGlowLoop === 'function') startMagLoop();
+            draw();
+        }
+
+        var _magLoop = false;
+        function startMagLoop() {
+            if (_magLoop) return;
+            _magLoop = true;
+            (function tick() {
+                if (!magOn) { _magLoop = false; return; }
+                draw();
+                requestAnimationFrame(tick);
+            })();
+        }
+
+        function setMagZoom(v)   { magZoom = Math.max(1.1, Math.min(6, parseFloat(v)));  document.getElementById('magZoomVal').textContent = magZoom.toFixed(1) + '×'; }
+        function setMagRadius(v) { magRadius = Math.max(50, Math.min(320, parseInt(v, 10))); document.getElementById('magSizeVal').textContent = magRadius + 'px'; }
+        function setMagBulge(v)  { magBulge = Math.max(0, Math.min(1, parseInt(v, 10) / 100)); document.getElementById('magBulgeVal').textContent = Math.round(magBulge * 100) + '%'; }
+
+        // Per-pixel lens. The ring method drew the canvas into itself repeatedly,
+        // which at low magnification just stacked identical copies. This instead
+        // copies the region ONCE into an offscreen buffer, then remaps every
+        // destination pixel back through an inverse barrel function — a real fisheye,
+        // with no feedback and no repeats.
+        var _magBuf = null, _magCtx = null;
+
+        function drawMagnifier() {
+            if (!magOn) return;
+            const m = _lastCanvasMouse;
+            if (!m || !m.over) return;
+            const rect = canvas.getBoundingClientRect();
+            const R = Math.round(magRadius);
+            // the lens sits OFF the cursor, so the pointer never covers what you are
+            // magnifying; it flips side near a screen edge so it stays on screen
+            let ox = R + 26, oy = -(R + 26);
+            if (m.x - rect.left + ox + R > canvas.width) ox = -(R + 26);
+            if (m.y - rect.top + oy - R < 0) oy = R + 26;
+            const cx = Math.round(m.x - rect.left + ox), cy = Math.round(m.y - rect.top + oy);
+            if (cx < -R || cy < -R || cx > canvas.width + R || cy > canvas.height + R) return;
+
+            // region we need to READ from: the widest the lens can reach
+            const reach = Math.ceil(R / Math.max(1.01, magZoom) * (1 + magBulge)) + 2;
+            const sx = cx - reach, sy = cy - reach, sw = reach * 2, sh = reach * 2;
+
+            // clean copy of the source region — never sample the target we are painting
+            if (!_magBuf) { _magBuf = document.createElement('canvas'); _magCtx = _magBuf.getContext('2d', { willReadFrequently: true }); }
+            if (_magBuf.width !== sw || _magBuf.height !== sh) { _magBuf.width = sw; _magBuf.height = sh; }
+            // The canvas's white comes from a CSS background, not from painted pixels,
+            // so unpainted areas are TRANSPARENT and read back as black. Lay the real
+            // page colour down first, then copy the frame over it.
+            _magCtx.clearRect(0, 0, sw, sh);
+            _magCtx.fillStyle = (typeof darkMode !== 'undefined' && darkMode) ? '#161b22' : '#ffffff';
+            _magCtx.fillRect(0, 0, sw, sh);
+            _magCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+            let src;
+            try { src = _magCtx.getImageData(0, 0, sw, sh); } catch (err) { return; }
+            const S = src.data;
+
+            const D = ctx.createImageData(R * 2, R * 2);
+            const T = D.data;
+            const cxr = R, cyr = R;                 // lens centre in destination space
+            const inv = 1 / magZoom;
+
+            for (let y = 0; y < R * 2; y++) {
+                const dy = y - cyr;
+                for (let x = 0; x < R * 2; x++) {
+                    const dx = x - cxr;
+                    const d = Math.sqrt(dx * dx + dy * dy);
+                    const di = (y * R * 2 + x) * 4;
+                    if (d > R) { T[di + 3] = 0; continue; }   // outside the glass
+
+                    const t = d / R;                          // 0 centre .. 1 rim
+                    // inverse barrel: sample further out toward the rim
+                    const warp = 1 + magBulge * t * t * 0.42;
+                    const srcD = d * inv * warp;
+                    const ang = Math.atan2(dy, dx);
+                    const ux = Math.round(reach + Math.cos(ang) * srcD);
+                    const uy = Math.round(reach + Math.sin(ang) * srcD);
+
+                    if (ux < 0 || uy < 0 || ux >= sw || uy >= sh) { T[di + 3] = 0; continue; }
+                    const si = (uy * sw + ux) * 4;
+                    T[di]     = S[si];
+                    T[di + 1] = S[si + 1];
+                    T[di + 2] = S[si + 2];
+                    T[di + 3] = 255;
+                }
+            }
+
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // the warped pixels, clipped to the glass
+            const tmp = document.createElement('canvas');
+            tmp.width = R * 2; tmp.height = R * 2;
+            tmp.getContext('2d').putImageData(D, 0, 0);
+            ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+            ctx.drawImage(tmp, cx - R, cy - R);
+
+            // vignette
+            const vg = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
+            vg.addColorStop(0, 'rgba(0,0,0,0)');
+            vg.addColorStop(1, 'rgba(0,0,0,' + (0.08 + magBulge * 0.14) + ')');
+            ctx.fillStyle = vg; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+
+            // glass highlight
+            const gl = ctx.createRadialGradient(cx - R * 0.34, cy - R * 0.38, 1, cx - R * 0.34, cy - R * 0.38, R * 0.85);
+            gl.addColorStop(0, 'rgba(255,255,255,' + (0.06 + magBulge * 0.05) + ')');
+            gl.addColorStop(0.55, 'rgba(255,255,255,0.02)');
+            gl.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = gl; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+            ctx.restore();
+
+            // rim + readout, outside the clip
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(10,14,18,.85)'; ctx.lineWidth = 5; ctx.stroke();
+            ctx.beginPath(); ctx.arc(cx, cy, R - 3, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(120,160,180,.30)'; ctx.lineWidth = 1.4; ctx.stroke();
+            ctx.font = 'bold 11px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const lbl = magZoom.toFixed(1) + '×';
+            const w = ctx.measureText(lbl).width;
+            ctx.fillStyle = 'rgba(10,14,18,.8)';
+            ctx.fillRect(cx - w / 2 - 7, cy + R - 20, w + 14, 16);
+            ctx.fillStyle = '#4FC3F7';
+            ctx.fillText(lbl, cx, cy + R - 12);
+            ctx.restore();
+        }
+
         function saveState() {
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
             if (typeof recTouch === 'function') recTouch();
@@ -4780,6 +4941,9 @@
                     im.y + im.height / 2 >= T && im.y - im.height / 2 <= B);
                 lassoRect = null;
                 if (selectedGroup.length) toggleLasso();
+                // focus may still sit on the Lasso button or a slider; while it does,
+                // arrow keys never reach the canvas handler
+                try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (err) {}
                 draw();
                 return;
             }
@@ -5046,6 +5210,26 @@
         // Keyboard events
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            // Arrow keys nudge the selection (Shift = 10x). This sits FIRST, ahead of
+            // the modal guards: nudging is a canvas operation and must not be blocked
+            // by a hover preview that happens to be on screen, which is exactly what
+            // stopped a plain lasso selection from moving.
+            if (e.key && e.key.startsWith('Arrow')) {
+                const targets = selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []);
+                if (targets.length) {
+                    e.preventDefault();
+                    const s = (e.shiftKey ? 10 : 1);
+                    const dx = e.key === 'ArrowLeft' ? -s : e.key === 'ArrowRight' ? s : 0;
+                    const dy = e.key === 'ArrowUp' ? -s : e.key === 'ArrowDown' ? s : 0;
+                    const gids = new Set(targets.map(t => t.adhocGroup).filter(Boolean));
+                    const moveSet = new Set(targets);
+                    if (gids.size) images.forEach(el => { if (el.adhocGroup && gids.has(el.adhocGroup)) moveSet.add(el); });
+                    moveSet.forEach(t => { if (!t.pinned) { t.x += dx; t.y += dy; } });
+                    saveState(); draw();
+                    return;
+                }
+            }
             // Shift+G — bundle the current multi-selection into an Ad Hoc Group.
             // Members keep their identity (each is still its own element); they are
             // just tagged with a shared adhocGroup id. NOT saved to the drawer, and
@@ -5072,23 +5256,6 @@
                 e.preventDefault(); redo(); return;
             }
 
-            // Arrow keys nudge the selection (Shift = 10× step)
-            if (e.key.startsWith('Arrow')) {
-                const targets = selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []);
-                if (targets.length) {
-                    e.preventDefault();
-                    const s = (e.shiftKey ? 10 : 1);
-                    const dx = e.key === 'ArrowLeft' ? -s : e.key === 'ArrowRight' ? s : 0;
-                    const dy = e.key === 'ArrowUp' ? -s : e.key === 'ArrowDown' ? s : 0;
-                    // include whole ad hoc groups that any target belongs to
-                    const gids = new Set(targets.map(t => t.adhocGroup).filter(Boolean));
-                    const moveSet = new Set(targets);
-                    if (gids.size) images.forEach(el => { if (el.adhocGroup && gids.has(el.adhocGroup)) moveSet.add(el); });
-                    moveSet.forEach(t => { if (!t.pinned) { t.x += dx; t.y += dy; } });
-                    saveState(); draw();
-                    return;
-                }
-            }
 
             // B breaks a fused assembly
             if ((e.key === 'b' || e.key === 'B') && selectedImage && selectedImage.fusionId) {
@@ -6249,13 +6416,17 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 ctx.save();
                 ctx.strokeStyle = '#2196F3';
                 ctx.lineWidth = 1 / camera.zoom;
+                // The slider dims EVERY ruler, not only ones hidden with Shift+click.
+                // A dimmer that ignores the rulers you can see is not a dimmer.
+                const _ro = (typeof rulerHiddenOpacity === 'number') ? rulerHiddenOpacity : 1;
                 guides.forEach(g => {
+                    // at zero nothing draws at all — normal or hidden
+                    if (_ro <= 0) return;
                     ctx.save();
+                    ctx.globalAlpha = _ro;
                     if (g.hidden) {
-                        // Visibility of a hidden ruler is the operator's call, not a
-                        // hardcoded guess. 0 = truly invisible; anything above is findable.
-                        if (rulerHiddenOpacity <= 0) { ctx.restore(); return; }
-                        ctx.globalAlpha = rulerHiddenOpacity;
+                        // hidden rulers are ghosted further still, on top of the slider
+                        ctx.globalAlpha = _ro * 0.35;
                         ctx.strokeStyle = '#90A4AE';
                         ctx.setLineDash([3 / camera.zoom, 9 / camera.zoom]);
                         ctx.lineWidth = 1 / camera.zoom;
@@ -7149,6 +7320,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
                 ctx.restore();
             }
+
+            // the lens samples the finished frame, so it must be the last thing drawn
+            drawMagnifier();
         }
 
         updateZoomLevel();
@@ -7296,7 +7470,22 @@ ctx.fillText(conn.number.toString(), midX, midY);
                             }
                             const urlInp = el.querySelector('.mpUrl');
                             return { url: urlInp ? urlInp.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
-                        }).filter(Boolean)
+                        }).filter(Boolean),
+                        // panels added after this block was first written — without these
+                        // a restored session came back missing them entirely
+                        cal: (function () {
+                            const p = document.getElementById('calPanel'); if (!p) return null;
+                            return { open: !!(typeof calOpen !== 'undefined' && calOpen),
+                                     popped: !!(typeof calPopped !== 'undefined' && calPopped),
+                                     collapsed: !!(typeof calCollapsed !== 'undefined' && calCollapsed),
+                                     left: p.style.left, top: p.style.top, width: p.style.width,
+                                     height: p.style.height, opacity: p.style.opacity, transform: p.style.transform };
+                        })(),
+                        tickerOn: !!(typeof tickerOn !== 'undefined' && tickerOn),
+                        pulseOn:  !!(typeof pulseOn  !== 'undefined' && pulseOn),
+                        magOn:    !!(typeof magOn    !== 'undefined' && magOn),
+                        helpOpen: !!(typeof helpOpen !== 'undefined' && helpOpen),
+                        chkOpen:  !!(typeof chkOpen  !== 'undefined' && chkOpen)
                     };
                     return s;
                 })()
@@ -7542,6 +7731,26 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         }
                     });
                 }
+
+                // panels added later — restored here so a session comes back whole
+                if (s.cal && typeof toggleCalendar === 'function') {
+                    if (s.cal.open && typeof calOpen !== 'undefined' && !calOpen) toggleCalendar();
+                    const cp = document.getElementById('calPanel');
+                    if (s.cal.open && cp) {
+                        if (s.cal.popped && typeof calPopped !== 'undefined' && !calPopped) { const b = document.getElementById('calPopBtn'); if (b) b.click(); }
+                        if (s.cal.left) cp.style.left = s.cal.left;
+                        if (s.cal.top) cp.style.top = s.cal.top;
+                        if (s.cal.width) cp.style.width = s.cal.width;
+                        if (s.cal.height) cp.style.height = s.cal.height;
+                        if (s.cal.opacity) cp.style.opacity = s.cal.opacity;
+                        if (s.cal.collapsed && typeof calCollapsed !== 'undefined' && !calCollapsed) { const b = document.getElementById('calCollapseBtn'); if (b) b.click(); }
+                    }
+                }
+                if (s.tickerOn && typeof tickerOn !== 'undefined' && !tickerOn && typeof toggleTicker === 'function') toggleTicker();
+                if (s.pulseOn  && typeof pulseOn  !== 'undefined' && !pulseOn  && typeof togglePulse  === 'function') togglePulse();
+                if (s.magOn    && typeof magOn    !== 'undefined' && !magOn    && typeof toggleMagnifier === 'function') toggleMagnifier();
+                if (s.helpOpen && typeof helpOpen !== 'undefined' && !helpOpen && typeof toggleHelp === 'function') toggleHelp();
+                if (s.chkOpen  && typeof chkOpen  !== 'undefined' && !chkOpen  && typeof toggleCheckers === 'function') toggleCheckers();
 
                 // panel geometry — applied on the next tick so it overrides any
                 // reanchor/default-position logic that the toggle functions run.
@@ -8466,7 +8675,6 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         // Hidden rulers are ghosted, not gone: this brightens them so they can be
         // found and shift-clicked back on. It also keeps a live count on the button.
-        var rulerHiddenOpacity = 0.35;   // 0..1, operator-controlled
         function setRulerHiddenOpacity(v) {
             rulerHiddenOpacity = Math.max(0, Math.min(1, parseInt(v, 10) / 100));
             updateRulerHiddenCount();
