@@ -302,6 +302,17 @@
 
         #vpanelContent button, #vpanelContent select, #vpanelContent input[type="range"] { width:100%; box-sizing:border-box; margin:2px 0; float:none !important; }
         #vpanelContent .gsep { width:100%; height:2px; margin:4px 0; }
+        @keyframes tickerRoll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        @keyframes tickerPulse { 0%,100% { opacity:1; box-shadow:0 0 8px #26C6DA; } 50% { opacity:.35; box-shadow:0 0 3px #26C6DA; } }
+        #tickerPip { animation: tickerPulse 2.1s ease-in-out infinite; }
+        #tickerTrack.rolling { animation-name: tickerRoll; animation-timing-function: linear; animation-iteration-count: infinite; }
+        #tickerWindow:hover #tickerTrack.rolling { animation-play-state: paused; }
+        .tkItem { display:inline-flex; align-items:center; gap:8px; padding:0 22px; height:38px; transition:background .15s; }
+        .tkItem[data-el] { cursor:pointer; }
+        .tkChip { font:700 8.5px Arial; letter-spacing:1.4px; padding:2px 7px; border-radius:9px; white-space:nowrap; }
+        .tkText { font:12.5px Arial; color:#b0bec5; white-space:nowrap; }
+        .tkVal  { font:700 12.5px ui-monospace,Consolas,monospace; }
+        .tkDot  { width:3px; height:3px; border-radius:50%; background:#263238; }
         @keyframes otomAlarmBlink {
             0%, 100% { opacity: 1; filter: none; }
             45%      { opacity: .25; filter: brightness(2.2) saturate(1.6); }
@@ -474,6 +485,32 @@
             <div id="helpBody" style="flex:1 1 auto; overflow-y:auto; padding:20px 26px; color:#cfd8dc; font-size:13px; line-height:1.75;"></div>
         </div>
     </div>
+    <div id="tickerBar" style="display:none; position:fixed; left:0; right:0; bottom:0; height:38px; z-index:1750;
+         background:linear-gradient(180deg,#0d1117 0%,#080b0f 100%);
+         border-top:1px solid #1b2530; box-shadow:0 -6px 22px rgba(0,0,0,.45);
+         overflow:hidden; font-family:Arial,sans-serif; align-items:center;">
+        <!-- live badge -->
+        <div style="flex:0 0 auto; display:flex; align-items:center; gap:7px; height:100%; padding:0 14px;
+             background:linear-gradient(180deg,#101820,#0a0e13); border-right:1px solid #1b2530; z-index:2;">
+            <span id="tickerPip" style="width:7px; height:7px; border-radius:50%; background:#26C6DA; box-shadow:0 0 8px #26C6DA;"></span>
+            <span style="font:700 9px Arial; letter-spacing:2.2px; color:#26C6DA;">OTOM</span>
+        </div>
+        <!-- the wire -->
+        <div id="tickerWindow" style="flex:1 1 auto; height:100%; overflow:hidden; position:relative; min-width:0;">
+            <div id="tickerTrack" style="position:absolute; left:0; top:0; height:100%; display:flex; align-items:center; white-space:nowrap; will-change:transform;"></div>
+            <div style="position:absolute; left:0; top:0; bottom:0; width:36px; pointer-events:none; background:linear-gradient(90deg,#080b0f,rgba(8,11,15,0));"></div>
+            <div style="position:absolute; right:0; top:0; bottom:0; width:36px; pointer-events:none; background:linear-gradient(270deg,#080b0f,rgba(8,11,15,0));"></div>
+        </div>
+        <!-- controls -->
+        <div style="flex:0 0 auto; display:flex; align-items:center; gap:7px; height:100%; padding:0 12px;
+             background:linear-gradient(180deg,#101820,#0a0e13); border-left:1px solid #1b2530; z-index:2;">
+            <span style="font:9px Arial; letter-spacing:1px; color:#37474F;">SPEED</span>
+            <input id="tickerSpeed" type="range" min="20" max="160" value="70" style="width:60px;" title="Scroll speed">
+            <span style="font:9px Arial; letter-spacing:1px; color:#37474F;">OP</span>
+            <input id="tickerOp" type="range" min="25" max="100" value="100" style="width:50px;" title="Opacity">
+            <button onclick="toggleTicker()" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">✕</button>
+        </div>
+    </div>
     <div id="chkPanel" style="display:none; position:fixed; top:120px; left:60px; width:392px; box-sizing:border-box; border:1px solid #3E2723; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#1a1310,#120c0a); box-shadow:0 18px 46px rgba(0,0,0,.55); z-index:99500; flex-direction:column; font-family:Arial,sans-serif;">
             <div id="chkHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#4E342E,#3A241F); color:#D7CCC8; user-select:none; border-bottom:1px solid #3E2723;">
                 <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#FFCC80;">CHECKERS</span>
@@ -607,6 +644,7 @@
         <button title="Open the performance monitor: FPS, memory and scene breakdown" id="perfBtn" onclick="togglePerf()" style="background: #263238;">📊 Perf</button>
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
+        <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
         <button id="pulseBtn" onclick="togglePulse()" style="background: #263238; font-size:11px; padding:6px 9px;" title="Live system pulse — dots blink as CPU, memory and GPU work happens">◉ Pulse</button>
         <span class="gsep" data-grp="HISTORY"></span>
 <button title="Step back through your edit history" onclick="undo()" style="background: #FFC107;">↶ Undo (Ctrl+Z)</button>
@@ -1358,6 +1396,7 @@
                 { ico: '▶', label: 'Parser',  accent: '#37474F', run: () => toggleParser() },
                 { ico: '━', label: 'Primer',  accent: '#1B5E20', run: () => togglePrimerBoard() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
+                { ico: '▤', label: 'Wire',    accent: '#37474F', run: () => toggleTicker() },
                 { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
                 { ico: '?', label: 'Help',    accent: '#37474F', run: () => toggleHelp() },
                 { ico: '✎', label: 'Scratch', accent: '#455A64', run: () => togglePad() },
@@ -3099,6 +3138,386 @@
 
             // offer anything left over from last time, once the engine is up
             setTimeout(recOffer, 900);
+        })();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ▤ THE WIRE — a live ticker of everything the engine currently holds.
+        //
+        // Scrolled by a CSS animation, not JavaScript, so it costs the canvas nothing
+        // at 60fps. The track holds the content twice and translates exactly -50%,
+        // which makes the loop seamless with no jump at the wrap.
+        // ═══════════════════════════════════════════════════════════════════
+        var tickerOn = false, _tickerT = null, _tickerSig = '';
+
+        const TK_COLOURS = {
+            SCENE:    ['#26C6DA', 'rgba(38,198,218,.14)'],
+            ELEMENT:  ['#7E57C2', 'rgba(126,87,194,.16)'],
+            NOTE:     ['#4FC3F7', 'rgba(79,195,247,.14)'],
+            FORMULA:  ['#BA68C8', 'rgba(186,104,200,.16)'],
+            ASSET:    ['#FFA726', 'rgba(255,167,38,.14)'],
+            HEALTH:   ['#66BB6A', 'rgba(102,187,106,.14)'],
+            MEMORY:   ['#EF5350', 'rgba(239,83,80,.14)'],
+            SESSION:  ['#90A4AE', 'rgba(144,164,174,.12)']
+        };
+
+        // Each item carries its own metadata, stashed in the DOM as JSON so hovering
+        // can report it without recomputing anything. An elId lets a click fly the
+        // camera to the element the item is about.
+        function tkItem(cat, text, value, meta, elId) {
+            const c = TK_COLOURS[cat] || TK_COLOURS.SESSION;
+            const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            const payload = meta ? ' data-tk="' + esc(JSON.stringify({ cat: cat, title: text, rows: meta })) + '"' : '';
+            const idAttr = (elId !== undefined && elId !== null) ? ' data-el="' + elId + '"' : '';
+            return '<span class="tkItem"' + payload + idAttr + (meta ? ' style="cursor:default;"' : '') + '>' +
+                '<span class="tkChip" style="color:' + c[0] + '; background:' + c[1] + ';">' + cat + '</span>' +
+                '<span class="tkText">' + esc(text) + '</span>' +
+                (value !== undefined && value !== '' ? '<span class="tkVal" style="color:' + c[0] + ';">' + esc(value) + '</span>' : '') +
+                '<span class="tkDot"></span></span>';
+        }
+
+        // Everything the engine currently holds, as a readable wire.
+        function tickerContent() {
+            const out = [];
+            const kinds = {}, byKind = {};
+            images.forEach(im => {
+                const k = im.isMesh ? 'mesh' : elKind(im);
+                kinds[k] = (kinds[k] || 0) + 1;
+                (byKind[k] = byKind[k] || []).push(im);
+            });
+            const KL = { dot:'vectors', image:'block elements', line:'datum lines', rect:'squares', circle:'circles',
+                         triangle:'triangles', arrow:'arrows', text:'text', group:'grouped assets', mesh:'meshes',
+                         cartridge:'cartridges', port:'ports' };
+            const fmtB = b => formatBytes(b);
+
+            // ── scene totals ──
+            let sceneBytes = 0; images.forEach(im => sceneBytes += elementBytes(im));
+            out.push(tkItem('SCENE', 'elements on canvas', images.length, [
+                ['Total elements', images.length],
+                ['Named', images.filter(i => i.name).length],
+                ['Hidden', images.filter(i => i.hidden).length],
+                ['Pinned', images.filter(i => i.pinned).length],
+                ['Carrying notations', images.filter(i => i.notations).length],
+                ['Priority flagged', images.filter(i => i.priority).length],
+                ['Scene footprint', fmtB(sceneBytes)]
+            ]));
+
+            // ── per kind ──
+            Object.keys(kinds).sort().forEach(k => {
+                const set = byKind[k];
+                let b = 0; set.forEach(m => b += elementBytes(m));
+                const named = set.filter(m => m.name).map(m => m.name);
+                out.push(tkItem('ELEMENT', KL[k] || k, kinds[k], [
+                    ['Kind', KL[k] || k],
+                    ['Count', set.length],
+                    ['Named', named.length + ' of ' + set.length],
+                    ['Names', named.slice(0, 8).join(', ') || '—'],
+                    ['Hidden', set.filter(m => m.hidden).length],
+                    ['Memory', fmtB(b)]
+                ]));
+            });
+
+            // ── connections ──
+            if (connections.length) {
+                const steps = [...new Set(connections.map(c => c.number))].length;
+                const sim = connections.filter(c => c.simultaneous).length;
+                out.push(tkItem('SCENE', 'logic lines', connections.length, [
+                    ['Logic lines', connections.length],
+                    ['Distinct steps', steps],
+                    ['Simultaneous', sim],
+                    ['Curved', connections.filter(c => c.curved).length],
+                    ['Hidden', connections.filter(c => c.hidden).length],
+                    ['Port links', connections.filter(c => c.portLink).length]
+                ]));
+                out.push(tkItem('SCENE', 'execution steps', steps, [
+                    ['Steps', steps],
+                    ['Parallel groups', sim ? 'yes — ' + sim + ' lines share a step' : 'none'],
+                    ['Reading', 'Data String panel lists them in order']
+                ]));
+            }
+
+            if (typeof guides !== 'undefined' && guides.length) {
+                out.push(tkItem('SCENE', 'rulers', guides.length, [
+                    ['Horizontal', guides.filter(g => g.axis === 'h').length],
+                    ['Vertical', guides.filter(g => g.axis === 'v').length],
+                    ['Locked', guides.filter(g => g.locked).length],
+                    ['Hidden', guides.filter(g => g.hidden).length]
+                ]));
+            }
+            if (typeof watermarks !== 'undefined' && watermarks && watermarks.length) {
+                const wt = {}; watermarks.forEach(w => wt[w.kind] = (wt[w.kind] || 0) + 1);
+                out.push(tkItem('SCENE', 'watermarked shapes', watermarks.length, [
+                    ['Shapes', watermarks.length],
+                    ['Breakdown', Object.keys(wt).map(k => wt[k] + ' ' + k).join(', ')],
+                    ['State', 'burnt into the canvas — permanent'],
+                    ['Selectable', 'no']
+                ]));
+            }
+
+            // ── named elements: the real content, each fully described ──
+            images.filter(im => im.name).slice(0, 16).forEach(im => {
+                const rows = [
+                    ['Name', im.name],
+                    ['Type', im.isMesh ? 'Mesh' : elKind(im)],
+                    ['Designation', im.numDesignation ? '#' + im.numDesignation : '—'],
+                    ['Data string', im.fullName || '—'],
+                    ['Notation(s)', im.notations || '—'],
+                    ['La=', im.agent || '—'],
+                    ['Priority', im.priority ? PRIORITY_LABELS[im.priority] : '—'],
+                    ['Position', Math.round(im.x) + ', ' + Math.round(im.y)],
+                    ['Size', Math.round(im.width) + ' × ' + Math.round(im.height)],
+                    ['State', (im.hidden ? 'hidden ' : '') + (im.pinned ? '📌 pinned' : '') || 'visible'],
+                    ['Memory', fmtB(elementBytes(im))]
+                ];
+                if (typeof cardinalFromCentre === 'function') rows.splice(3, 0, ['Direction', cardinalFromCentre(im)]);
+                out.push(tkItem('ELEMENT', im.name + (im.numDesignation ? '  #' + im.numDesignation : ''),
+                    im.priority ? PRIORITY_LABELS[im.priority].toUpperCase() : '', rows, im.id));
+            });
+
+            // ── notations ──
+            if (typeof canvasNotes !== 'undefined') {
+                canvasNotes.slice(0, 8).forEach(n => {
+                    if (!n.text) return;
+                    out.push(tkItem('NOTE', n.text.slice(0, 90), '', [
+                        ['Canvas notation', n.text],
+                        ['Designation', n.numDesignation ? '#' + n.numDesignation : '—'],
+                        ['Position', Math.round(n.x) + ', ' + Math.round(n.y)],
+                        ['Memory', fmtB(objBytes(n))]
+                    ]));
+                });
+            }
+            images.filter(im => im.notations).slice(0, 8).forEach(im => {
+                out.push(tkItem('NOTE', (im.name || 'element') + ' — ' + im.notations.slice(0, 80), '', [
+                    ['On element', im.name || elKind(im)],
+                    ['Notation', im.notations],
+                    ['La=', im.agent || '—'],
+                    ['Priority', im.priority ? PRIORITY_LABELS[im.priority] : '—'],
+                    ['Position', Math.round(im.x) + ', ' + Math.round(im.y)]
+                ], im.id));
+            });
+            if (typeof engineMessages !== 'undefined') {
+                engineMessages.slice(-6).forEach(m => {
+                    const rows = [['Message', m.text], ['Legit agent', m.agent || '—'],
+                                  ['Posted', new Date(m.ts).toLocaleString()]];
+                    if (m.priority) rows.push(['Priority', PRIORITY_LABELS[m.priority]]);
+                    if (m.snapshot) rows.push(['Engine then', m.snapshot.status + ' · ' + m.snapshot.fps + ' fps · ' + m.snapshot.elements + ' elements']);
+                    out.push(tkItem('NOTE', m.text.slice(0, 90) + (m.agent ? '  ⚖ ' + m.agent : ''), '', rows));
+                });
+            }
+
+            // ── formulas ──
+            if (typeof formulaLibrary !== 'undefined') {
+                formulaLibrary.slice(0, 10).forEach(f => {
+                    out.push(tkItem('FORMULA', (f.title ? f.title + ' — ' : '') + f.text.slice(0, 70), '', [
+                        ['Title', f.title || '(untitled)'],
+                        ['Data string', f.text],
+                        ['Notes', f.notations || '—'],
+                        ['Legitimizing Agent', f.agent || '—'],
+                        ['Created', new Date(f.ts).toLocaleString()],
+                        ['Use', 'drag it from the Notes Reader onto the canvas']
+                    ]));
+                });
+            }
+
+            // ── assets ──
+            if (typeof savedAssets !== 'undefined' && savedAssets.length) {
+                out.push(tkItem('ASSET', 'saved assets', savedAssets.length, [
+                    ['Assets', savedAssets.length],
+                    ['Total parts', savedAssets.reduce((a, x) => a + ((x.elements || []).length), 0)],
+                    ['Welded', savedAssets.filter(x => x.welded).length],
+                    ['Filed in folders', savedAssets.filter(x => x.folder).length],
+                    ['Folders', (typeof assetFolders !== 'undefined' ? assetFolders.join(', ') : '') || '—']
+                ]));
+                savedAssets.slice(0, 8).forEach(a => {
+                    const parts = a.elements || [];
+                    const kk = {}; parts.forEach(p => { const k = p.kind || (p.isDot ? 'dot' : 'image'); kk[k] = (kk[k] || 0) + 1; });
+                    out.push(tkItem('ASSET', a.name, parts.length + ' parts', [
+                        ['Asset', a.name],
+                        ['Parts', parts.length],
+                        ['Breakdown', Object.keys(kk).map(k => kk[k] + ' ' + k).join(', ') || '—'],
+                        ['Connections', (a.connections || []).length],
+                        ['Folder', a.folder || 'unfiled'],
+                        ['Welded', a.welded ? 'yes — permanent' : 'no'],
+                        ['Created', a.created ? new Date(a.created).toLocaleString() : '—']
+                    ]));
+                });
+            }
+
+            // ── weight ──
+            out.push(tkItem('MEMORY', 'scene footprint', fmtB(sceneBytes), [
+                ['Elements', fmtB(sceneBytes)],
+                ['Engine file', fmtB(_docBytes())],
+                ['Combined', fmtB(sceneBytes + _docBytes())],
+                ['Note', 'the Asset Manager itemises every byte']
+            ]));
+
+            // ── health ──
+            try {
+                const st = healthSnapshot();
+                const b = st.breakdown || {};
+                out.push(tkItem('HEALTH', st.status.toLowerCase(), st.fps + ' fps', [
+                    ['Status', st.status],
+                    ['Frame rate', st.fps + ' fps'],
+                    ['Heap in use', st.heapPct != null ? st.heapPct + '%' : '—'],
+                    ['Elements', st.elements],
+                    ['Connections', st.connections],
+                    ['Vectors', b.vectors || 0],
+                    ['Meshes', b.meshes || 0],
+                    ['Grouped assets', b.groups || 0]
+                ]));
+            } catch (e) {}
+
+            // ── session ──
+            out.push(tkItem('SESSION', 'zoom', Math.round(camera.zoom * 100) + '%', [
+                ['Zoom', Math.round(camera.zoom * 100) + '%'],
+                ['Camera', Math.round(camera.x) + ', ' + Math.round(camera.y)],
+                ['Canvas', canvas.width + ' × ' + canvas.height + ' px']
+            ]));
+            if (typeof recoveryMode !== 'undefined') {
+                out.push(tkItem('SESSION', 'recovery',
+                    recoveryMode === 'edit' ? 'on every change' : recoveryMode === 'off' ? 'manual only' : 'every ' + recoveryMode + ' min', [
+                    ['Mode', recoveryMode === 'edit' ? 'on every change' : recoveryMode === 'off' ? 'manual only' : 'every ' + recoveryMode + ' minutes'],
+                    ['Always writes', 'when the tab is hidden or closed'],
+                    ['Unsaved work', (typeof recoveryDirty !== 'undefined' && recoveryDirty) ? 'yes' : 'no']
+                ]));
+            }
+            out.push(tkItem('SESSION', new Date().toLocaleTimeString(), '', [
+                ['Time', new Date().toLocaleString()],
+                ['Wire', 'hover any item for its data · click an element item to fly to it']
+            ]));
+
+            if (out.length < 4) out.push(tkItem('SCENE', 'canvas is empty — draw something', ''));
+            return out.join('');
+        }
+
+        function tickerRender() {
+            const track = document.getElementById('tickerTrack');
+            if (!track) return;
+            const html = tickerContent();
+            // duplicated once so a -50% translate loops with no visible seam
+            track.innerHTML = html + html;
+            tickerApplySpeed();
+        }
+
+        function tickerApplySpeed() {
+            const track = document.getElementById('tickerTrack');
+            const sp = document.getElementById('tickerSpeed');
+            if (!track || !sp) return;
+            const pxPerSec = parseInt(sp.value, 10) || 70;
+            // duration for ONE copy to pass, so the loop stays seamless at any speed
+            const half = track.scrollWidth / 2;
+            const secs = Math.max(6, half / pxPerSec);
+            track.style.animationDuration = secs + 's';
+            track.classList.add('rolling');
+        }
+
+        function toggleTicker() {
+            tickerOn = !tickerOn;
+            const bar = document.getElementById('tickerBar');
+            bar.style.display = tickerOn ? 'flex' : 'none';
+            const b = document.getElementById('tickerBtn');
+            if (b) b.style.background = tickerOn ? '#00838F' : '#37474F';
+            if (tickerOn) {
+                tickerRender();
+                // refresh only when the scene actually changes, so the wire is live
+                // without redrawing itself for nothing
+                clearInterval(_tickerT);
+                _tickerT = setInterval(() => {
+                    if (document.hidden) return;
+                    const sig = images.length + '|' + connections.length + '|' +
+                        (typeof canvasNotes !== 'undefined' ? canvasNotes.length : 0) + '|' +
+                        (typeof savedAssets !== 'undefined' ? savedAssets.length : 0) + '|' +
+                        (typeof formulaLibrary !== 'undefined' ? formulaLibrary.length : 0) + '|' +
+                        images.map(i => (i.name || '') + (i.priority || '')).join(',');
+                    if (sig !== _tickerSig) { _tickerSig = sig; tickerRender(); }
+                }, 2500);
+            } else {
+                clearInterval(_tickerT); _tickerT = null;
+            }
+        }
+
+        // Hover card for the wire. Delegated, so it survives every re-render.
+        function tkTipMove(x, y) {
+            const t = document.getElementById('tickerTip');
+            let lx = x + 16, ly = y - t.offsetHeight - 16;
+            if (lx + t.offsetWidth > window.innerWidth - 10) lx = x - t.offsetWidth - 16;
+            if (ly < 10) ly = y + 20;
+            t.style.left = Math.max(10, lx) + 'px';
+            t.style.top = ly + 'px';
+        }
+
+        (function tickerInit() {
+            const sp = document.getElementById('tickerSpeed');
+            if (sp) sp.oninput = tickerApplySpeed;
+            const op = document.getElementById('tickerOp');
+            if (op) op.oninput = ev => { document.getElementById('tickerBar').style.opacity = ev.target.value / 100; };
+
+            const tip = document.createElement('div');
+            tip.id = 'tickerTip';
+            tip.style.cssText = 'position:fixed; display:none; z-index:300002; pointer-events:none; max-width:380px; ' +
+                'background:linear-gradient(160deg,#161d24,#0d1117); border:1px solid #26343d; border-left:3px solid #26C6DA; ' +
+                'border-radius:11px; box-shadow:0 16px 44px rgba(0,0,0,.7); padding:12px 14px; font:12px Arial; color:#eceff1;';
+            document.body.appendChild(tip);
+
+            const win = document.getElementById('tickerWindow');
+            if (!win) return;
+
+            win.addEventListener('mousemove', ev => {
+                const item = ev.target.closest && ev.target.closest('.tkItem');
+                if (!item || !item.getAttribute('data-tk')) { tip.style.display = 'none'; return; }
+                if (tip.dataset.for !== item.getAttribute('data-tk')) {
+                    let d; try { d = JSON.parse(item.getAttribute('data-tk')); } catch (e) { return; }
+                    const c = TK_COLOURS[d.cat] || TK_COLOURS.SESSION;
+                    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+                    let html = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:9px; padding-bottom:8px; border-bottom:1px solid #26343d;">' +
+                        '<span style="font:700 8.5px Arial; letter-spacing:1.4px; padding:2px 7px; border-radius:9px; color:' + c[0] + '; background:' + c[1] + ';">' + d.cat + '</span>' +
+                        '<span style="font-weight:700; color:' + c[0] + '; font-size:12.5px; word-break:break-word;">' + esc(d.title) + '</span></div>';
+                    (d.rows || []).forEach(r => {
+                        html += '<div style="display:flex; gap:10px; margin:4px 0;">' +
+                            '<span style="color:#607d8b; min-width:112px; flex:0 0 auto; font-weight:600;">' + esc(r[0]) + '</span>' +
+                            '<span style="color:#eceff1; word-break:break-word;">' + esc(r[1]) + '</span></div>';
+                    });
+                    if (item.getAttribute('data-el')) {
+                        html += '<div style="margin-top:9px; padding-top:8px; border-top:1px solid #26343d; color:#546e7a; font-size:11px;">Click to fly to it on the canvas</div>';
+                    }
+                    tip.innerHTML = html;
+                    tip.dataset.for = item.getAttribute('data-tk');
+                }
+                tip.style.display = 'block';
+                tkTipMove(ev.clientX, ev.clientY);
+                item.style.background = 'rgba(38,198,218,.07)';
+            });
+
+            win.addEventListener('mouseleave', () => { tip.style.display = 'none'; tip.dataset.for = ''; });
+
+            // mousedown, NOT click. A click requires mousedown and mouseup on the same
+            // element; the wire is a moving target, so if the animation resumes for even
+            // a moment between the two the item slides away and no click ever fires.
+            win.addEventListener('mousedown', ev => {
+                const item = ev.target.closest && ev.target.closest('.tkItem');
+                if (!item) return;
+                const id = item.getAttribute('data-el');
+                if (!id) return;
+                const el = images.find(im => String(im.id) === id);
+                if (!el) {
+                    item.style.background = 'rgba(239,83,80,.16)';
+                    setTimeout(() => { item.style.background = ''; }, 700);
+                    return;
+                }
+                ev.preventDefault();
+                selectedImage = el;
+                selectedGroup = [];
+                const r = canvas.getBoundingClientRect();
+                camera.x = r.width / 2 - el.x * camera.zoom;
+                camera.y = r.height / 2 - el.y * camera.zoom;
+                if (typeof updateZoomLevel === 'function') updateZoomLevel();
+                if (typeof updateImageList === 'function') updateImageList();
+                draw();
+                // confirm the jump happened, since the canvas may be behind the card
+                item.style.background = 'rgba(38,198,218,.28)';
+                setTimeout(() => { item.style.background = ''; }, 600);
+                const tp = document.getElementById('tickerTip');
+                if (tp) tp.style.display = 'none';
+            });
         })();
 
         function saveState() {
