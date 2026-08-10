@@ -299,6 +299,7 @@
         }
             .gsep { display:inline-block; width:1px; height:22px; background:#c4c4c4; margin:0 5px 0 9px; vertical-align:middle; position:relative; }
 
+
         #vpanelContent button, #vpanelContent select, #vpanelContent input[type="range"] { width:100%; box-sizing:border-box; margin:2px 0; float:none !important; }
         #vpanelContent .gsep { width:100%; height:2px; margin:4px 0; }
         @keyframes otomAlarmBlink {
@@ -360,6 +361,8 @@
         button[data-btngrp="FILE"]   { background: #5D4037; }
         /* DRAW — drawing primitives: deep brown, kept distinct from create */
         button[data-btngrp="DRAW"]   { background: #6D4C41; }
+        /* CARTRIDGE — data containers and ports: slate blue, its own concept */
+        button[data-btngrp="CARTRIDGE"] { background: #546E7A; }
         /* MESH / CONNECT / GROUP — structure & wiring: purple family */
         button[data-btngrp="MESH"]    { background: #9C27B0; }
         button[data-btngrp="CONNECT"] { background: #673AB7; }
@@ -385,6 +388,7 @@
         body.dark #controls button, body.dark #vpanelContent button { color: #c9d1d9 !important; }
         body.dark button[data-btngrp="CREATE"]     { background: #4d545c !important; }
         body.dark button[data-btngrp="DRAW"]       { background: #454c54 !important; }
+        body.dark button[data-btngrp="CARTRIDGE"]  { background: #414951 !important; }
         body.dark button[data-btngrp="MESH"]       { background: #3d444c !important; }
         body.dark button[data-btngrp="CONNECT"]    { background: #4a515a !important; }
         body.dark button[data-btngrp="GROUP"]      { background: #424951 !important; }
@@ -505,22 +509,23 @@
         <button onclick="deleteBackground()" style="background: #607D8B; font-size: 11px; padding: 6px 8px;" title="Remove the uploaded background image">🗑 Remove BG</button>
         <span class="gsep" data-grp="DRAW"></span>
 <button title="Draw a straight datum line — inert geometry, not a logic step" id="lineBtn" onclick="toggleLineMode()" style="background: #795548;">Draw Datum Line</button>
+        <button title="Draw a hollow square; only its border is clickable" id="rectBtn" onclick="toggleRectMode()" style="background: #795548;">Draw Square</button>
+        <button title="Draw an empty circle with a black outline (dashed or dotted)" id="circleBtn" onclick="toggleCircleMode()" style="background: #795548;">◯ Draw Circle</button>
+        <select id="circleStyle" title="Circle outline style" style="font-size:11px; padding:4px; border-radius:5px;"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
+        <button title="Draw a triangle (filled or outline)" id="triBtn" onclick="toggleTriMode()" style="background: #795548;">△ Draw Triangle</button>
+        <select id="triStyle" title="Triangle style" style="font-size:11px; padding:4px; border-radius:5px;"><option value="outline">Outline</option><option value="filled">Filled</option></select>
+        <button title="Draw a solid arrow, press-drag-release" id="arrowShapeBtn" onclick="toggleArrowMode()" style="background: #795548;">Draw Arrow</button>
         <button title="Place a text element on the canvas" id="textBtn" onclick="toggleTextMode()" style="background: #795548;">Add Text</button>
+        <select id="fontSelect" title="Font for new text" style="padding: 6px; border-radius: 5px; border: 1px solid #ccc; font-size: 13px;"></select>
+        <input type="color" id="annoColor" value="#111111" title="Line / text color" style="width: 34px; height: 34px; vertical-align: middle; border: none; background: none; cursor: pointer;">
+        <button title="Show or hide the background grid" id="gridBtn" onclick="toggleGrid()" style="background: #607D8B;">▦ Grid: ON</button>
+        <span class="gsep" data-grp="CARTRIDGE"></span>
         <button title="Data Cartridge mode: double-click the canvas to place a data cartridge" id="cartridgeBtn" onclick="toggleCartridgeMode()" style="background: #795548;">▤ Data Cartridge</button>
         <button title="Edit Cartridge mode: double-click a cartridge to change its allowed elements" id="cartEditBtn" onclick="toggleCartEditMode()" style="background: #795548;">✎ Edit Cartridge</button>
         <button title="Edit Port mode: double-click a port to change its allowed elements" id="portEditBtn" onclick="togglePortEditMode()" style="background: #795548;">✎ Edit Port</button>
         <button title="Collect Data: click a cartridge, then click an element to load it in" id="collectBtn" onclick="toggleCollectMode()" style="background: #795548;">⇥ Collect Data</button>
         <button title="Data Branch: show pulsing web lines from each cartridge to its collected elements" id="branchBtn" onclick="toggleBranchMode()" style="background: #795548;">🕸 Data Branch</button>
         <button title="Show a triangle trail from each cartridge to the elements it holds" id="cartLinksBtn" onclick="toggleCartLinks()" style="background: #795548;">▸▸ Show Links</button>
-        <button title="Draw a hollow square; only its border is clickable" id="rectBtn" onclick="toggleRectMode()" style="background: #795548;">Draw Square</button>
-        <button title="Draw a solid arrow, press-drag-release" id="arrowShapeBtn" onclick="toggleArrowMode()" style="background: #795548;">Draw Arrow</button>
-        <button title="Draw an empty circle with a black outline (dashed or dotted)" id="circleBtn" onclick="toggleCircleMode()" style="background: #795548;">◯ Draw Circle</button>
-        <select id="circleStyle" title="Circle outline style" style="font-size:11px; padding:4px; border-radius:5px;"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select>
-        <button title="Draw a triangle (filled or outline)" id="triBtn" onclick="toggleTriMode()" style="background: #795548;">△ Draw Triangle</button>
-        <select id="triStyle" title="Triangle style" style="font-size:11px; padding:4px; border-radius:5px;"><option value="outline">Outline</option><option value="filled">Filled</option></select>
-        <button title="Show or hide the background grid" id="gridBtn" onclick="toggleGrid()" style="background: #607D8B;">▦ Grid: ON</button>
-        <input type="color" id="annoColor" value="#111111" title="Line / text color" style="width: 34px; height: 34px; vertical-align: middle; border: none; background: none; cursor: pointer;">
-        <select id="fontSelect" title="Font for new text" style="padding: 6px; border-radius: 5px; border: 1px solid #ccc; font-size: 13px;"></select>
         <span class="gsep" data-grp="MESH"></span>
         <button onclick="openMeshDialog()" style="background: #6A1B9A;" title="Generate a neuromorphic mesh lattice">◈ Mesh</button>
         <button id="meshInfoBtn" onclick="cycleMeshInfo()" style="background: #455A64; font-size:11px; padding:6px 9px;" title="Show mesh dimensions on its bounding box">◈ Mesh Info: OFF</button>
@@ -1178,6 +1183,22 @@
         </div>
 
         <div id="meshStats" style="display:none; margin:0 0 12px; padding:8px 10px; background:#f3e5f5; border:1px solid #ce93d8; border-radius:6px; font-size:11px; color:#4A148C; line-height:1.6;"></div>
+
+        <!-- Text elements: the words themselves are the element, so they get their own
+             field. Hidden for every other kind. -->
+        <div id="textContentBlock" style="display:none; margin:0 0 12px; padding:10px 12px; background:#e8f5e9; border:1px solid #A5D6A7; border-radius:7px;">
+            <label style="display:block; font-weight:600; font-size:13px; color:#2E7D32; margin-bottom:5px;">
+                🅣 Text content (what appears on the canvas):
+            </label>
+            <textarea id="textContentInput" rows="2"
+                      style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #A5D6A7; border-radius:5px; font-size:14px; resize:vertical;"></textarea>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:7px;">
+                <span style="font-size:12px; color:#2E7D32; font-weight:600;">Size</span>
+                <input type="number" id="textSizeInput" min="6" max="400" step="1"
+                       style="width:74px; padding:5px 7px; border:1px solid #A5D6A7; border-radius:5px; font-size:13px;">
+                <span style="font-size:11px; color:#66BB6A;">px — the box re-measures itself when you save</span>
+            </div>
+        </div>
 
         <label style="display: block; margin-top: 10px; margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #555;">
             Display Name (shown on canvas):
@@ -2285,6 +2306,15 @@
             }
             nameInput.value = image.name || '';
             fullNameInput.value = image.fullName || '';
+            {
+                const tb = document.getElementById('textContentBlock');
+                const isText = elKind(image) === 'text';
+                if (tb) tb.style.display = isText ? 'block' : 'none';
+                if (isText) {
+                    document.getElementById('textContentInput').value = image.text || '';
+                    document.getElementById('textSizeInput').value = Math.round(image.fontSize || image.height || 28);
+                }
+            }
             document.getElementById('pathInput').value = image.sourcePath || image.filePath || '';
             document.getElementById('notationInput').value = image.notations || '';
             document.getElementById('agentInput').value = image.agent || '';
@@ -2413,6 +2443,22 @@
                 } else {
                     imageToName.numUserSet = false;
                     if (!imageToName.numDesignation) assignDesignations();
+                }
+                // Text elements: commit the words and the size, then re-measure the box
+                // so the selection frame and hit-test match what is actually drawn.
+                if (elKind(imageToName) === 'text') {
+                    const tIn = document.getElementById('textContentInput');
+                    const sIn = document.getElementById('textSizeInput');
+                    if (tIn) {
+                        const txt = tIn.value;
+                        if (txt.trim()) imageToName.text = txt;
+                    }
+                    if (sIn) {
+                        const sz = parseFloat(sIn.value);
+                        if (sz >= 6 && sz <= 400) imageToName.fontSize = sz;
+                    }
+                    imageToName.height = imageToName.fontSize || 28;
+                    imageToName.width = measureTextWidth(imageToName.text, imageToName.fontSize || 28, imageToName.font || 'Arial');
                 }
                 imageToName.priority = modalPriority;
                 imageToName.outline = modalOutline;
@@ -3648,6 +3694,17 @@
                             nameModalHoverMode = true;
                             nameInput.value = hoverImg.name || '';
                             fullNameInput.value = hoverImg.fullName || '';
+                            {
+                                // keep the text block in step, or it lingers from the
+                                // last text element hovered
+                                const tb2 = document.getElementById('textContentBlock');
+                                const isT = elKind(hoverImg) === 'text';
+                                if (tb2) tb2.style.display = isT ? 'block' : 'none';
+                                if (isT) {
+                                    document.getElementById('textContentInput').value = hoverImg.text || '';
+                                    document.getElementById('textSizeInput').value = Math.round(hoverImg.fontSize || hoverImg.height || 28);
+                                }
+                            }
                             syncFusionPanel(hoverImg);
                             nameModal.style.pointerEvents = 'none';
                             // Follow the cursor, right next to the hovered element
@@ -12255,33 +12312,112 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         }
         function setPerfOpacity(v) { document.getElementById('perfPanel').style.opacity = v / 100; }
 
+        // A proper reclamation report. Built from what was actually RELEASED — the
+        // engine measures its own structures before dropping them, rather than diffing
+        // the heap afterwards, because the browser's heap figure does not shrink on
+        // demand: garbage collection is lazy and asynchronous, so a "before minus after"
+        // reading is very often zero or even negative. Measuring the release is exact.
+        function showReclaimReport(title, items, heapBefore, heapAfter, ms) {
+            const total = items.reduce((a, i) => a + (i[2] || 0), 0);
+            const ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed; inset:0; z-index:300000; display:flex; align-items:center; justify-content:center; ' +
+                'background:rgba(8,11,16,.86); backdrop-filter:blur(3px); opacity:0; transition:opacity .28s;';
+            const card = document.createElement('div');
+            card.style.cssText = 'width:470px; max-width:92vw; background:linear-gradient(160deg,#161d24,#0d1117); ' +
+                'border:1px solid #263238; border-radius:16px; box-shadow:0 24px 70px rgba(0,0,0,.6); ' +
+                'padding:24px 26px; font-family:Arial,sans-serif; color:#eceff1;';
+
+            let rows = '';
+            items.forEach(([label, detail, b]) => {
+                const dim = !b;
+                rows += '<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; ' +
+                    'padding:7px 11px; margin:5px 0; background:#131a21; border:1px solid #1f2a33; border-radius:8px;">' +
+                    '<span style="font-size:12.5px; color:' + (dim ? '#546e7a' : '#cfd8dc') + ';">' + label +
+                    '<span style="color:#546e7a; font-size:11px;"> · ' + detail + '</span></span>' +
+                    '<span style="font-weight:800; font-size:12.5px; color:' + (dim ? '#37474F' : '#26C6DA') + '; white-space:nowrap;">' +
+                    (b ? formatBytes(b) : '—') + '</span></div>';
+            });
+
+            const heapLine = heapBefore
+                ? '<div style="display:flex; justify-content:space-between; font-size:11px; color:#546e7a; margin-top:3px;">' +
+                  '<span>Heap reading</span><span>' + formatBytes(heapBefore) + ' → ' + formatBytes(heapAfter) + '</span></div>' +
+                  '<div style="color:#37474F; font-size:10px; margin-top:5px; line-height:1.5;">' +
+                  'The browser reclaims lazily, so the heap figure may not move immediately. ' +
+                  'The totals above are what the engine actually released.</div>'
+                : '<div style="color:#37474F; font-size:10px; margin-top:5px;">Heap readings are unavailable in this browser.</div>';
+
+            card.innerHTML =
+                '<div style="font-weight:800; font-size:18px; display:flex; align-items:center; gap:10px; margin-bottom:3px;">' + title + '</div>' +
+                '<div style="color:#78909C; font-size:12px; margin-bottom:16px;">Completed in ' + ms.toFixed(1) + ' ms</div>' +
+                '<div style="max-height:44vh; overflow:auto; padding-right:4px;">' + rows + '</div>' +
+                '<div style="margin-top:16px; padding-top:14px; border-top:1px solid #1f2a33;">' +
+                  '<div style="display:flex; justify-content:space-between; align-items:baseline;">' +
+                    '<span style="font-weight:800; font-size:13px; color:#26C6DA;">TOTAL RECLAIMED</span>' +
+                    '<span style="font-weight:800; font-size:20px; color:#26C6DA;">' + formatBytes(total) + '</span>' +
+                  '</div>' + heapLine +
+                '</div>' +
+                '<div style="display:flex; justify-content:flex-end; margin-top:18px;">' +
+                  '<button id="rcOk" style="margin:0; padding:9px 26px; font:700 13px Arial; ' +
+                  'background:linear-gradient(180deg,#26C6DA,#00897B); color:#04231d; border-radius:9px; cursor:pointer;">Continue</button>' +
+                '</div>';
+
+            ov.appendChild(card); document.body.appendChild(ov);
+            requestAnimationFrame(() => ov.style.opacity = '1');
+            const close = () => { window.removeEventListener('keydown', esc); ov.style.opacity = '0'; setTimeout(() => ov.remove(), 300); };
+            const esc = ev => { if (ev.key === 'Escape' || ev.key === 'Enter') { ev.preventDefault(); close(); } };
+            card.querySelector('#rcOk').onclick = close;
+            window.addEventListener('keydown', esc);
+            card.querySelector('#rcOk').focus();
+        }
+
         function flushCache() {
+            const t0 = performance.now();
             const before = (performance.memory ? performance.memory.usedJSHeapSize : 0);
+            const items = [];
+
+            // measure BEFORE dropping, or there is nothing left to measure
+            let histBytes = 0;
+            try { histBytes = new Blob([JSON.stringify(historyStack)]).size; } catch (e) {}
+            items.push(['Undo history', historyStack.length + ' states', histBytes]);
             historyStack = []; historyIndex = -1;
+
+            const perfSamples = PERF.hist.length + PERF.drawHist.length;
+            items.push(['Perf buffers', perfSamples + ' samples', perfSamples * 8]);
             PERF.hist = []; PERF.drawHist = []; PERF.draws = 0; PERF.drawMs = 0; PERF.maxDrawMs = 0; PERF.longFrames = 0;
             PERF.minFps = 999; PERF.maxFps = 0;
+
+            let anim = 0;
             images.forEach(i => {
-                delete i._glow; delete i._bAlpha; delete i._pOrder; delete i._pOrderN;
-                delete i._weldFlash; delete i._srcId;
-                if (i.parts) i.parts.forEach(p => { delete p._srcId; });
+                ['_glow', '_bAlpha', '_pOrder', '_pOrderN', '_weldFlash', '_srcId'].forEach(k => {
+                    if (i[k] !== undefined) { delete i[k]; anim++; }
+                });
+                if (i.parts) i.parts.forEach(p => { if (p._srcId !== undefined) { delete p._srcId; anim++; } });
             });
+            items.push(['Render caches', anim + ' cached values', anim * 8]);
+
+            const fr = flagRects ? flagRects.length : 0;
+            const fg = (typeof flagGrid !== 'undefined' && flagGrid) ? flagGrid.size : 0;
+            items.push(['Flag collision grid', fr + ' rects · ' + fg + ' cells', fr * 40 + fg * 60]);
             flagRects = []; if (typeof flagGrid !== 'undefined') flagGrid = new Map();
             if (typeof _flagHit !== 'undefined') _flagHit = [];
+
+            const fp = (typeof _flagPlace !== 'undefined' && _flagPlace) ? _flagPlace.size : 0;
+            items.push(['Flag placement cache', fp + ' solved placements', fp * 32]);
+            if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
+
+            items.push(['Document size cache', 'reset', (typeof _docSize !== 'undefined' ? _docSize : 0)]);
             if (typeof _docSize !== 'undefined') { _docSize = 0; _docAt = 0; }
+
             if (window.caches && caches.keys) caches.keys().then(k => k.forEach(n => caches.delete(n)));
+            items.push(['Browser CacheStorage', 'purged', 0]);
+
             try { if (window.gc) window.gc(); } catch (e) {}
             draw();
+
+            const ms = performance.now() - t0;
             setTimeout(() => {
                 const after = (performance.memory ? performance.memory.usedJSHeapSize : 0);
-                const freed = Math.max(0, before - after);
-                const msg = 'Undo history cleared \u00b7 Perf buffers reset \u00b7 Render caches dropped' +
-                    (before ? '\n\nHeap before:  ' + formatBytes(before) +
-                              '\nHeap after:   ' + formatBytes(after) +
-                              '\nReclaimed:    ' + formatBytes(freed)
-                            : '\n\n(Heap sizes unavailable in this browser.)');
-                if (typeof showConfirm === 'function') {
-                    showConfirm({ title: '\ud83e\uddf9 Heap Flushed', body: msg, okText: 'OK', danger: false, hideCancel: true });
-                }
+                showReclaimReport('🧹 Heap Flushed', items, before, after, ms);
             }, 140);
         }
 
@@ -13160,6 +13296,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (typeof alarms !== 'undefined') alarms = alarms.filter(a => !(a.fired && !a.active));
             kill.push(['Spent alarms', deadAlarms.length + ' cleared', alBytes]);
 
+            // 7c. Flag placement cache
+            const fpN = (typeof _flagPlace !== 'undefined' && _flagPlace) ? _flagPlace.size : 0;
+            if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
+            kill.push(['Flag placement cache', fpN + ' solved placements', fpN * 32]);
+
             // 8. Browser CacheStorage
             if (window.caches && caches.keys) caches.keys().then(k => k.forEach(n => caches.delete(n)));
             kill.push(['CacheStorage', 'purged', 0]);
@@ -13190,15 +13331,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
             setTimeout(() => {
                 const after = M();
-                console.log('%c\u2620 PURGE PROTOCOL', 'color:#ff1a1a;font-weight:bold;font-size:14px');
-                kill.forEach(([label, detail, bytes]) =>
-                    console.log('  \u25b8 ' + label + ': ' + detail + (bytes ? ' (' + formatBytes(bytes) + ')' : '')));
-                console.log('  TOTAL RECLAIMED: ' + formatBytes(reclaimed) +
-                    (before ? '  |  heap ' + formatBytes(before) + ' \u2192 ' + formatBytes(after) : '') +
-                    '  |  ' + ms.toFixed(1) + 'ms');
                 if (perfOn) renderPerf();
                 if (document.getElementById('assetPanel').style.display !== 'none') renderAssetBrowser();
-            }, 200);
+                // the report was console-only before, so a purge looked like it did nothing
+                showReclaimReport('☠ Purge Protocol', kill, before, after, ms);
+            }, 1500);
         }
         // ============================================================
         // ============================================================
@@ -14389,9 +14526,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (M) {
                 const now = M.usedJSHeapSize;
                 const delta = Math.abs(now - _pulseHeap);
-                // The heap always drifts a little — timers, clock strings, panel updates.
-                // Track that baseline and fire only when something genuinely spikes above
-                // it, so the light reports real allocation instead of idle churn.
+                // _pulseHeap MUST advance every frame. It used to update only when the
+                // light fired, so between fires the delta was measured against an ever
+                // older reading — the gap grew, the baseline grew with it, and the
+                // threshold ran away from the signal. The dot went nearly silent.
+                _pulseHeap = now;
+                // Idle drift (timers, clock strings, panel updates) is the baseline;
+                // fire only on genuine spikes above it.
                 _pulseHeapBase = _pulseHeapBase * 0.94 + delta * 0.06;
                 const floor = Math.max(65536, _pulseHeapBase * 3);
                 if (delta > floor) {
@@ -14400,7 +14541,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     // flicker threshold — that is why it looked imperceptible.
                     _pulseMemHold = 7;
                     _pulseMemMag = Math.min(1, delta / Math.max(1048576, floor * 8));
-                    _pulseHeap = now;
                 }
                 if (_pulseMemHold > 0) {
                     _pulseMemHold--;
