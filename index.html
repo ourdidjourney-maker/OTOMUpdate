@@ -4043,6 +4043,7 @@
                 try { freed += JSON.stringify(gone).length; } catch (e) {}
             }
             historyIndex = Math.min(historyIndex, historyStack.length - 1);
+            _histBytesLen = -1; _histBytesAt = 0;   // force a fresh reading after a trim
             updateHistoryInfo();
             if (freed && typeof showConfirm === 'function') showConfirm({
                 title: '↶ Undo history trimmed',
@@ -4050,15 +4051,22 @@
                 okText: 'OK', danger: false, hideCancel: true });
         }
 
+        // Depth is free; SIZE is not — serialising the whole stack can mean tens of
+        // megabytes when it holds image elements, so it is measured rarely and cached.
+        var _histBytes = 0, _histBytesAt = 0, _histBytesLen = -1;
         function updateHistoryInfo() {
             const el = document.getElementById('histInfo');
             if (!el) return;
-            let b = 0;
-            try { b = JSON.stringify(historyStack).length; } catch (e) {}
-            el.textContent = historyStack.length + ' / ' + MAX_HISTORY + (b ? ' · ' + formatBytes(b) : '');
-            el.style.color = b > 20000000 ? '#EF6C00' : '#90A4AE';
+            const now = Date.now();
+            // recompute only if the stack changed length AND it has been a while
+            if (historyStack.length !== _histBytesLen && now - _histBytesAt > 20000) {
+                try { _histBytes = JSON.stringify(historyStack).length; } catch (e) { _histBytes = 0; }
+                _histBytesAt = now; _histBytesLen = historyStack.length;
+            }
+            el.textContent = historyStack.length + ' / ' + MAX_HISTORY + (_histBytes ? ' · ' + formatBytes(_histBytes) : '');
+            el.style.color = _histBytes > 20000000 ? '#EF6C00' : '#90A4AE';
         }
-        setInterval(updateHistoryInfo, 3000);
+        setInterval(updateHistoryInfo, 5000);
 
         function undo() {
             if (historyIndex > 0) {
@@ -6624,7 +6632,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }
                 // bonded vector assemblies get a teal frame + readout
                 const va = {};
-                images.forEach(m => { if (m.vFusionId) (va[m.vFusionId] = va[m.vFusionId] || []).push(m); });
+                let _anyVF = false;
+                for (let i = 0; i < images.length; i++) { if (images[i].vFusionId) { _anyVF = true; break; } }
+                if (_anyVF) images.forEach(m => { if (m.vFusionId) (va[m.vFusionId] = va[m.vFusionId] || []).push(m); });
                 Object.keys(va).forEach(id => {
                     const set = va[id];
                     if (set.length < 2) return;
@@ -6883,7 +6893,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
             // ◎ SOCKETS — connectors that meshes and grouped assets plug into
             {
                 const zs = camera.zoom;
-                images.forEach(im => {
+                let _anySock = false;
+                for (let i = 0; i < images.length; i++) { if (images[i].socket) { _anySock = true; break; } }
+                if (_anySock) images.forEach(im => {
                     if (!isSocket(im) || !inView(im, 90)) return;
                     const st = socketContents(im);
                     const r = Math.max(im.width, im.height) / 2;
@@ -6941,7 +6953,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
 
             // Mesh scale flag — how far a mesh has grown from its generated size
-            images.forEach(im => {
+            let _anyMesh = false;
+            for (let i = 0; i < images.length; i++) { if (images[i].isMesh) { _anyMesh = true; break; } }
+            if (_anyMesh) images.forEach(im => {
                 if (!im.isMesh || !im.baseWidth || !inView(im, 60)) return;
                 const pct = Math.round((im.width / im.baseWidth) * 100);
                 if (pct === 100) return;
@@ -7044,7 +7058,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
             // 📅 DATE BADGE — an element with a calendar event wears its date, and turns
             // red once that date has passed. A due date you cannot see is not a due date.
-            if (typeof calEvents !== 'undefined' && calEvents.length) {
+            if (typeof calEvents !== 'undefined' && calEvents.some(e => e.elId && !e.done)) {
                 const zc = camera.zoom;
                 const today = calToday();
                 images.forEach(im => {
