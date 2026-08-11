@@ -3821,6 +3821,7 @@
             q('calPinBtn').onclick = () => {
                 if (!calPopped) q('calPopBtn').click();
                 calPinned = !calPinned;
+                ensurePinTracker();
                 if (calPinned) {
                     const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
                     calAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom, y: (r.top - rect.top - camera.y) / camera.zoom };
@@ -4323,13 +4324,6 @@
         }
 
         // Segment intersection test (for the intersect FX)
-        function segIntersect(x1, y1, x2, y2, x3, y3, x4, y4) {
-            const d = ((x1 - x2) * (y3 - y4)) - ((y1 - y2) * (x3 - x4));
-            if (d === 0) return false;
-            const t = (((x1 - x3) * (y3 - y4)) - ((y1 - y3) * (x3 - x4))) / d;
-            const u = -(((x1 - x2) * (y1 - y3)) - ((y1 - y2) * (x1 - x3))) / d;
-            return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-        }
 
         // Mouse down event
         canvas.addEventListener('mousedown', (e) => {
@@ -7427,19 +7421,49 @@ ctx.fillText(conn.number.toString(), midX, midY);
         updateZoomLevel();
         scheduleDraw();
         // keep a pinned media panel locked to its canvas-space anchor
-        (function mediaTracker() {
-            function tick() {
-                if (typeof mediaPlayers !== 'undefined' && mediaPlayers.length &&
-                    mediaPlayers.some(m => m.pinned)) syncMediaPlayers();
-                    if (typeof calcPinned !== 'undefined' && calcPinned) calcSyncPinned();
-                    if (typeof chkPinned !== 'undefined' && chkPinned) chkSyncPinned();
-                    if (typeof helpPinned !== 'undefined' && helpPinned) helpSyncPinned();
-                    if (typeof calPinned !== 'undefined' && calPinned) calSyncPinned();
-                    if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
-                requestAnimationFrame(tick);
+        // Keeps pinned panels locked to canvas space. This used to run every frame
+        // forever — 60 callbacks a second checking an empty list when nothing was
+        // pinned at all. It now runs ONLY while something is actually pinned, and any
+        // pin toggle restarts it. A short grace period covers the moment between a
+        // panel being unpinned and re-pinned.
+        var _pinTrackRunning = false, _pinIdle = 0;
+
+        function anyPinned() {
+            if (typeof mediaPlayers !== 'undefined' && mediaPlayers.some(m => m.pinned)) return true;
+            if (typeof docPanels !== 'undefined' && docPanels.some(d => d.pinned)) return true;
+            if (typeof calcPinned !== 'undefined' && calcPinned) return true;
+            if (typeof chkPinned !== 'undefined' && chkPinned) return true;
+            if (typeof helpPinned !== 'undefined' && helpPinned) return true;
+            if (typeof calPinned !== 'undefined' && calPinned) return true;
+            return false;
+        }
+
+        function ensurePinTracker() {
+            _pinIdle = 0;
+            if (_pinTrackRunning) return;
+            _pinTrackRunning = true;
+            requestAnimationFrame(pinTick);
+        }
+
+        function pinTick() {
+            if (!anyPinned()) {
+                // 60 frames of grace before shutting down, so a quick unpin/re-pin
+                // never leaves a panel stranded
+                if (++_pinIdle > 60) { _pinTrackRunning = false; return; }
+            } else {
+                _pinIdle = 0;
+                if (typeof mediaPlayers !== 'undefined' && mediaPlayers.length) syncMediaPlayers();
+                if (typeof calcPinned !== 'undefined' && calcPinned) calcSyncPinned();
+                if (typeof chkPinned !== 'undefined' && chkPinned) chkSyncPinned();
+                if (typeof helpPinned !== 'undefined' && helpPinned) helpSyncPinned();
+                if (typeof calPinned !== 'undefined' && calPinned) calSyncPinned();
+                if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
             }
-            requestAnimationFrame(tick);
-        })();
+            requestAnimationFrame(pinTick);
+        }
+
+        // one wake-up at startup, in case a snapshot restored a pinned panel
+        requestAnimationFrame(ensurePinTracker);
 
         // Save Engine Function
         function buildEnginePayload() {
@@ -9240,34 +9264,6 @@ ctx.fillText(conn.number.toString(), midX, midY);
             });
         }
 
-        function openCartridge(cart) {
-            const m = document.getElementById('cartridgeModal');
-            const body = document.getElementById('cartridgeBody');
-            const closeX = document.getElementById('cartridgeCloseX');
-            const allowed = (cart && cart.allowed) ? cart.allowed : [];
-            const items = (cart && cart.contents) ? cart.contents : [];
-            const allowedLabels = allowed.map(k => (CART_CATEGORIES.find(c => c.key === k) || {}).label || k);
-            let html = '<div style="margin-bottom:10px; font-size:12px; color:#78909C;">Accepts: ' +
-                       (allowedLabels.length ? allowedLabels.join(', ') : '<span style="font-style:italic;">nothing selected</span>') +
-                       (cart && cart.readOnly ? ' <span style="color:#C62828; font-weight:700;">· 🔒 READ ONLY</span>' : '') + '</div>';
-            if (!items.length) {
-                html += '<div style="color:#90A4AE; font-style:italic; padding:10px 0;">This cartridge is empty.</div>';
-            } else {
-                html += items.map(function (id) {
-                    const el = images.find(im => im.id === id);
-                    const nm = el ? ((el.name || elKind(el)) + (el.numDesignation ? ' #' + el.numDesignation : '')) : ('#' + id);
-                    return '<div style="padding:6px 0; border-bottom:1px solid #eee;">' + String(nm).replace(/</g,'&lt;') + '</div>';
-                }).join('');
-            }
-            html += '<div style="display:flex; justify-content:flex-end; margin-top:14px;"><button id="cartEjectBtn" style="margin:0; padding:8px 16px; font-size:13px; font-weight:700; background:#546E7A; color:#fff; border-radius:8px; cursor:pointer;">⏏ Eject / Export</button></div>';
-            body.innerHTML = html;
-            const ejectBtn = document.getElementById('cartEjectBtn');
-            if (ejectBtn) ejectBtn.onclick = () => exportCartridge(cart);
-            m.style.display = 'flex';
-            const close = function () { m.style.display = 'none'; m.onclick = null; if (closeX) closeX.onclick = null; };
-            if (closeX) closeX.onclick = close;
-            m.onclick = function (e) { if (e.target === m) close(); };
-        }
         function toggleCartridgeMode() {
             cartridgeMode = !cartridgeMode;
             const b = document.getElementById('cartridgeBtn');
@@ -10386,6 +10382,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             q('calcPinBtn').onclick = () => {
                 if (!calcPopped) q('calcPopBtn').click();     // pinning implies undocked
                 calcPinned = !calcPinned;
+                ensurePinTracker();
                 if (calcPinned) {
                     const rect = canvas.getBoundingClientRect();
                     const r = p.getBoundingClientRect();
@@ -10757,6 +10754,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             };
             q('chkPinBtn').onclick = () => {
                 chkPinned = !chkPinned;
+                ensurePinTracker();
                 if (chkPinned) {
                     const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
                     chkAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom, y: (r.top - rect.top - camera.y) / camera.zoom };
@@ -11023,12 +11021,6 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }, 60);
         }
 
-        function padDetachNote(el) {
-            if (!el) return;
-            el.padRefs = [];
-            if (typeof saveState === 'function') saveState();
-            draw();
-        }
 
         // ── ⚫ ELEMENT CHIPS — a live reference to a canvas element. Clicking a
         // chip flies the camera to that element and selects it, so notes are
@@ -11796,6 +11788,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const b = document.getElementById('helpPinBtn');
             const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
             helpPinned = !helpPinned;
+            ensurePinTracker();
             if (helpPinned) {
                 helpAnchor = {
                     x: (r.left - rect.left - camera.x) / camera.zoom,
@@ -11895,6 +11888,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             pin.onclick = () => {
                 const rect = canvas.getBoundingClientRect(), r = el.getBoundingClientRect();
                 rec.pinned = !rec.pinned;
+                ensurePinTracker();
                 if (rec.pinned) {
                     rec.free = { w: r.width, h: r.height };
                     rec.anchor = { x: (r.left - rect.left - camera.x) / camera.zoom,
@@ -14618,7 +14612,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             b.style.background = showNotes ? '#0288D1' : '#9e9e9e';
             draw();
         }
-        function setNoteOpacity(v) { noteOpacity = v / 100; draw(); }
 
         (function initNoteEntry() {
             const ip = document.getElementById('noteEntry');
@@ -15319,11 +15312,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         }
         function primerDelTop() { primerDelRow('top'); }
         function primerDelBot() { primerDelRow('bot'); }
-        function primerRemovePin() {
-            if (primerPins.length > 1) primerPins.pop();
-            primerSubs = primerSubs.filter(s => s.after < primerPins.length - 1);
-            drawPrimer();
-        }
         function primerAddSub() {
             primerSubMode = !primerSubMode;
             document.getElementById('primerSubBtn').style.background = primerSubMode ? '#FFB300' : 'rgba(255,255,255,.22)';
@@ -15667,6 +15655,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                         h: r.height / camera.zoom
                     };
                     rec.pinned = true;
+                    ensurePinTracker();
                     el.style.resize = 'none';
                     pinBtn.textContent = '📌 Unpin';
                     pinBtn.style.background = '#FFB300'; pinBtn.style.color = '#000';
@@ -15824,6 +15813,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                         h: r.height / camera.zoom
                     };
                     rec.pinned = true;
+                    ensurePinTracker();
                     el.style.resize = 'none';
                     pinBtn.textContent = '📌 Unpin';
                     pinBtn.style.background = '#FFB300'; pinBtn.style.color = '#000';
@@ -16512,7 +16502,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             return { x: bx, y: by, d: bd };
         }
 
-        function isPluggable(el) { return !!el && !isSocket(el); }
 
         function findSocketTarget(moved) {
             if (!moved) return null;
@@ -16547,13 +16536,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             el.socketId = sock.id;
         }
 
-        function socketUnplug(el) {
-            if (!el || !el.socketId) return;
-            const s = images.find(i => i.id === el.socketId);
-            if (s && s.socketLinks) s.socketLinks = s.socketLinks.filter(x => x !== el.id);
-            el.socketId = null;
-            saveState(); draw();
-        }
 
         function socketContents(sock) {
             const meshes = [], assets = [], other = [];
@@ -16738,7 +16720,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             return out;
         }
 
-        function hasFusionVectors(el) { return vecFusePts(el).length > 0; }
 
         // Closest compatible fusion-vector pair, and the offset that aligns them
         function findVecFuseTarget(moved) {
