@@ -300,7 +300,15 @@
             .gsep { display:inline-block; width:1px; height:22px; background:#c4c4c4; margin:0 5px 0 9px; vertical-align:middle; position:relative; }
 
 
-        #vpanelContent button, #vpanelContent select, #vpanelContent input[type="range"] { width:100%; box-sizing:border-box; margin:2px 0; float:none !important; }
+        /* DIRECT children only. As a descendant selector this also hit every button
+           and input INSIDE docked panels — the Scratch Pad's formatting toolbar, the
+           calculator keypad, the calendar controls — forcing them to full width and
+           stacking them vertically. Panels lay themselves out; only the toolbar's own
+           controls should be stretched. */
+        #vpanelContent > button, #vpanelContent > select, #vpanelContent > input[type="range"] { width:100%; box-sizing:border-box; margin:2px 0; float:none !important; }
+        /* docked panels keep their own geometry in the vertical dock */
+        #vpanelContent > div[id$="Panel"], #vpanelContent > #notesReader, #vpanelContent > #assetDrawer,
+        #vpanelContent > #padPanel, #vpanelContent > #calPanel, #vpanelContent > #calcPanel { width:auto; }
         #vpanelContent .gsep { width:100%; height:2px; margin:4px 0; }
         @keyframes tickerRoll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
         @keyframes tickerPulse { 0%,100% { opacity:1; box-shadow:0 0 8px #26C6DA; } 50% { opacity:.35; box-shadow:0 0 3px #26C6DA; } }
@@ -563,6 +571,7 @@
         <button title="Collect Data: click a cartridge, then click an element to load it in" id="collectBtn" onclick="toggleCollectMode()" style="background: #795548;">⇥ Collect Data</button>
         <button title="Data Branch: show pulsing web lines from each cartridge to its collected elements" id="branchBtn" onclick="toggleBranchMode()" style="background: #795548;">🕸 Data Branch</button>
         <button title="Show a triangle trail from each cartridge to the elements it holds" id="cartLinksBtn" onclick="toggleCartLinks()" style="background: #795548;">▸▸ Show Links</button>
+        <button title="Eject: export the selected cartridge and everything loaded into it as a portable file" id="ejectBtn" onclick="ejectCartridge()" style="background: #795548;">⏏ Eject Cartridge</button>
         <span class="gsep" data-grp="MESH"></span>
         <button onclick="openMeshDialog()" style="background: #6A1B9A;" title="Generate a neuromorphic mesh lattice">◈ Mesh</button>
         <button id="meshInfoBtn" onclick="cycleMeshInfo()" style="background: #455A64; font-size:11px; padding:6px 9px;" title="Show mesh dimensions on its bounding box">◈ Mesh Info: OFF</button>
@@ -646,6 +655,7 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <button onclick="toggleZen()" title="Hide the toolbar (Tab). Everything is in the radial: Left Alt + click" style="background:#263238; font-size:11px; padding:6px 9px;">⌘ Zen</button>
         <button id="magBtn" onclick="toggleMagnifier()" style="background:#455A64; font-size:11px; padding:6px 9px;" title="Magnifier lens that follows the cursor, with body-cam barrel distortion">🔍 Lens</button>
         <span id="magCtl" style="display:none; align-items:center; gap:5px; font-size:10px; color:#333;">
             <span>Zoom</span><input type="range" min="11" max="60" value="16" oninput="setMagZoom(this.value/10)" style="width:56px; vertical-align:middle;">
@@ -1404,65 +1414,156 @@
 
         // ⊚ RADIAL QUICK MENU — hold Left Alt on the canvas for fast tool access.
         // Radial menu — top ring is categories/tools; some open a submenu ring on hover.
+        // ═══════════════════════════════════════════════════════════════════
+        // RADIAL MENU — the whole engine, at the cursor.
+        //
+        // Every toolbar control that makes sense away from the toolbar lives here, so
+        // the operator never has to travel to the top of the screen. Grouped by intent
+        // rather than by where the buttons happen to sit in the UI.
+        // ═══════════════════════════════════════════════════════════════════
         const RADIAL_ITEMS = [
             { ico: '•',  label: 'Vector',  accent: '#5C6BC0', run: () => { const p = _radialPos; if (!p) return; const nd = { img:null, x:p.x, y:p.y, width:40, height:40, rotation:0, id:Date.now()+Math.random(), name:'', fullName:'', isDot:true, isVector:true, baseWidth:40, fusable:false }; images.push(nd); selectedImage = nd; saveState(); updateImageCount(); draw(); } },
+
             { ico: '✎', label: 'Draw', accent: '#795548', sub: [
-                { ico: '─', label: 'Datum',  accent: '#795548', run: () => toggleLineMode() },
-                { ico: '▭', label: 'Square', accent: '#8D6E63', run: () => toggleRectMode() },
-                { ico: '◯', label: 'Circle', accent: '#7E57C2', run: () => toggleCircleMode() },
+                { ico: '─', label: 'Datum',    accent: '#795548', run: () => toggleLineMode() },
+                { ico: '▭', label: 'Square',   accent: '#8D6E63', run: () => toggleRectMode() },
+                { ico: '◯', label: 'Circle',   accent: '#7E57C2', run: () => toggleCircleMode() },
                 { ico: '△', label: 'Triangle', accent: '#6D4C41', run: () => toggleTriMode() },
-                { ico: '➤', label: 'Arrow',  accent: '#6D4C41', run: () => toggleArrowMode() },
-                { ico: 'T', label: 'Text',   accent: '#795548', run: () => toggleTextMode() },
+                { ico: '➤', label: 'Arrow',    accent: '#5D4037', run: () => toggleArrowMode() },
+                { ico: 'T', label: 'Text',     accent: '#4E342E', run: () => toggleTextMode() },
+                { ico: '▦', label: 'Grid',     accent: '#607D8B', run: () => toggleGrid() },
+                { ico: '🖼', label: 'Upload',  accent: '#2196F3', run: () => document.getElementById('fileInput').click() },
+                { ico: '🌄', label: 'BG Move', accent: '#607D8B', run: () => toggleBgMove() },
+                { ico: '🗑', label: 'BG Clear', accent: '#78909C', run: () => deleteBackground() }
             ]},
-            { ico: '◈', label: 'Assemble', accent: '#9C27B0', sub: [
-                { ico: '◈', label: 'Mesh',    accent: '#9C27B0', run: () => openMeshDialog() },
-                { ico: '◎', label: 'Socket',  accent: '#00838F', run: () => toggleSocketMode() },
-                { ico: '⛓', label: 'Fuse',    accent: '#00897B', run: () => toggleFuse() },
-                { ico: '⊕', label: 'Weld',    accent: '#5D4037', run: () => weldSocket() },
-                { ico: '⛓', label: 'Connect', accent: '#FF8F00', run: () => toggleConnectMode() },
-                { ico: '⊞', label: 'Make Asset', accent: '#FF6F00', run: () => groupToAsset() },
-                { ico: '⊟', label: 'Regroup', accent: '#FF6F00', run: () => reconstructAsset() },
+
+            { ico: '⊞', label: 'Assemble', accent: '#6A1B9A', sub: [
+                { ico: '◈', label: 'Mesh',     accent: '#6A1B9A', run: () => buildMesh() },
+                { ico: '◎', label: 'Socket',   accent: '#7B1FA2', run: () => toggleSocketMode() },
+                { ico: '⛓', label: 'Fuse',    accent: '#8E24AA', run: () => toggleFuse() },
+                { ico: '⚯', label: 'V-Fuse',   accent: '#9C27B0', run: () => toggleVFuse() },
+                { ico: '⊕', label: 'Weld',     accent: '#0097A7', run: () => weldSocket() },
+                { ico: '⊞', label: 'Group',    accent: '#FF6F00', run: () => groupToAsset() },
+                { ico: '⊟', label: 'Regroup',  accent: '#FF6F00', run: () => reconstructAsset() },
                 { ico: '◈', label: 'Watermark', accent: '#546E7A', run: () => watermarkSelection() },
+                { ico: '⇥', label: 'Connect',  accent: '#FF9800', run: () => toggleConnectMode() },
+                { ico: '⇉', label: 'Simul',    accent: '#FB8C00', run: () => toggleSimultaneousMode() },
+                { ico: '✳', label: 'Mesh Info', accent: '#8E24AA', run: () => cycleMeshInfo() },
+                { ico: '⤢', label: 'Vtr Scale', accent: '#9575CD', run: () => toggleVtrScale() }
             ]},
+
             { ico: '▤', label: 'Cartridge', accent: '#546E7A', sub: [
-                { ico: '▤', label: 'New',     accent: '#546E7A', run: () => toggleCartridgeMode() },
-                { ico: '⇥', label: 'Collect', accent: '#546E7A', run: () => toggleCollectMode() },
-                { ico: '🕸', label: 'Branch',  accent: '#546E7A', run: () => toggleBranchMode() },
+                { ico: '▤', label: 'New',      accent: '#795548', run: () => toggleCartridgeMode() },
+                { ico: '✎', label: 'Edit Cart', accent: '#6D4C41', run: () => toggleCartEdit() },
+                { ico: '⎔', label: 'Edit Port', accent: '#5D4037', run: () => togglePortEdit() },
+                { ico: '⇥', label: 'Collect',  accent: '#8D6E63', run: () => toggleCollectMode() },
+                { ico: '🕸', label: 'Branch',  accent: '#795548', run: () => toggleBranchMode() },
                 { ico: '▸▸', label: 'Links',   accent: '#546E7A', run: () => toggleCartLinks() },
-                { ico: '✎', label: 'Edit Cart', accent: '#546E7A', run: () => toggleCartEditMode() },
-                { ico: '✎', label: 'Edit Port', accent: '#546E7A', run: () => togglePortEditMode() },
+                { ico: '⏏', label: 'Eject',   accent: '#455A64', run: () => ejectCartridge() }
             ]},
-            { ico: '⬚', label: 'Select', accent: '#7B1FA2', sub: [
-                { ico: '⬚', label: 'Lasso',   accent: '#7B1FA2', run: () => toggleLasso() },
-                { ico: '▦', label: 'Grid',    accent: '#607D8B', run: () => toggleGrid() },
-                { ico: '⚑', label: 'Flags',   accent: '#455A64', run: () => toggleFlagsMode() },
+
+            { ico: '⬚', label: 'Select', accent: '#6A1B9A', sub: [
+                { ico: '⬚', label: 'Lasso',    accent: '#6A1B9A', run: () => toggleLasso() },
+                { ico: '⚑', label: 'Flags',    accent: '#455A64', run: () => toggleFlagsMode() },
+                { ico: '▦', label: 'Frames',   accent: '#7E57C2', run: () => cycleGroupFrames() },
+                { ico: '⟳', label: 'Rot Snap', accent: '#5E35B1', run: () => cycleRotSnap() },
+                { ico: '✳', label: 'Intersect', accent: '#00897B', run: () => toggleIntersectFX() },
+                { ico: '⊟', label: 'Ad Hoc',   accent: '#5E35B1', run: () => { const t = selectedGroup.length ? selectedGroup : []; if (t.length > 1) { const gid = 'AH' + Date.now(); t.forEach(x => x.adhocGroup = gid); saveState(); draw(); } } }
             ]},
-            { ico: '▣', label: 'Panels', accent: '#673AB7', sub: [
-                { ico: '▤', label: 'Drawer',  accent: '#FF6F00', run: () => toggleAssetDrawer() },
+
+            { ico: '📏', label: 'Measure', accent: '#2196F3', sub: [
+                { ico: '↔', label: 'H Ruler',  accent: '#2196F3', run: () => addGuide('h') },
+                { ico: '↕', label: 'V Ruler',  accent: '#2196F3', run: () => addGuide('v') },
+                { ico: '🔒', label: 'Lock',    accent: '#455A64', run: () => toggleRulerLock() },
+                { ico: '🗑', label: 'Clear',   accent: '#455A64', run: () => clearGuides() },
+                { ico: '⊹', label: 'Ruler Dims', accent: '#1976D2', run: () => toggleRulerDims() },
+                { ico: '↔', label: 'Elem↔Elem', accent: '#1565C0', run: () => toggleElemDimElem() },
+                { ico: '⇹', label: 'Elem↔Ruler', accent: '#0D47A1', run: () => toggleElemDimRuler() },
+                { ico: '◎', label: 'Dim Edge', accent: '#1976D2', run: () => toggleDimEdge() },
+                { ico: '⊕', label: 'Center',   accent: '#C62828', run: () => toggleCenterMode() },
+                { ico: '⊗', label: 'Ctr Dims', accent: '#C62828', run: () => toggleCenterDims() },
+                { ico: '🧭', label: 'Compass', accent: '#00695C', run: () => cycleCompass() }
+            ]},
+
+            { ico: '📡', label: 'Find', accent: '#0288D1', sub: [
+                { ico: '📡', label: 'Hidden Radar', accent: '#0288D1', run: () => toggleHiddenRadar() },
+                { ico: '📶', label: 'Elem Radar', accent: '#0277BD', run: () => toggleElementRadar() },
+                { ico: '⊹', label: 'Ruler Radar', accent: '#039BE5', run: () => toggleRulerRadar() },
+                { ico: '➤', label: 'Mouse↔Ruler', accent: '#03A9F4', run: () => toggleRulerMouse() },
+                { ico: '✧', label: 'Prox Glow', accent: '#00ACC1', run: () => toggleProximityGlow() },
+                { ico: '◌', label: 'Prox Border', accent: '#00BCD4', run: () => toggleProximityBorder() },
+                { ico: '👁', label: 'Hidden Line', accent: '#26C6DA', run: () => cycleHiddenOutline() },
+                { ico: 'ℹ', label: 'Hover Info', accent: '#0097A7', run: () => toggleHoverPreview() },
+                { ico: '🔍', label: 'Lens',     accent: '#00838F', run: () => toggleMagnifier() }
+            ]},
+
+            { ico: '🏷', label: 'Flags', accent: '#455A64', sub: [
+                { ico: '💾', label: 'Mem Info', accent: '#455A64', run: () => toggleMemInfo() },
+                { ico: '🧭', label: 'Path',    accent: '#546E7A', run: () => togglePath() },
+                { ico: '📄', label: 'Filename', accent: '#607D8B', run: () => toggleFilename() },
+                { ico: '💭', label: 'Notations', accent: '#0288D1', run: () => toggleNotations() },
+                { ico: '⚖', label: 'Agent',   accent: '#00897B', run: () => toggleAgent() },
+                { ico: '📊', label: 'Mem Alloc', accent: '#5D4037', run: () => toggleMemAlloc() },
+                { ico: '⚑', label: 'Low',      accent: '#4FC3F7', run: () => togglePriority('low') },
+                { ico: '⚑', label: 'Med',      accent: '#F8BBD0', run: () => togglePriority('medium') },
+                { ico: '⚑', label: 'High',     accent: '#F44336', run: () => togglePriority('high') },
+                { ico: '💬', label: 'Canvas Notes', accent: '#0288D1', run: () => toggleNotes() },
+                { ico: '↕', label: 'Flag Gap+', accent: '#455A64', run: () => adjustFlagGap(1) },
+                { ico: '↕', label: 'Flag Gap-', accent: '#455A64', run: () => adjustFlagGap(-1) }
+            ]},
+
+            { ico: '🗔', label: 'Panels', accent: '#0288D1', sub: [
+                { ico: '▤', label: 'Drawer',   accent: '#FF6F00', run: () => toggleAssetDrawer() },
                 { ico: '🗂', label: 'Assets',  accent: '#673AB7', run: () => openAssetBrowser() },
-                { ico: '▶', label: 'Parser',  accent: '#37474F', run: () => toggleParser() },
-                { ico: '━', label: 'Primer',  accent: '#1B5E20', run: () => togglePrimerBoard() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
-                { ico: '▤', label: 'Wire',    accent: '#37474F', run: () => toggleTicker() },
-                { ico: '📅', label: 'Calendar', accent: '#0277BD', run: () => toggleCalendar() },
-                { ico: '🔍', label: 'Lens',    accent: '#00838F', run: () => toggleMagnifier() },
-                { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
-                { ico: '?', label: 'Help',    accent: '#37474F', run: () => toggleHelp() },
-                { ico: '✎', label: 'Scratch', accent: '#455A64', run: () => togglePad() },
+                { ico: '✎', label: 'Scratch',  accent: '#455A64', run: () => togglePad() },
                 { ico: '🧮', label: 'Calc',    accent: '#00695C', run: () => toggleCalculator() },
+                { ico: '📅', label: 'Calendar', accent: '#0277BD', run: () => toggleCalendar() },
+                { ico: '🌐', label: 'Browser', accent: '#1565C0', run: () => newBrowserPanel() },
+                { ico: '▶', label: 'Media',   accent: '#C62828', run: () => toggleMedia() },
                 { ico: '⛃', label: 'Checkers', accent: '#4E342E', run: () => toggleCheckers() },
+                { ico: '🕘', label: 'Clock',   accent: '#263238', run: () => toggleClock() },
+                { ico: '▭', label: 'Primer',  accent: '#00695C', run: () => togglePrimerPanel() },
+                { ico: '⌨', label: 'Parser',  accent: '#37474F', run: () => toggleParser() },
+                { ico: '?', label: 'Help',     accent: '#37474F', run: () => toggleHelp() }
             ]},
-            { ico: '⚙', label: 'Engine', accent: '#9C27B0', sub: [
-                { ico: '💾', label: 'Save',    accent: '#9C27B0', run: () => saveEngine() },
+
+            { ico: '♥', label: 'System', accent: '#2E7D32', sub: [
+                { ico: '◉', label: 'Pulse',    accent: '#263238', run: () => togglePulse() },
+                { ico: '▤', label: 'Wire',     accent: '#37474F', run: () => toggleTicker() },
+                { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
+                { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
+                { ico: '🧹', label: 'Flush',   accent: '#455A64', run: () => flushCache() },
+                { ico: '☠', label: 'Purge',   accent: '#B71C1C', run: () => purgeProtocol() },
+                { ico: '⏱', label: 'Auto Purge', accent: '#455A64', run: () => cycleAutoPurge() },
+                { ico: '🌙', label: 'Dark',    accent: '#37474F', run: () => toggleDarkMode() },
+                { ico: '⇄', label: 'UI Side',  accent: '#455A64', run: () => toggleVerticalUI() },
+                { ico: '▼', label: 'Collapse', accent: '#607D8B', run: () => toggleInfoSection() },
+                { ico: '⌘', label: 'Zen',      accent: '#263238', run: () => toggleZen() }
+            ]},
+
+            { ico: '💾', label: 'Engine', accent: '#00897B', sub: [
+                { ico: '💾', label: 'Save',    accent: '#00897B', run: () => saveEngine() },
                 { ico: '📂', label: 'Load',    accent: '#00BCD4', run: () => document.getElementById('loadInput').click() },
+                { ico: '⚡', label: 'Snapshot', accent: '#FF6D00', run: () => takeSnapshot() },
+                { ico: '⤺', label: 'Load Snap', accent: '#FF8F00', run: () => loadSnapshot() },
+                { ico: '⏱', label: 'Auto Snap', accent: '#455A64', run: () => cycleAutoSnapshot() },
                 { ico: '⏻', label: 'Recovery', accent: '#455A64', run: () => recManual() },
-                { ico: '⤢', label: 'Auto Size', accent: '#FF9800', run: () => autoSizeCanvas() },
-                { ico: '⟲', label: 'Reset View', accent: '#FF9800', run: () => resetView() },
-                { ico: '⛶', label: 'Fullscreen', accent: '#FF9800', run: () => toggleFullscreen() },
+                { ico: '⇪', label: 'Export Assets', accent: '#0277BD', run: () => saveAssetsFile() },
+                { ico: '☠', label: 'Reset',   accent: '#B71C1C', run: () => resetEngine() }
             ]},
-            { ico: '↶', label: 'Undo',  accent: '#EF6C00', run: () => undo() },
-            { ico: '↷', label: 'Redo',  accent: '#EF6C00', run: () => redo() },
-            { ico: '☾', label: 'Dark',  accent: '#263238', run: () => toggleDarkMode() },
+
+            { ico: '🔍', label: 'View', accent: '#FF9800', sub: [
+                { ico: '＋', label: 'Zoom In', accent: '#FF9800', run: () => zoomIn() },
+                { ico: '－', label: 'Zoom Out', accent: '#FB8C00', run: () => zoomOut() },
+                { ico: '⌖', label: 'Reset View', accent: '#F57C00', run: () => resetView() },
+                { ico: '⤢', label: 'Auto Size', accent: '#EF6C00', run: () => autoSizeCanvas() },
+                { ico: '↔', label: 'Set Size', accent: '#E65100', run: () => promptCanvasSize() },
+                { ico: '⛶', label: 'Fullscreen', accent: '#FF6D00', run: () => toggleFullscreen() }
+            ]},
+
+            { ico: '↶', label: 'Undo', accent: '#FF5722', run: () => undo() },
+            { ico: '↷', label: 'Redo', accent: '#FFC107', run: () => redo() }
         ];
         let _radialPos = null;
         let radialOpen = false;
@@ -3770,6 +3871,7 @@
             const p = document.getElementById('calPanel');
             if (calOpen) {
                 if (!calPopped && typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                if (typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(p), 0);
                 p.style.display = 'flex';
                 if (!calSel) calSel = calToday();
                 calRenderGrid(); calRenderDay();
@@ -3993,6 +4095,93 @@
             ctx.fillStyle = '#4FC3F7';
             ctx.fillText(lbl, cx, cy + R - 12);
             ctx.restore();
+        }
+
+        // ⌘ ZEN — hide the whole toolbar. The radial holds every control, so the UI is
+        // optional. Hidden it costs nothing to lay out, paint, or reflow.
+        // Panels docked to the toolbar are its children — hiding the toolbar hides them.
+        // In Zen they are re-parented to the body and floated at the spot they occupied,
+        // then handed straight back on exit.
+        function zenFloatOne(el) {
+            if (!el || !zenMode) return;
+            if (_zenParked.some(p => p.id === el.id)) return;
+            const r = el.getBoundingClientRect();
+            _zenParked.push({ id: el.id, parent: el.parentNode, next: el.nextSibling,
+                css: { position: el.style.position, left: el.style.left, top: el.style.top,
+                       right: el.style.right, transform: el.style.transform,
+                       marginTop: el.style.marginTop, zIndex: el.style.zIndex } });
+            document.body.appendChild(el);
+            el.style.position = 'fixed';
+            el.style.left = Math.max(8, Math.min(r.left || 120, window.innerWidth - (r.width || 400) - 8)) + 'px';
+            el.style.top = '90px';
+            el.style.right = 'auto'; el.style.transform = 'none';
+            el.style.marginTop = '0'; el.style.zIndex = '99200';
+        }
+
+        var _zenParked = [];
+        function zenFloatPanels(on) {
+            const ids = ['padPanel', 'calcPanel', 'calPanel', 'notesReader', 'assetDrawer',
+                         'parserPanel', 'primerDock', 'dataPanel', 'healthTab', 'pulseTab', 'assetPanel'];
+            if (on) {
+                _zenParked = [];
+                ids.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const vis = el.style.display && el.style.display !== 'none';
+                    if (!vis) return;
+                    const r = el.getBoundingClientRect();
+                    if (!r.width) return;
+                    _zenParked.push({
+                        id: id, parent: el.parentNode, next: el.nextSibling,
+                        css: { position: el.style.position, left: el.style.left, top: el.style.top,
+                               right: el.style.right, transform: el.style.transform,
+                               marginTop: el.style.marginTop, zIndex: el.style.zIndex }
+                    });
+                    document.body.appendChild(el);
+                    el.style.position = 'fixed';
+                    el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) + 'px';
+                    el.style.top = Math.max(8, Math.min(r.top, window.innerHeight - 60)) + 'px';
+                    el.style.right = 'auto';
+                    el.style.transform = 'none';
+                    el.style.marginTop = '0';
+                    el.style.zIndex = '99200';
+                });
+            } else {
+                _zenParked.forEach(p => {
+                    const el = document.getElementById(p.id);
+                    if (!el) return;
+                    try { p.parent.insertBefore(el, p.next); } catch (e) { }
+                    Object.keys(p.css).forEach(k => { el.style[k] = p.css[k]; });
+                });
+                _zenParked = [];
+                if (typeof reanchorAllPanels === 'function') reanchorAllPanels();
+            }
+        }
+
+        var zenMode = false;
+        function toggleZen() {
+            zenMode = !zenMode;
+            const c = document.getElementById('controls');
+            const v = document.getElementById('vpanel');
+            if (c) c.style.display = zenMode ? 'none' : (verticalUI ? 'none' : 'block');
+            if (v) v.style.display = zenMode ? 'none' : (verticalUI ? 'flex' : 'none');
+            invalidateUiBottom();
+            // Docked panels live INSIDE the toolbar, so hiding it hides them too.
+            // Float any that are open, remembering where they were so they dock again.
+            zenFloatPanels(zenMode);
+            const t = document.getElementById('zenTip');
+            if (zenMode && !t) {
+                const d = document.createElement('div');
+                d.id = 'zenTip';
+                d.innerHTML = '⌘ UI hidden — <b>Left Alt + click</b> for every tool · <b>Tab</b> to bring it back';
+                d.style.cssText = 'position:fixed; top:12px; left:50%; transform:translateX(-50%); z-index:99999; ' +
+                    'background:rgba(13,17,23,.88); color:#8b98a5; font:11px Arial; padding:6px 14px; ' +
+                    'border-radius:14px; pointer-events:none; transition:opacity .5s;';
+                document.body.appendChild(d);
+                setTimeout(() => { d.style.opacity = '0'; }, 2600);
+                setTimeout(() => { const x = document.getElementById('zenTip'); if (x) x.remove(); }, 3200);
+            }
+            draw();
         }
 
         function saveState() {
@@ -5263,6 +5452,9 @@
 
         // Keyboard events
         document.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && !e.target.isContentEditable) {
+                e.preventDefault(); toggleZen(); return;
+            }
             // only real text entry should swallow keys; a focused button or range
             // must never block canvas shortcuts
             const _t = e.target, _tag = _t ? _t.tagName : '';
@@ -9232,6 +9424,69 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         // Export a Data Cartridge as a portable package: its settings + every element it
         // carries, with full geometry + metadata. Only allowed-type elements are included.
+        // ⏏ EJECT — export the SELECTED cartridge (or port) with everything loaded in
+        // it. exportCartridge already builds the package; what was missing was any way
+        // to reach it for a cartridge that already exists on the canvas.
+        function ejectCartridge() {
+            // prefer the current selection; fall back to the only cartridge present
+            let cart = null;
+            const carts = images.filter(im => elKind(im) === 'cartridge' || elKind(im) === 'port');
+            if (selectedImage && (elKind(selectedImage) === 'cartridge' || elKind(selectedImage) === 'port')) cart = selectedImage;
+            else if (carts.length === 1) cart = carts[0];
+
+            if (!cart) {
+                showConfirm({
+                    title: '⏏ Eject Cartridge',
+                    body: carts.length
+                        ? 'Click the cartridge you want to eject first, then press Eject.\n\n' +
+                          carts.length + ' cartridges are on the canvas.'
+                        : 'There are no cartridges on the canvas yet.\n\nUse ▤ Data Cartridge to place one, then load elements into it with ⇥ Collect Data.',
+                    okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+
+            const allowed = cart.allowed || [];
+            const ids = new Set(cart.contents || []);
+            const held = images.filter(e => elKind(e) !== 'cartridge' && ids.has(e.id) && allowed.indexOf(cartCategoryOf(e)) >= 0);
+            const tally = {};
+            held.forEach(e => { const k = cartCategoryOf(e) || elKind(e); tally[k] = (tally[k] || 0) + 1; });
+            const tallyStr = Object.keys(tally).map(k =>
+                tally[k] + ' ' + ((CART_CATEGORIES.find(c => c.key === k) || {}).label || k)).join(', ');
+            const allowLabels = allowed.map(k => (CART_CATEGORIES.find(c => c.key === k) || {}).label || k);
+
+            if (!held.length) {
+                showConfirm({
+                    title: '⏏ Eject — cartridge is empty',
+                    body: '"' + (cart.name || 'Data Cartridge') + '" holds nothing yet.\n\n' +
+                          'It accepts: ' + (allowLabels.join(', ') || 'nothing selected') + '\n\n' +
+                          'Load elements with ⇥ Collect Data, then eject. Export it empty anyway?',
+                    okText: 'Export empty', danger: false,
+                    onConfirm: () => ejectNamed(cart, held) });
+                return;
+            }
+
+            showConfirm({
+                title: '⏏ Eject Cartridge',
+                body: '"' + (cart.name || 'Data Cartridge') + '"\n\n' +
+                      'Holds: ' + held.length + ' element' + (held.length === 1 ? '' : 's') + ' — ' + tallyStr + '\n' +
+                      'Accepts: ' + (allowLabels.join(', ') || 'nothing') + '\n' +
+                      'Read only: ' + (cart.readOnly ? 'yes — recipients cannot edit its contents' : 'no') + '\n\n' +
+                      'Export it as a portable cartridge file?',
+                okText: 'Eject', danger: false,
+                onConfirm: () => ejectNamed(cart, held) });
+        }
+
+        function ejectNamed(cart, held) {
+            const base = 'cartridge_' + String(cart.name || 'data').replace(/[^\w\-]+/g, '_');
+            askFileName('⏏ Name this cartridge', base, 'json', (name) => {
+                // exportCartridge builds and downloads the package; give it the name
+                _ejectName = name;
+                exportCartridge(cart);
+                _ejectName = null;
+            });
+        }
+        var _ejectName = null;
+
         function exportCartridge(cart) {
             const allowed = cart.allowed || [];
             const ids = new Set(cart.contents || []);
@@ -9253,7 +9508,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'cartridge_' + (cart.name || 'data').replace(/[^\w\-]+/g, '_') + '.json';
+            link.download = (_ejectName ? _ejectName : 'cartridge_' + (cart.name || 'data').replace(/[^\w\-]+/g, '_')) + '.json';
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
             URL.revokeObjectURL(url);
             const allowLabels = allowed.map(k => (CART_CATEGORIES.find(c => c.key === k) || {}).label || k);
@@ -10329,6 +10584,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 calcBuildKeys();
                 calcRenderHistory();
                 if (!calcPopped && typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                if (typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(p), 0);
                 p.style.display = 'flex';
                 setTimeout(() => document.getElementById('calcExpr').focus(), 30);
             } else {
@@ -11148,6 +11404,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (padOpen) {
                 padBuildTools();
                 if (!padPopped && typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
+                if (typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(p), 0);
                 p.style.display = 'flex';
                 padLoadPage();
                 setTimeout(() => padPageEl().focus(), 40);
@@ -12114,12 +12371,20 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (typeof verticalUI !== 'undefined' && verticalUI) {
                 const vp = document.getElementById('vpanel');
                 const vr = vp ? vp.getBoundingClientRect() : { right: 20, top: 60 };
+                const left = vr.right + 14;
                 el.style.position = 'fixed';
-                el.style.left = (vr.right + 14) + 'px';
+                el.style.left = left + 'px';
                 el.style.right = 'auto';
                 el.style.top = (vr.top) + 'px';
                 el.style.marginTop = '0';
                 el.style.transform = 'none';
+                // a percentage width is measured against the VIEWPORT, so beside the
+                // vertical dock a wide panel runs off the right edge — clamp it to
+                // whatever space actually remains
+                const avail = window.innerWidth - left - 20;
+                if (avail > 260 && el.offsetWidth > avail) el.style.width = avail + 'px';
+                const availH = window.innerHeight - vr.top - 20;
+                if (availH > 200 && el.offsetHeight > availH) el.style.height = availH + 'px';
             } else {
                 el.style.position = 'absolute';
                 el.style.top = '100%';
