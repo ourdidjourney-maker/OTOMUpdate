@@ -659,6 +659,14 @@
         <span class="gsep" data-grp="HISTORY"></span>
 <button title="Step back through your edit history" onclick="undo()" style="background: #FFC107;">↶ Undo (Ctrl+Z)</button>
         <button title="Step forward again through your edit history" onclick="redo()" style="background: #FFC107;">↷ Redo (Ctrl+Shift+Z)</button>
+        <select id="histCap" onchange="setHistoryCap(this.value)" title="How many undo steps to keep. Fewer steps = less memory held." style="font-size:11px; padding:4px 5px; border-radius:5px;">
+            <option value="10">10 undos</option>
+            <option value="25">25 undos</option>
+            <option value="50" selected>50 undos</option>
+            <option value="100">100 undos</option>
+            <option value="250">250 undos</option>
+        </select>
+        <span id="histInfo" style="font-size:10px; color:#90A4AE;">0 / 50</span>
         <span class="gsep" data-grp="VIEW"></span>
 <button title="Move the camera closer to the canvas" onclick="zoomIn()">Zoom In (+)</button>
         <button title="Pull the camera back from the canvas" onclick="zoomOut()">Zoom Out (-)</button>
@@ -1740,7 +1748,10 @@
         // Undo system
         let historyStack = [];
         let historyIndex = -1;
-        const MAX_HISTORY = 50;
+        // Operator-set. Undo history is routinely the single largest thing the engine
+        // holds — each state carries a full element snapshot, including base64 image
+        // data — so this is the most effective memory dial in the engine.
+        var MAX_HISTORY = 50;
 
         // OPTIMIZATION: requestAnimationFrame throttling
         let drawScheduled = false;
@@ -4015,11 +4026,39 @@
             historyStack.push(state);
 
             if (historyStack.length > MAX_HISTORY) {
-                historyStack.shift();
+                // trim DOWN TO the cap: shifting once could never shrink an existing
+                // stack when the operator lowered the limit
+                while (historyStack.length > MAX_HISTORY) historyStack.shift();
+                historyIndex = historyStack.length - 1;
             } else {
                 historyIndex++;
             }
         }
+
+        function setHistoryCap(v) {
+            MAX_HISTORY = Math.max(1, parseInt(v, 10) || 50);
+            let freed = 0;
+            while (historyStack.length > MAX_HISTORY) {
+                const gone = historyStack.shift();
+                try { freed += JSON.stringify(gone).length; } catch (e) {}
+            }
+            historyIndex = Math.min(historyIndex, historyStack.length - 1);
+            updateHistoryInfo();
+            if (freed && typeof showConfirm === 'function') showConfirm({
+                title: '↶ Undo history trimmed',
+                body: 'Limit set to ' + MAX_HISTORY + ' steps.\nReleased ' + formatBytes(freed) + ' immediately.',
+                okText: 'OK', danger: false, hideCancel: true });
+        }
+
+        function updateHistoryInfo() {
+            const el = document.getElementById('histInfo');
+            if (!el) return;
+            let b = 0;
+            try { b = JSON.stringify(historyStack).length; } catch (e) {}
+            el.textContent = historyStack.length + ' / ' + MAX_HISTORY + (b ? ' · ' + formatBytes(b) : '');
+            el.style.color = b > 20000000 ? '#EF6C00' : '#90A4AE';
+        }
+        setInterval(updateHistoryInfo, 3000);
 
         function undo() {
             if (historyIndex > 0) {
@@ -4286,6 +4325,14 @@
 
         // Mouse down event
         canvas.addEventListener('mousedown', (e) => {
+            // The canvas is not focusable, so clicking it leaves focus on whatever
+            // control was last touched — a slider, a dropdown. Every keyboard shortcut
+            // then hits the INPUT guard and is swallowed. Release it here, once, for
+            // all of them rather than per-feature.
+            const _ae = document.activeElement;
+            if (_ae && _ae !== document.body && /^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(_ae.tagName) && _ae.blur) {
+                try { _ae.blur(); } catch (err) {}
+            }
             const pos = screenToCanvas(e.clientX, e.clientY);
 
             // Collect Data mode: 1st click = choose cartridge, 2nd click = element to load
@@ -4609,6 +4656,11 @@
                     if (selectedGroup.length && selectedGroup.indexOf(image) < 0) selectedGroup = [];
                     // an ad hoc group moves as one, so clicking any member selects them all
                     if (image.adhocGroup) selectedGroup = images.filter(el => el.adhocGroup === image.adhocGroup);
+                    // A fusion is an assembly, not loose parts. Clicking any member
+                    // selects the whole thing, so nudge / delete / rotate treat it as
+                    // one object exactly like a grouped asset.
+                    else if (image.vFusionId) selectedGroup = images.filter(el => el.vFusionId === image.vFusionId);
+                    else if (image.fusionId) selectedGroup = images.filter(el => el.fusionId === image.fusionId);
                     // picking a plugged element up releases it from its socket,
                     // so it can be moved away, or dropped straight back in
                     if (image.socketId) {
@@ -5209,39 +5261,41 @@
 
         // Keyboard events
         document.addEventListener('keydown', (e) => {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            // only real text entry should swallow keys; a focused button or range
+            // must never block canvas shortcuts
+            const _t = e.target, _tag = _t ? _t.tagName : '';
+            if (_tag === 'TEXTAREA') return;
+            if (_tag === 'INPUT') {
+                const ty = (_t.type || 'text').toLowerCase();
+                if (ty !== 'range' && ty !== 'checkbox' && ty !== 'button' && ty !== 'color') return;
+            }
+            if (_t && _t.isContentEditable) return;
 
-            // Arrow keys nudge the selection (Shift = 10x). This sits FIRST, ahead of
-            // the modal guards: nudging is a canvas operation and must not be blocked
-            // by a hover preview that happens to be on screen, which is exactly what
-            // stopped a plain lasso selection from moving.
+            // Arrow keys nudge the current selection (Shift = 10x).
             if (e.key && e.key.startsWith('Arrow')) {
                 const targets = selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []);
                 if (targets.length) {
                     e.preventDefault();
-                    const s = (e.shiftKey ? 10 : 1);
-                    const dx = e.key === 'ArrowLeft' ? -s : e.key === 'ArrowRight' ? s : 0;
-                    const dy = e.key === 'ArrowUp' ? -s : e.key === 'ArrowDown' ? s : 0;
-                    const gids = new Set(targets.map(t => t.adhocGroup).filter(Boolean));
+                    const step = e.shiftKey ? 10 : 1;
+                    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+                    const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
                     const moveSet = new Set(targets);
-                    if (gids.size) images.forEach(el => { if (el.adhocGroup && gids.has(el.adhocGroup)) moveSet.add(el); });
-                    moveSet.forEach(t => { if (!t.pinned) { t.x += dx; t.y += dy; } });
+                    const gid = new Set(targets.map(x => x.adhocGroup).filter(Boolean));
+                    const vf  = new Set(targets.map(x => x.vFusionId).filter(Boolean));
+                    const mf  = new Set(targets.map(x => x.fusionId).filter(Boolean));
+                    if (gid.size || vf.size || mf.size) {
+                        images.forEach(el => {
+                            if (el.adhocGroup && gid.has(el.adhocGroup)) moveSet.add(el);
+                            if (el.vFusionId && vf.has(el.vFusionId)) moveSet.add(el);
+                            if (el.fusionId && mf.has(el.fusionId)) moveSet.add(el);
+                        });
+                    }
+                    moveSet.forEach(x => { if (!x.pinned) { x.x += dx; x.y += dy; } });
                     saveState(); draw();
                     return;
                 }
             }
-            // Shift+G — bundle the current multi-selection into an Ad Hoc Group.
-            // Members keep their identity (each is still its own element); they are
-            // just tagged with a shared adhocGroup id. NOT saved to the drawer, and
-            // the AM shows each part as "Grouped" rather than one new element.
-            if ((e.key === 'g' || e.key === 'G') && e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                if (selectedGroup.length < 2) { return; }
-                const gid = 'AH' + randomDesignation();
-                selectedGroup.forEach(el => { el.adhocGroup = gid; });
-                e.preventDefault();
-                saveState(); updateImageList(); draw();
-                return;
-            }
+
             if (nameModal.style.display === 'block' && !nameModalHoverMode) return;
             if (renumberModal.style.display === 'block') return;
             if (!e.key) return;
@@ -5297,8 +5351,13 @@
                 // bundle that moves as one should not leave the rest orphaned.
                 const targets = selectedGroup.length ? selectedGroup.slice() : [selectedImage];
                 const gids = new Set(targets.map(t => t.adhocGroup).filter(Boolean));
+                const vfid = new Set(targets.map(t => t.vFusionId).filter(Boolean));
+                const mfid = new Set(targets.map(t => t.fusionId).filter(Boolean));
                 const kill = new Set(targets);
                 if (gids.size) images.forEach(el => { if (el.adhocGroup && gids.has(el.adhocGroup)) kill.add(el); });
+                // a fused assembly is one object: removing a member removes the assembly
+                if (vfid.size) images.forEach(el => { if (el.vFusionId && vfid.has(el.vFusionId)) kill.add(el); });
+                if (mfid.size) images.forEach(el => { if (el.fusionId && mfid.has(el.fusionId)) kill.add(el); });
 
                 const ids = new Set([...kill].map(el => el.id));
                 connections = connections.filter(c => !ids.has(c.from) && !ids.has(c.to));
@@ -5320,8 +5379,24 @@
                 updateImageList();
                 updateDataString();
                 draw();
+            } else if (e.key === 'Enter' && selectedImage && !nameModalHoverMode &&
+                       nameModal.style.display !== 'block') {
+                // Enter opens the highlighted element's dialogue
+                e.preventDefault();
+                // Open it beside the ELEMENT, not at screen centre — the dialogue should
+                // arrive where the work is. openNameModal clamps it on screen from there.
+                {
+                    const r0 = canvas.getBoundingClientRect();
+                    const sx = r0.left + selectedImage.x * camera.zoom + camera.x;
+                    const sy = r0.top + selectedImage.y * camera.zoom + camera.y;
+                    const hw = (selectedImage.width || 0) / 2 * camera.zoom;
+                    openNameModal(selectedImage, sx + hw + 10, sy);
+                }
             } else if ((e.key === 'n' || e.key === 'N') && selectedImage) {
-                openNameModal(selectedImage);
+                const r1 = canvas.getBoundingClientRect();
+                openNameModal(selectedImage,
+                    r1.left + selectedImage.x * camera.zoom + camera.x + ((selectedImage.width || 0) / 2 * camera.zoom) + 10,
+                    r1.top + selectedImage.y * camera.zoom + camera.y);
             } else if (e.key === 'h' || e.key === 'H') {
                 // Hide/unhide the hovered logic line, else the selected element
                 if (hoveredConnection) {
@@ -7400,6 +7475,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
                 recoveryMode: (typeof recoveryMode !== 'undefined') ? recoveryMode : 'edit',
+                maxHistory: (typeof MAX_HISTORY !== 'undefined') ? MAX_HISTORY : 50,
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 calEvents: (typeof calEvents !== 'undefined') ? calEvents : [],
@@ -8088,6 +8164,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
                     if (typeof calEvents !== 'undefined') calEvents = Array.isArray(engineData.calEvents) ? engineData.calEvents : [];
                     if (engineData.recoveryMode && typeof setRecoveryMode === 'function') setRecoveryMode(engineData.recoveryMode);
+                    if (engineData.maxHistory) { MAX_HISTORY = engineData.maxHistory; const hc = document.getElementById('histCap'); if (hc) hc.value = String(MAX_HISTORY); }
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
                         setTimeout(() => {
                             if (typeof engineData.rulerHiddenOpacity === 'number') {
@@ -14013,7 +14090,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     const len = (e.width || 0), th = Math.max(2, e.thickness || 3);
                     const c = Math.abs(Math.cos(e.rotation || 0)), s = Math.abs(Math.sin(e.rotation || 0));
                     hw = (len * c + th * s) / 2; hh = (len * s + th * c) / 2;
-                } else { hw = (e.width || 0) / 2; hh = (e.height || 0) / 2; }
+                } else {
+                    const c = Math.abs(Math.cos(e.rotation || 0)), s = Math.abs(Math.sin(e.rotation || 0));
+                    hw = ((e.width || 0) * c + (e.height || 0) * s) / 2;
+                    hh = ((e.width || 0) * s + (e.height || 0) * c) / 2;
+                }
                 L = Math.min(L, e.x - hw); R = Math.max(R, e.x + hw);
                 T = Math.min(T, e.y - hh); B = Math.max(B, e.y + hh);
             });
@@ -14435,7 +14516,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             });
             images = images.filter(x => x !== gp);
             selectedImage = null;
-            selectedGroup = freed;          // leave the freed parts selected as a group
+            // NOTHING is selected after a deconstruction. Selecting every freed part
+            // meant clicking one could never narrow the selection — it was already in
+            // it — so a nudge moved the whole set and looked like it did nothing.
+            // deconIds still tracks the set for Regroup and Escape.
+            selectedGroup = [];
             regroupSourceName = gp.assetName || gp.name || '';
             // remember this deconstruction so Escape / Regroup can rebuild it
             deconIds = new Set(freed.map(e => e.id));
@@ -15997,8 +16082,16 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (sel.length < 2) { alert('Lasso two or more elements first, then click Regroup.'); return; }
             let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
             sel.forEach(e => {
-                L = Math.min(L, e.x - e.width / 2); R = Math.max(R, e.x + e.width / 2);
-                T = Math.min(T, e.y - e.height / 2); B = Math.max(B, e.y + e.height / 2);
+                // True rotated extents. Using raw width/height inflated the box for any
+                // rotated part — a datum line reported its full length on BOTH axes,
+                // which is why grouped assets came out far larger than their contents.
+                const k = elKind(e);
+                const w = e.width || 0;
+                const hgt = (k === 'line' || k === 'arrow') ? Math.max(2, e.thickness || 3) : (e.height || 0);
+                const c = Math.abs(Math.cos(e.rotation || 0)), s = Math.abs(Math.sin(e.rotation || 0));
+                const hw = (w * c + hgt * s) / 2, hh = (w * s + hgt * c) / 2;
+                L = Math.min(L, e.x - hw); R = Math.max(R, e.x + hw);
+                T = Math.min(T, e.y - hh); B = Math.max(B, e.y + hh);
             });
             const gcx = (L + R) / 2, gcy = (T + B) / 2;
             const ids = new Set(sel.map(e => e.id));
