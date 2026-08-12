@@ -1714,7 +1714,16 @@
 
         let _lastCanvasMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, over: false };
         let _altDown = false;
-        container.addEventListener('mousemove', (e) => { _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true };
+        container.addEventListener('mousemove', (e) => {
+            // Odometer. Runs on a handler that already exists: two subtractions and one
+            // hypot per move, no new listener, nothing per frame.
+            if (_odoX !== null) {
+                const _dx = e.clientX - _odoX, _dy = e.clientY - _odoY;
+                const _d = Math.sqrt(_dx * _dx + _dy * _dy);
+                if (_d > 0.5) { odoPixels += _d; odoMoves++; }
+            }
+            _odoX = e.clientX; _odoY = e.clientY;
+            _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true };
             const ll = document.getElementById('modeLabel');
             if (ll) {
                 const t = currentModeLabel();
@@ -3594,6 +3603,23 @@
             } catch (e) {}
 
             // ── session ──
+            if (typeof odoPixels !== 'undefined' && odoPixels > 0) {
+                const od = odoDetail();
+                out.push(tkItem('SESSION', 'mouse travelled', odoReadout(), [
+                    ['Distance', odoReadout()],
+                    ['Inches', od.inches.toFixed(1)],
+                    ['Feet', od.feet.toFixed(1)],
+                    ['Millimetres', od.mm.toFixed(0)],
+                    ['Centimetres', od.cm.toFixed(1)],
+                    ['Metres', od.metres.toFixed(2)],
+                    ['Miles', od.miles.toFixed(4)],
+                    ['Raw pixels', Math.round(od.pixels).toLocaleString()],
+                    ['Movements', od.moves.toLocaleString()],
+                    ['Elements dragged', od.dragCount + ' drags'],
+                    ['Drag distance', Math.round(od.dragUnits).toLocaleString() + ' world units'],
+                    ['Screen density', odoDPI + ' dpi (adjustable in Usage)']
+                ]));
+            }
             out.push(tkItem('SESSION', 'zoom', Math.round(camera.zoom * 100) + '%', [
                 ['Zoom', Math.round(camera.zoom * 100) + '%'],
                 ['Camera', Math.round(camera.x) + ', ' + Math.round(camera.y)],
@@ -4531,6 +4557,43 @@
         // panel is open. 228 buttons are captured without touching any of them.
         // ═══════════════════════════════════════════════════════════════════
         var usageOn = false, usageLog = new Map(), usageLast = [], _useRenderT = null;
+        // ── ODOMETER ──────────────────────────────────────────────────────
+        // Distance the operator's hand has actually travelled. A browser cannot read
+        // the panel's true DPI, so the CSS reference of 96px per inch scaled by the
+        // device pixel ratio is used, and a calibration field lets it be dialled exact.
+        var odoPixels = 0, odoMoves = 0, odoClicks = 0, _odoX = null, _odoY = null, _wheelT = null;
+        // Distance elements have been DRAGGED, measured in world units — independent of
+        // zoom, so moving a node 500 units counts the same whether you were zoomed in
+        // or out. Separate from hand travel, which is measured on screen.
+        var dragUnits = 0, dragCount = 0, _dragFromX = 0, _dragFromY = 0, _dragWhat = null;
+        var odoDPI = Math.round(96 * (window.devicePixelRatio || 1));
+
+        function odoInches() { return odoPixels / (odoDPI || 96); }
+        function odoReadout() {
+            const inch = odoInches();
+            const ft = inch / 12, mi = ft / 5280;
+            if (mi >= 0.1) return mi.toFixed(2) + ' miles';
+            if (ft >= 3) return ft.toFixed(1) + ' feet';
+            if (inch >= 12) return (inch / 12).toFixed(2) + ' ft';
+            return inch.toFixed(1) + ' inches';
+        }
+        function odoDetail() {
+            const inch = odoInches();
+            const ft = inch / 12;
+            return {
+                inches: inch, feet: ft, miles: ft / 5280,
+                mm: inch * 25.4, cm: inch * 2.54,
+                metres: inch * 0.0254, km: inch * 0.0254 / 1000,
+                pixels: odoPixels, moves: odoMoves,
+                dragUnits: dragUnits, dragCount: dragCount
+            };
+        }
+        function setOdoDPI(v) {
+            odoDPI = Math.max(48, Math.min(400, parseInt(v, 10) || 96));
+            const el = document.getElementById('odoDpiVal');
+            if (el) el.textContent = odoDPI + ' dpi';
+            renderUsage();
+        }
         var usageNight = false, usagePinned = false, usageAnchor = { x: 0, y: 0 };
         const p2 = () => document.getElementById('usePanel');
 
@@ -4546,6 +4609,7 @@
             if (!label) return;
             const key = label.replace(/\s+/g, ' ').trim().slice(0, 40);
             if (!key) return;
+            odoClicks++;
             const rec = usageLog.get(key) || { n: 0, at: 0, src: source };
             rec.n++; rec.at = Date.now(); rec.src = source;
             usageLog.set(key, rec);
@@ -4574,13 +4638,57 @@
             return '';
         }
 
+        // Themed explainer for the odometer. The native title tooltip is slow, ugly and
+        // unstyleable, so this matches the rest of the engine and appears immediately.
+        var _odoTip = null;
+        function odoBindHelp() {
+            const el = document.getElementById('odoHelp');
+            if (!el) return;
+            if (!_odoTip) {
+                _odoTip = document.createElement('div');
+                _odoTip.style.cssText = 'position:fixed; display:none; z-index:300010; pointer-events:none; width:290px; ' +
+                    'background:linear-gradient(160deg,#161d24,#0d1117); border:1px solid #26343d; border-left:3px solid #4FC3F7; ' +
+                    'border-radius:11px; box-shadow:0 16px 44px rgba(0,0,0,.75); padding:13px 15px; font:12px Arial; color:#FFFFFF;';
+                _odoTip.innerHTML =
+                    '<div style="font:700 10px Arial; letter-spacing:1.6px; color:#4FC3F7; margin-bottom:9px; padding-bottom:8px; border-bottom:1px solid #26343d;">MOUSE ODOMETER</div>' +
+                    '<div style="line-height:1.65; color:#FFFFFF;">How far your hand has actually travelled on the desk while you work.</div>' +
+                    '<div style="line-height:1.65; color:#B0BEC5; margin-top:8px;">Every mouse movement is summed in pixels, then converted to real distance using your screen density.</div>' +
+                    '<div style="margin-top:10px; line-height:1.85; color:#FFFFFF;">' +
+                    '<b style="color:#4FC3F7;">Big figure</b> — auto-scales: inches → feet → miles<br>' +
+                    '<b style="color:#4FC3F7;">Movements</b> — separate mouse moves made<br>' +
+                    '<b style="color:#4FC3F7;">In per click</b> — average travel to reach a control.<br>' +
+                    '<span style="color:#B0BEC5;">The lower it goes, the better the interface fits you.</span></div>' +
+                    '<div style="margin-top:10px; padding-top:8px; border-top:1px solid #26343d; color:#90A4AE; font-size:11px;">Set DPI to match your monitor for an exact reading. ↺ in the header resets it.</div>';
+                document.body.appendChild(_odoTip);
+            }
+            el.onmouseenter = (ev) => {
+                el.style.background = 'rgba(79,195,247,.12)';
+                _odoTip.style.display = 'block';
+                let lx = ev.clientX + 16, ly = ev.clientY + 14;
+                if (lx + 300 > window.innerWidth) lx = ev.clientX - 306;
+                if (ly + _odoTip.offsetHeight > window.innerHeight) ly = Math.max(10, window.innerHeight - _odoTip.offsetHeight - 10);
+                _odoTip.style.left = Math.max(10, lx) + 'px';
+                _odoTip.style.top = ly + 'px';
+            };
+            el.onmouseleave = () => { el.style.background = 'transparent'; _odoTip.style.display = 'none'; };
+        }
+
         function renderUsage() {
             const body = document.getElementById('useBody');
             const foot = document.getElementById('useFoot');
             if (!body) return;
             const rows = [...usageLog.entries()].sort((a, b) => b[1].n - a[1].n);
             if (!rows.length) {
-                body.innerHTML = '<div style="color:#37474F; font:11px Arial; padding:14px 4px; line-height:1.6;">Nothing recorded yet.<br>Every button, menu and radial choice is tallied here as you work.</div>';
+                const d0 = odoDetail();
+                body.innerHTML =
+                    '<div style="margin:0 0 10px; padding:9px 10px; background:#0d1117; border:1px solid #1f2a33; border-left:3px solid #4FC3F7; border-radius:8px;">' +
+                    '<div id="odoHelp" style="font:700 10px Arial; letter-spacing:1.6px; color:#4FC3F7; margin:-4px -4px 5px; padding:6px 6px 7px; border-radius:6px; cursor:default;">' +
+                  'MOUSE ODOMETER <span style="color:#4FC3F7;">ⓘ</span></div>' +
+                    '<div style="font:700 17px ui-monospace,Consolas,monospace; color:#eceff1;">' + odoReadout() + '</div>' +
+                    '<div style="font:11px ui-monospace,monospace; color:#FFFFFF; margin-top:5px;">' +
+                    Math.round(d0.pixels).toLocaleString() + ' px · ' + d0.moves.toLocaleString() + ' moves</div></div>' +
+                    '<div style="color:#37474F; font:11px Arial; padding:8px 4px; line-height:1.6;">No clicks recorded yet.<br>Every button, menu and radial choice is tallied here as you work.</div>';
+                odoBindHelp();
                 if (foot) foot.textContent = '';
                 return;
             }
@@ -4599,21 +4707,65 @@
                     '<div style="height:3px; margin-top:2px; background:#1b2530; border-radius:2px; overflow:hidden;">' +
                     '<div style="height:100%; width:' + pct + '%; background:' + col + ';"></div></div></div>';
             });
-            body.innerHTML = html;
+            const d = odoDetail();
+            const perClick = odoClicks ? (d.inches / odoClicks) : 0;
+            const odo =
+                '<div style="margin:0 0 10px; padding:9px 10px; background:#0d1117; border:1px solid #1f2a33; border-left:3px solid #4FC3F7; border-radius:8px;">' +
+                  '<div id="odoHelp" style="font:700 10px Arial; letter-spacing:1.6px; color:#4FC3F7; margin:-4px -4px 5px; padding:6px 6px 7px; border-radius:6px; cursor:default;">' +
+                  'MOUSE ODOMETER <span style="color:#4FC3F7;">ⓘ</span></div>' +
+                  '<div style="font:700 19px ui-monospace,Consolas,monospace; color:#FFFFFF;' +
+                  (usageNight ? ' opacity:.85;' : '') + '">' + odoReadout() + '</div>' +
+                  '<div style="font:11px ui-monospace,monospace; color:#FFFFFF; line-height:1.7; margin-top:5px;">' +
+                    d.inches.toFixed(1) + ' in · ' + d.feet.toFixed(1) + ' ft' +
+                    (d.miles >= 0.001 ? ' · ' + d.miles.toFixed(3) + ' mi' : '') + '<br>' +
+                    d.mm.toFixed(0) + ' mm · ' + d.cm.toFixed(1) + ' cm · ' + d.metres.toFixed(2) + ' m' +
+                    (d.km >= 0.001 ? ' · ' + d.km.toFixed(3) + ' km' : '') + '<br>' +
+                    Math.round(d.pixels).toLocaleString() + ' px · ' + d.moves.toLocaleString() + ' moves' +
+                    (perClick ? '<br>' + perClick.toFixed(1) + ' in per click' : '') +
+                    (dragCount ? '<br><span style="color:#FFB74D;">' + Math.round(dragUnits).toLocaleString() +
+                        ' units dragged · ' + dragCount + ' drags</span>' : '') +
+                  '</div>' +
+                  '<div style="display:flex; align-items:center; gap:5px; margin-top:6px;">' +
+                    '<span style="font:10px Arial; color:#FFFFFF;">DPI</span>' +
+                    '<input type="range" min="48" max="400" value="' + odoDPI + '" oninput="setOdoDPI(this.value)" style="width:74px;">' +
+                    '<span id="odoDpiVal" style="font:10px ui-monospace,monospace; color:#FFFFFF;">' + odoDPI + ' dpi</span>' +
+                  '</div>' +
+                '</div>';
+            body.innerHTML = odo + html;
+            odoBindHelp();
             if (foot) foot.textContent = total + ' clicks · ' + usageLog.size + ' distinct' +
                 (usageLast[0] ? ' · last: ' + usageLast[0].key.slice(0, 18) : '');
         }
 
+        var _odoTick = null;
         function toggleUsage() {
             usageOn = !usageOn;
             const p = document.getElementById('usePanel');
             if (p) p.style.display = usageOn ? 'flex' : 'none';
             const b = document.getElementById('usageBtn');
             if (b) b.style.background = usageOn ? '#EF6C00' : '#455A64';
-            if (usageOn) renderUsage();
+            if (usageOn) { renderUsage(); clearInterval(_odoTick); _odoTick = setInterval(() => { if (usageOn && !document.hidden) renderUsage(); }, 1500); }
+            else { clearInterval(_odoTick); _odoTick = null; }
         }
 
         (function usageInit() {
+            // Raw mouse clicks on the CANVAS. The label resolver only understands
+            // buttons and selects, so a plain click on the work surface returned ''
+            // and was silently dropped — the most common action in the engine was
+            // the one thing not being counted.
+            canvas.addEventListener('mousedown', (ev) => {
+                const b = ev.button;
+                const mod = (ev.shiftKey ? 'Shift+' : '') + (ev.ctrlKey ? 'Ctrl+' : '') + (ev.altKey ? 'Alt+' : '');
+                const name = b === 0 ? 'Left click' : b === 1 ? 'Middle click' : b === 2 ? 'Right click' : 'Mouse ' + b;
+                usageRecord(mod + name + ' (canvas)', 'canvas');
+            }, true);
+            canvas.addEventListener('dblclick', () => usageRecord('Double click (canvas)', 'canvas'), true);
+            canvas.addEventListener('wheel', () => {
+                // one entry for a burst of scrolling, not one per notch
+                clearTimeout(_wheelT);
+                _wheelT = setTimeout(() => usageRecord('Scroll / zoom (canvas)', 'canvas'), 260);
+            }, { capture: true, passive: true });
+
             // ONE listener for all 228 buttons. Capture phase so a handler that stops
             // propagation cannot hide the click from the tally.
             document.addEventListener('click', (ev) => {
@@ -4627,7 +4779,7 @@
                 }
             }, true);
             const rb = document.getElementById('useResetBtn');
-            if (rb) rb.onclick = (ev) => { ev.stopPropagation(); usageLog = new Map(); usageLast = []; renderUsage(); };
+            if (rb) rb.onclick = (ev) => { ev.stopPropagation(); usageLog = new Map(); usageLast = []; odoPixels = 0; odoMoves = 0; odoClicks = 0; dragUnits = 0; dragCount = 0; renderUsage(); };
 
             const op = document.getElementById('useOp');
             if (op) op.oninput = (ev) => { ev.stopPropagation(); p2().style.opacity = ev.target.value / 100; };
@@ -5406,6 +5558,9 @@
                         dragStart = { x: pos.x - image.x, y: pos.y - image.y };
                     } else {
                         isDragging = true;
+                        // remember where it began, so the release can log how far the
+                        // element itself was moved in world units
+                        _dragFromX = image.x; _dragFromY = image.y; _dragWhat = image;
                         dragStart = { x: pos.x - image.x, y: pos.y - image.y };
                         // dragging an ad hoc group member moves the whole group
                         if (image.adhocGroup) {
@@ -5908,6 +6063,16 @@
                 saveState();
             }
 
+            if (isDragging && _dragWhat) {
+                const _mx = _dragWhat.x - _dragFromX, _my = _dragWhat.y - _dragFromY;
+                const _md = Math.sqrt(_mx * _mx + _my * _my);
+                if (_md > 1) {
+                    dragUnits += _md;
+                    dragCount++;
+                    if (typeof usageRecord === 'function') usageRecord('Drag element (canvas)', 'canvas');
+                }
+            }
+            _dragWhat = null;
             isDragging = false;
             adhocDragSet = null;
             if (draggingFlag) { draggingFlag = null; saveState(); }
@@ -8277,6 +8442,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     return {
                         log: [...usageLog.entries()].map(([k, v]) => [k, v.n, v.at, v.src]),
                         last: (typeof usageLast !== 'undefined') ? usageLast.slice(0, 40) : [],
+                        odo: { px: (typeof odoPixels !== 'undefined') ? odoPixels : 0,
+                               moves: (typeof odoMoves !== 'undefined') ? odoMoves : 0,
+                               clicks: (typeof odoClicks !== 'undefined') ? odoClicks : 0,
+                               dpi: (typeof odoDPI !== 'undefined') ? odoDPI : 96,
+                               dragU: (typeof dragUnits !== 'undefined') ? dragUnits : 0,
+                               dragN: (typeof dragCount !== 'undefined') ? dragCount : 0 },
                         open: !!(typeof usageOn !== 'undefined' && usageOn),
                         night: !!(typeof usageNight !== 'undefined' && usageNight),
                         pinned: !!(typeof usagePinned !== 'undefined' && usagePinned),
@@ -8976,6 +9147,14 @@ ctx.fillText(conn.number.toString(), midX, midY);
                             usageLog.set(p[0], { n: p[1] || 0, at: p[2] || 0, src: p[3] || 'ui' });
                         });
                         usageLast = Array.isArray(engineData.usage.last) ? engineData.usage.last : [];
+                        if (engineData.usage.odo && typeof odoPixels !== 'undefined') {
+                            odoPixels = engineData.usage.odo.px || 0;
+                            odoMoves = engineData.usage.odo.moves || 0;
+                            odoClicks = engineData.usage.odo.clicks || 0;
+                            if (engineData.usage.odo.dpi) odoDPI = engineData.usage.odo.dpi;
+                            dragUnits = engineData.usage.odo.dragU || 0;
+                            dragCount = engineData.usage.odo.dragN || 0;
+                        }
                         if (typeof usageAnchor !== 'undefined' && engineData.usage.anchor) usageAnchor = engineData.usage.anchor;
                         if (engineData.usage.open && typeof usageOn !== 'undefined' && !usageOn && typeof toggleUsage === 'function') toggleUsage();
                         if (engineData.usage.night && typeof usageNight !== 'undefined' && !usageNight) {
@@ -14184,6 +14363,15 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     ['Via radial', radial],
                     ['Canvas gestures', canvasG],
                     ['Recent', (typeof usageLast !== 'undefined' && usageLast[0]) ? usageLast[0].key : '—'],
+                    ['Mouse travelled', (typeof odoReadout === 'function') ? odoReadout() : '—'],
+                    ['— inches', (typeof odoDetail === 'function') ? odoDetail().inches.toFixed(1) + ' in' : '—'],
+                    ['— millimetres', (typeof odoDetail === 'function') ? odoDetail().mm.toFixed(0) + ' mm' : '—'],
+                    ['— centimetres', (typeof odoDetail === 'function') ? odoDetail().cm.toFixed(1) + ' cm' : '—'],
+                    ['— metres', (typeof odoDetail === 'function') ? odoDetail().metres.toFixed(2) + ' m' : '—'],
+                    ['— raw pixels', (typeof odoPixels !== 'undefined') ? Math.round(odoPixels).toLocaleString() : '—'],
+                    ['Per click', (typeof odoClicks !== 'undefined' && odoClicks) ? (odoInches() / odoClicks).toFixed(1) + ' inches' : '—'],
+                    ['Elements dragged', (typeof dragCount !== 'undefined') ? dragCount + ' drags' : '—'],
+                    ['Drag distance', (typeof dragUnits !== 'undefined') ? Math.round(dragUnits).toLocaleString() + ' world units' : '—'],
                     ['Persistence', 'saved with the engine and in recovery points'],
                     ['Memory', formatBytes(uBytes)]
                 ];
