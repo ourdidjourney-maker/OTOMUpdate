@@ -1729,6 +1729,10 @@
         }, { passive: true });
 
         container.addEventListener('mousemove', (e) => {
+            if (_gsActive) {
+                const _r0 = canvas.getBoundingClientRect();
+                gestureMove(e.clientX - _r0.left, e.clientY - _r0.top);
+            }
             _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true };
             const ll = document.getElementById('modeLabel');
             if (ll) {
@@ -3676,6 +3680,57 @@
         }
         document.addEventListener('visibilitychange', tickerVisibility);
         window.addEventListener('blur', tickerVisibility);
+        window.addEventListener('blur', () => { if (typeof gestureAbort === 'function') gestureAbort(); });
+        // ✍ GESTURES ARE KEY-DRIVEN. Holding Shift arms the field; moving the mouse
+        // draws; releasing Shift resolves it. The operator never presses a button —
+        // that was the whole point, and binding it to mousedown missed it.
+        // Shift is a shared key: it resizes, constrains, adds to a selection and pins
+        // the lens. A gesture may only arm when NONE of those are in play — the mouse
+        // is up, nothing is being manipulated, and the cursor is over bare canvas.
+        function gestureAllowed() {
+            if (!gestureOn || _gsActive) return false;
+            // any active manipulation owns Shift
+            if (_mouseDown) return false;
+            if (isDragging || isRotating || isResizing || isDuplicating) return false;
+            if (typeof draggingGuide !== 'undefined' && draggingGuide) return false;
+            if (typeof draggingFlag !== 'undefined' && draggingFlag) return false;
+            if (typeof isDraggingCircle !== 'undefined' && isDraggingCircle) return false;
+            // modes that use Shift for their own purposes
+            if (flagsMode || lassoMode || connectMode || simultaneousMode) return false;
+            if (lineMode || rectMode || circleMode || triMode || arrowMode || textMode) return false;
+            if (typeof magOn !== 'undefined' && magOn) return false;       // lens pinning
+            if (typeof cartridgeMode !== 'undefined' && cartridgeMode) return false;
+            if (typeof collectMode !== 'undefined' && collectMode) return false;
+            if (typeof socketMode !== 'undefined' && socketMode) return false;
+            if (typeof fuseMode !== 'undefined' && fuseMode) return false;
+            if (typeof vFuseMode !== 'undefined' && vFuseMode) return false;
+            // a dialogue owns the keyboard
+            if (nameModal.style.display === 'block' && !nameModalHoverMode) return false;
+            const cm = document.getElementById('confirmModal');
+            if (cm && cm.style.display === 'flex') return false;
+            return true;
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key !== 'Shift') return;
+            if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+            if (!gestureAllowed()) return;
+            const m = _lastCanvasMouse;
+            if (!m || !m.over) return;                        // cursor must be on the canvas
+            const r = canvas.getBoundingClientRect();
+            const w = screenToCanvas(m.x, m.y);
+            if (getImageAtPoint(w.x, w.y)) return;            // never over an element
+            // and never over a selected element's handles, which Shift also serves
+            if (selectedImage && isPointInResizeHandle(w.x, w.y, selectedImage)) return;
+            gestureStart(m.x - r.left, m.y - r.top, { x: w.x, y: w.y });
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift' && _gsActive) gestureEnd();
+        });
+        // a button going down mid-stroke means the operator wants to manipulate, not draw
+        window.addEventListener('mousedown', () => { _mouseDown = true; if (_gsActive) gestureAbort(); }, true);
+        window.addEventListener('mouseup', () => { _mouseDown = false; });
         window.addEventListener('focus', tickerVisibility);
 
         function tickerApplySpeed() {
@@ -4522,6 +4577,7 @@
             off(typeof fuseMode !== 'undefined' && fuseMode, toggleFuse);
             off(typeof vFuseMode !== 'undefined' && vFuseMode, toggleVFuse);
             off(typeof flagsMode !== 'undefined' && flagsMode, toggleFlagsMode);
+            if (typeof gestureAbort === 'function') gestureAbort();
             off(typeof autoOpenMode !== 'undefined' && autoOpenMode, toggleAutoOpen);
             off(typeof bgMoveMode !== 'undefined' && bgMoveMode, toggleBgMove);
             off(typeof centerMode !== 'undefined' && centerMode, toggleCenterMode);
@@ -4865,6 +4921,154 @@
                 window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
             });
         })();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ✍ GESTURES — hold Shift on empty canvas and draw a stroke.
+        //
+        // A red field appears showing where the gesture is being read. The stroke is
+        // recorded as raw points, then classified by direction and straightness on
+        // release. Costs nothing when idle: it only accumulates while Shift is held.
+        //
+        //   Shift + stroke DOWN   → create a vector at the start point
+        //   Shift + stroke UP     → open the Notations Reader
+        // ═══════════════════════════════════════════════════════════════════
+        var gestureOn = true;                 // master toggle
+        var _gsActive = false, _gsPts = [], _gsBox = null, _gsWorld = null, _mouseDown = false;
+
+        function gestureStart(sx, sy, world) {
+            _gsActive = true;
+            _gsPts = [{ x: sx, y: sy }];
+            _gsWorld = world || null;
+            _gsBox = { x: sx, y: sy };
+            scheduleDraw();
+        }
+
+        // Always release the stroke, whatever happens. Without this a thrown error
+        // mid-gesture left the field armed and growing with no way out.
+        function gestureAbort() {
+            if (!_gsActive) return;
+            _gsActive = false; _gsPts = []; _gsBox = null; _gsWorld = null;
+            draw();
+        }
+
+        function gestureMove(sx, sy) {
+            if (!_gsActive) return;
+            const l = _gsPts[_gsPts.length - 1];
+            if (Math.abs(sx - l.x) + Math.abs(sy - l.y) < 2) return;   // ignore jitter
+            _gsPts.push({ x: sx, y: sy });
+            if (_gsPts.length > 400) _gsPts.shift();
+            scheduleDraw();
+        }
+
+        // Classify the stroke: overall direction, and how straight it actually was.
+        function gestureClassify() {
+            if (_gsPts.length < 4) return null;
+            const a = _gsPts[0], b = _gsPts[_gsPts.length - 1];
+            const dx = b.x - a.x, dy = b.y - a.y;
+            const span = Math.sqrt(dx * dx + dy * dy);
+            if (span < 45) return null;                       // too short to be intentional
+
+            // straightness: path length vs direct distance. 1.0 is a perfect line.
+            let path = 0;
+            for (let i = 1; i < _gsPts.length; i++) {
+                path += Math.hypot(_gsPts[i].x - _gsPts[i - 1].x, _gsPts[i].y - _gsPts[i - 1].y);
+            }
+            const straight = span / Math.max(1, path);
+            if (straight < 0.82) return null;                 // too wandering to read
+
+            // dominant axis
+            if (Math.abs(dy) > Math.abs(dx) * 1.6) return { dir: dy > 0 ? 'down' : 'up', span: span, straight: straight, at: a };
+            if (Math.abs(dx) > Math.abs(dy) * 1.6) return { dir: dx > 0 ? 'right' : 'left', span: span, straight: straight, at: a };
+            return null;                                      // diagonal: unassigned
+        }
+
+        function gestureEnd() {
+            if (!_gsActive) return;
+            try { gestureResolve(); } catch (err) { gestureAbort(); }
+        }
+
+        function gestureResolve() {
+            const g = gestureClassify();
+            // capture the start point BEFORE clearing, or the vector has nowhere to go
+            const p = _gsWorld || { x: 0, y: 0 };
+            _gsActive = false;
+            _gsPts = [];
+            _gsBox = null;
+            _gsWorld = null;
+            if (!g) { scheduleDraw(); return; }
+
+            if (g.dir === 'down') {
+                const nd = { img: null, x: p.x, y: p.y, width: 40, height: 40, rotation: 0,
+                             id: Date.now() + Math.random(), name: '', fullName: '',
+                             isDot: true, isVector: true, baseWidth: 40, fusable: false };
+                images.push(nd);
+                selectedImage = nd;
+                if (typeof usageRecord === 'function') usageRecord('Gesture ↓ Vector', 'canvas');
+                saveState(); updateImageCount();
+                gestureFlash('↓  Vector created');
+            } else if (g.dir === 'up') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ↑ Notes Reader', 'canvas');
+                toggleNotesReader();
+                gestureFlash('↑  Notations Reader');
+            }
+            draw();
+        }
+
+        // brief confirmation so the operator knows the stroke was read
+        function gestureFlash(msg) {
+            const d = document.createElement('div');
+            d.textContent = msg;
+            d.style.cssText = 'position:fixed; left:50%; top:22%; transform:translateX(-50%); z-index:200000; ' +
+                'background:rgba(198,40,40,.92); color:#fff; font:700 13px Arial; letter-spacing:.5px; ' +
+                'padding:8px 18px; border-radius:20px; pointer-events:none; opacity:0; transition:opacity .18s;';
+            document.body.appendChild(d);
+            requestAnimationFrame(() => d.style.opacity = '1');
+            setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 220); }, 900);
+        }
+
+        // The red field, drawn in SCREEN space so it never scales with the canvas.
+        function drawGestureField() {
+            if (!_gsActive || !_gsPts.length) return;
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            let lx = Infinity, ly = Infinity, rx = -Infinity, by = -Infinity;
+            _gsPts.forEach(p => { lx = Math.min(lx, p.x); ly = Math.min(ly, p.y);
+                                  rx = Math.max(rx, p.x); by = Math.max(by, p.y); });
+            const pad = 26;
+            lx -= pad; ly -= pad; rx += pad; by += pad;
+
+            ctx.strokeStyle = 'rgba(229,57,53,.85)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([7, 5]);
+            ctx.strokeRect(lx, ly, rx - lx, by - ly);
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(229,57,53,.06)';
+            ctx.fillRect(lx, ly, rx - lx, by - ly);
+
+            // the stroke itself
+            ctx.beginPath();
+            ctx.moveTo(_gsPts[0].x, _gsPts[0].y);
+            for (let i = 1; i < _gsPts.length; i++) ctx.lineTo(_gsPts[i].x, _gsPts[i].y);
+            ctx.strokeStyle = '#E53935';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // live reading
+            const g = gestureClassify();
+            const label = g ? ({ down: '↓  Vector', up: '↑  Notations Reader',
+                                 left: '←  unassigned', right: '→  unassigned' })[g.dir]
+                            : 'GESTURE FIELD';
+            ctx.font = 'bold 11px Arial';
+            const w = ctx.measureText(label).width;
+            ctx.fillStyle = 'rgba(198,40,40,.92)';
+            ctx.fillRect(lx, ly - 20, w + 16, 18);
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+            ctx.fillText(label, lx + 8, ly - 11);
+            ctx.restore();
+        }
 
         function saveState() {
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
@@ -8365,6 +8569,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
             // the lens samples the finished frame, so it must be the last thing drawn
             drawMagnifier();
+            drawGestureField();
         }
 
         updateZoomLevel();
