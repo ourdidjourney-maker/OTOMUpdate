@@ -1714,15 +1714,20 @@
 
         let _lastCanvasMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, over: false };
         let _altDown = false;
-        container.addEventListener('mousemove', (e) => {
-            // Odometer. Runs on a handler that already exists: two subtractions and one
-            // hypot per move, no new listener, nothing per frame.
+        // The odometer measures the OPERATOR'S HAND, not the cursor's time over the
+        // canvas — so it lives on window. Bound to the canvas container it stopped
+        // counting the moment the pointer reached the toolbar, which is exactly the
+        // travel worth measuring.
+        window.addEventListener('mousemove', (e) => {
             if (_odoX !== null) {
                 const _dx = e.clientX - _odoX, _dy = e.clientY - _odoY;
                 const _d = Math.sqrt(_dx * _dx + _dy * _dy);
                 if (_d > 0.5) { odoPixels += _d; odoMoves++; }
             }
             _odoX = e.clientX; _odoY = e.clientY;
+        }, { passive: true });
+
+        container.addEventListener('mousemove', (e) => {
             _lastCanvasMouse = { x: e.clientX, y: e.clientY, over: true };
             const ll = document.getElementById('modeLabel');
             if (ll) {
@@ -12487,6 +12492,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
 <li><b>Set Size</b> — exact width × height.</li>
 <li><b>Fullscreen</b> or <b>F11</b>.</li>
 </ul>
+<h3>Hiding the interface</h3>
+<p>Press <b>Tab</b> — or <b>⌘ Zen</b> — and the entire toolbar disappears. Nothing is lost: the radial menu holds every control in the engine, so <b>Left Alt + click</b> still reaches all of it. Any panel you had open floats free rather than vanishing with the toolbar.</p>
+<p>This is not only for focus. A hidden toolbar is removed from layout, paint and hit-testing entirely, so the browser stops spending work on ~230 controls you are not currently using — and the canvas gets the full height of the window.</p>
+<p><b>📋 Blocks</b> hides just the Block Elements panel, if that is the only thing in your way.</p>
+
 <h3>Selection</h3>
 <ul>
 <li><b>Click</b> selects · <b>Shift+click</b> adds to a multi-selection.</li>
@@ -12588,6 +12598,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>Read only</b> — exported contents are locked against editing by whoever loads them.</li>
 <li><b>Export</b> writes a portable cartridge file.</li>
 </ul>
+<h3>Ejecting a cartridge</h3>
+<p><b>⏏ Eject Cartridge</b> exports a cartridge and everything loaded into it as a portable file. Select the cartridge first; the engine tells you exactly what it holds, what types it accepts and whether it is read-only before it writes anything, and you name the file yourself.</p>
+<p>If it was exported <b>read only</b>, the recipient can look and move but cannot deconstruct, group, weld, watermark, rename, resize or delete any of it. That is enforced everywhere, not just in the dialogue.</p>
+
 <h3>Ports</h3>
 <p>A <b>Port</b> loads someone else's cartridge and <b>filters it</b> — only the types your port allows will materialise. Change the port's allow-list later and it re-filters from the stored package, so nothing is lost. Use <b>Edit Port</b> mode and double-click the port to change it.</p>` },
 
@@ -12627,6 +12641,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>Proximity Border</b> — their borders fade in as you near their edge.</li>
 <li><b>Hidden Outline</b> — cycle the dashed ghost outline: 100% / 50% / off.</li>
 <li><b>Hover Info</b> — an element's data card appears as you hover it.</li>
+<li><b>⇕ Auto Open — "the anti-click".</b> Turn it on and simply hovering an element opens its full, editable dialogue. One at a time; moving to another element swaps straight to it, and it stays open while your cursor is over the dialogue so you can reach in and type. The inverse of double-clicking to edit — attention becomes the interface and the click stops being necessary.</li>
+<li><b>🔍 Lens</b> — a magnifier that follows the cursor with genuine barrel distortion, like looking through a body cam. Zoom, size and bulge are all adjustable.</li>
+<li><b>Shift+click pins a lens to the canvas.</b> A pinned lens is anchored in world space: it pans and scales with your work, so it keeps magnifying the same joint or the same cartridge wherever the camera goes. Shift+click it again to lift it off. Each keeps its own zoom and distortion, so you can drop a gentle 1.4× over one area and a hard 3× over another.</li>
 </ul>
 <h3>Priority colours</h3>
 ` + hRow(
@@ -12680,6 +12697,47 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <p>The <b>Asset Manager</b> reports the schedule like everything else: total events, a breakdown by kind, how many are <b>overdue</b>, how many are done, how many are attached to elements, what is next up, and its memory — with the ten nearest events listed underneath, overdue ones in red. It all persists in Save and Snapshot, so your schedule survives a reload exactly as your canvas does.</p>
 <p style="color:#78909C;">The panel behaves like the rest: <b>⇱ Pop Out</b> to float it, <b>📌 Pin</b> to anchor it into canvas space so it moves and scales with your work, an opacity slider to dim it, and <b>▼</b> to collapse it to its header.</p>` },
 
+        { id:'self', t:'Watching Yourself', h:`
+<h3>The engine keeps a record of how you work</h3>
+<p>Open <b>▮ Usage</b> and everything you touch is tallied — every button, every menu choice, every canvas gesture — ranked by how often you reach for it.</p>
+` + hFig('The tally, ranked. Amber is the toolbar, blue is the radial menu.',
+`<div style="max-width:250px; margin:0 auto; background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:10px; overflow:hidden; font-family:Arial;">
+  <div style="display:flex; align-items:center; gap:6px; padding:7px 10px; background:linear-gradient(180deg,#1b2530,#141c24);">
+    <span style="width:7px;height:7px;border-radius:50%;background:#FFB74D;box-shadow:0 0 7px #FFB74D;"></span>
+    <span style="font:700 10px Arial;letter-spacing:2px;color:#FFB74D;">USAGE</span></div>
+  <div style="padding:8px 10px;">
+    <div style="margin:4px 0;"><div style="display:flex;justify-content:space-between;font:11px Arial;color:#cfd8dc;"><span>Draw Datum Line</span><b style="color:#FFB74D;">184</b></div>
+      <div style="height:3px;margin-top:2px;background:#1b2530;border-radius:2px;"><div style="height:100%;width:100%;background:#FFB74D;"></div></div></div>
+    <div style="margin:4px 0;"><div style="display:flex;justify-content:space-between;font:11px Arial;color:#cfd8dc;"><span>◉ Snapshot</span><b style="color:#4FC3F7;">91</b></div>
+      <div style="height:3px;margin-top:2px;background:#1b2530;border-radius:2px;"><div style="height:100%;width:49%;background:#4FC3F7;"></div></div></div>
+    <div style="margin:4px 0;"><div style="display:flex;justify-content:space-between;font:11px Arial;color:#cfd8dc;"><span>Left click (canvas)</span><b style="color:#FFB74D;">67</b></div>
+      <div style="height:3px;margin-top:2px;background:#1b2530;border-radius:2px;"><div style="height:100%;width:36%;background:#FFB74D;"></div></div></div>
+    <div style="margin:4px 0;"><div style="display:flex;justify-content:space-between;font:11px Arial;color:#546e7a;"><span>▤ Show Links</span><b style="color:#546e7a;">2</b></div>
+      <div style="height:3px;margin-top:2px;background:#1b2530;border-radius:2px;"><div style="height:100%;width:4%;background:#546e7a;"></div></div></div>
+  </div>
+</div>`) + `
+<p>Toolbar presses show amber, radial choices show blue with a <b>◉</b> marker. So you can see not only <i>what</i> you use, but <b>which route you took to reach it</b> — whether a control earns its place in the toolbar, or would be better living only in the radial.</p>
+<p>Canvas gestures are counted too, and separately: left, middle and right clicks, modifier combinations like <b>Shift+click</b>, double-clicks, scroll, and element drags.</p>
+
+<h3>The mouse odometer</h3>
+<p>At the top of the panel is a running total of <b>how far your hand has actually travelled</b> while working. Every movement is summed in pixels and converted to real distance using your screen density.</p>
+` + hFig('Hand travel, converted to real-world units. Amber shows how far elements themselves were dragged.',
+`<div style="max-width:250px; margin:0 auto; padding:10px 12px; background:#0d1117; border:1px solid #1f2a33; border-left:3px solid #4FC3F7; border-radius:8px; font-family:Arial;">
+  <div style="font:700 10px Arial;letter-spacing:1.6px;color:#4FC3F7;margin-bottom:6px;">MOUSE ODOMETER ⓘ</div>
+  <div style="font:700 19px ui-monospace,monospace;color:#fff;">41.6 feet</div>
+  <div style="font:11px ui-monospace,monospace;color:#fff;line-height:1.7;margin-top:5px;">
+    499.2 in · 41.6 ft<br>12680 mm · 1268.0 cm · 12.68 m<br>47,923 px · 3,104 moves<br>1.4 in per click
+    <br><span style="color:#FFB74D;">4,820 units dragged · 37 drags</span></div>
+</div>`) + `
+<ul>
+<li><b>The big figure auto-scales</b> — inches, then feet, then miles.</li>
+<li><b>In per click</b> — average hand travel to reach a control. The single most useful number here: the lower it goes, the better the interface fits you.</li>
+<li><b>Units dragged</b> — how far elements themselves were moved, measured in world units so zoom level does not distort it.</li>
+<li><b>DPI slider</b> — set it to match your monitor for an exact reading.</li>
+</ul>
+<p>The tally and the odometer are saved with the engine, ride along in snapshots, and survive a crash. <b>↺</b> in the panel header clears them.</p>
+<p style="color:#78909C;">Why measure any of this? Because software has never known which of its own features earn their keep. A cockpit tells you: the switches a pilot uses have the paint worn off. This is the same evidence, for software.</p>` },
+
         { id:'watch', t:'Watching the Engine', h:`
 <h3>◉ Pulse — the engine's vital signs</h3>
 <p>Four dots that blink on <b>real measured work</b>:</p>
@@ -12708,6 +12766,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>♥ Health</b> — a one-line verdict: stable, strained, or critical.</li>
 <li><b>📊 Perf</b> — the full monitor: FPS, heap, scene graph, memory breakdown, DOM, timing, environment.</li>
 <li><b>🗂 Assets</b> — the Asset Manager. Every element, panel and widget with its exact byte cost, rolled into one total.</li>
+<li><b>Undo depth</b> — the dropdown beside Undo sets how many steps are kept, from 10 to 250. Each step holds a full snapshot of the scene, so this is the largest single memory dial in the engine; lowering it releases the memory immediately and tells you how much it freed.</li>
 </ul>
 ` + hFig('An Asset Manager row. Hover the ⓘ for the full data card; the footer totals the engine and everything in it.',
 `<div style="max-width:360px; margin:0 auto; background:#fff; border-radius:9px; overflow:hidden; font-family:Arial;">
@@ -12779,7 +12838,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>B</b></td><td>Break a fusion bond</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>N</b></td><td>Open the selected element's dialogue</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>Delete</b></td><td>Remove the whole selection (lasso or single; ad hoc groups go whole)</td></tr>
-<tr><td style="padding:4px 0; color:#26C6DA;"><b>Esc</b></td><td>Clear selection / cancel mode</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Esc</b></td><td>Clear selection and cancel <b>every</b> armed mode</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Tab</b></td><td>Hide / show the toolbar (Zen)</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Shift+click</b></td><td>Pin the lens to the canvas · hide a ruler</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>F11</b></td><td>Fullscreen</td></tr>
 </table>
 <h3>Mouse</h3>
