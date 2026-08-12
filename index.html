@@ -15178,7 +15178,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         // 📊 PERFORMANCE MONITOR — instrument draw(), then report everything
         // ============================================================
         let perfOn = false;
-        const PERF = { draws: 0, drawMs: 0, lastDrawMs: 0, maxDrawMs: 0, frames: 0, fps: 0, minFps: 999, maxFps: 0, hist: [], drawHist: [], started: performance.now(), longFrames: 0 };
+        const PERF = {
+            refresh: 60, budget: 16.7, draws: 0, drawMs: 0, lastDrawMs: 0, maxDrawMs: 0, frames: 0, fps: 0, minFps: 999, maxFps: 0, hist: [], drawHist: [], started: performance.now(), longFrames: 0 };
         (function instrumentDraw() {
             const orig = window.draw;
             if (typeof orig !== 'function') return;
@@ -15316,6 +15317,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 acc += dt; fCount++; PERF.frames++;
                 if (acc >= 500) {
                     PERF.fps = Math.round((fCount * 1000) / acc);
+                    // rAF fires once per DISPLAY REFRESH, so PERF.fps is really the
+                    // monitor's rate. A 144Hz laptop reads 144 while doing less work
+                    // than a 60Hz workstation reading 60. The number that actually
+                    // matters is how much of ONE frame the draw consumes, and that
+                    // budget shrinks as the refresh rate rises.
+                    if (PERF.fps > PERF.refresh) PERF.refresh = PERF.fps;
+                    PERF.budget = 1000 / Math.max(30, PERF.refresh);
                     if (PERF.fps < PERF.minFps) PERF.minFps = PERF.fps;
                     if (PERF.fps > PERF.maxFps) PERF.maxFps = PERF.fps;
                     PERF.hist.push(PERF.fps); if (PERF.hist.length > 120) PERF.hist.shift();
@@ -15427,6 +15435,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             h += R('Scene subtotal', formatBytes(pxBytes + fileBytes + dataBytes + connBytes + guideBytes));
 
             h += S('🌳 DOM');
+            h += R('Display refresh', (PERF.refresh || 60) + ' Hz');
+            h += R('Frame budget', (PERF.budget || 16.7).toFixed(1) + ' ms per frame');
+            h += R('Draw uses', ((PERF.lastDrawMs || 0) / (PERF.budget || 16.7) * 100).toFixed(0) + '% of budget');
             h += R('Total nodes', document.getElementsByTagName('*').length);
             h += R('Buttons', document.querySelectorAll('button').length);
             h += R('Inputs', document.querySelectorAll('input,select,textarea').length);
@@ -17453,7 +17464,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (drewThisFrame) {
                 const dt = PERF.lastDrawMs || 0;
                 if (dt > 0.35) {
-                    const load = Math.min(1, dt / 16.7);
+                    const load = Math.min(1, dt / (PERF.budget || 16.7));
                     _pulseCpuHold = 2;   // brief hold so a single heavy frame is visible
                     _pulseCpuCol = load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950';
                     _pulseCpuMag = load;
@@ -17511,7 +17522,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             } else pulseRest('pulseDom');
 
             const r = document.getElementById('pulseRate');
-            if (r) r.textContent = (PERF.fps || 0) + 'fps · ' + (PERF.lastDrawMs || 0).toFixed(1) + 'ms · ' +
+            if (r) r.textContent = (PERF.fps || 0) + 'fps@' + (PERF.refresh || 60) + 'Hz · ' +
+                (PERF.lastDrawMs || 0).toFixed(1) + '/' + (PERF.budget || 16.7).toFixed(1) + 'ms · ' +
                 document.getElementsByTagName('*').length + ' nodes';
 
             _pulseRAF = requestAnimationFrame(pulseLoop);
