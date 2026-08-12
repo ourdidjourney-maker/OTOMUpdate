@@ -533,6 +533,21 @@
             <div id="helpBody" style="flex:1 1 auto; overflow-y:auto; padding:20px 26px; color:#cfd8dc; font-size:13px; line-height:1.75;"></div>
         </div>
     </div>
+    <div id="usePanel" style="display:none; position:fixed; left:22px; bottom:60px; width:250px; height:300px; min-width:190px; min-height:140px; max-height:70vh; resize:both; z-index:1755;
+         background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:12px;
+         box-shadow:0 16px 44px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif;">
+        <div id="useHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; cursor:move; user-select:none; border-bottom:1px solid #26343d;">
+            <span style="width:7px; height:7px; border-radius:50%; background:#FFB74D; box-shadow:0 0 7px #FFB74D;"></span>
+            <span style="font:700 10px Arial; letter-spacing:2px; color:#FFB74D; flex:1;">USAGE</span>
+            <button id="useNightBtn" title="Night mode — dim to a quiet readout" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(255,183,77,.14); color:#FFB74D; border-radius:5px;">🌙</button>
+            <button id="usePinBtn" title="Pin to the canvas — moves and scales with your work" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(255,183,77,.14); color:#FFB74D; border-radius:5px;">📌</button>
+            <input id="useOp" type="range" min="25" max="100" value="100" title="Opacity" style="width:44px;">
+            <button id="useResetBtn" title="Clear the tally" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(255,183,77,.14); color:#FFB74D; border-radius:5px;">↺</button>
+            <button onclick="toggleUsage()" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(255,183,77,.14); color:#FFB74D; border-radius:5px;">✕</button>
+        </div>
+        <div id="useBody" style="flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:8px 10px;"></div>
+        <div id="useFoot" style="padding:6px 11px; border-top:1px solid #1b2530; font:10px ui-monospace,Consolas,monospace; color:#546e7a;"></div>
+    </div>
     <div id="tickerBar" style="display:none; position:fixed; left:0; right:0; bottom:0; height:38px; z-index:1750;
          background:linear-gradient(180deg,#0d1117 0%,#080b0f 100%);
          border-top:1px solid #1b2530; box-shadow:0 -6px 22px rgba(0,0,0,.45);
@@ -695,6 +710,7 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
         <button id="autoOpenBtn" onclick="toggleAutoOpen()" title="Auto Open: hover any element and its data dialogue opens, ready to edit" style="background:#455A64; font-size:11px; padding:6px 9px;">⇕ Auto Open</button>
         <button id="blockPanelBtn" onclick="toggleBlockPanel()" title="Show or hide the Block Elements panel" style="background:#5E35B1; font-size:11px; padding:6px 9px;">📋 Blocks</button>
         <button onclick="toggleZen()" title="Hide the toolbar (Tab). Everything is in the radial: Left Alt + click" style="background:#263238; font-size:11px; padding:6px 9px;">⌘ Zen</button>
@@ -1467,7 +1483,7 @@
         // rather than by where the buttons happen to sit in the UI.
         // ═══════════════════════════════════════════════════════════════════
         const RADIAL_ITEMS = [
-            { ico: '•',  label: 'Vector',  accent: '#5C6BC0', run: () => { const p = _radialPos; if (!p) return; const nd = { img:null, x:p.x, y:p.y, width:40, height:40, rotation:0, id:Date.now()+Math.random(), name:'', fullName:'', isDot:true, isVector:true, baseWidth:40, fusable:false }; images.push(nd); selectedImage = nd; saveState(); updateImageCount(); draw(); } },
+            { ico: '•',  label: 'Vector',  accent: '#5C6BC0', run: () => { const p = _radialPos; if (!p) return; const nd = { img:null, x:p.x, y:p.y, width:40, height:40, rotation:0, id:Date.now()+Math.random(), name:'', fullName:'', isDot:true, isVector:true, baseWidth:40, fusable:false }; images.push(nd); selectedImage = nd; if (typeof usageRecord === 'function') usageRecord('Vector (radial)', 'canvas'); saveState(); updateImageCount(); draw(); } },
 
             { ico: '🖼', label: 'Upload', accent: '#2196F3', run: () => document.getElementById('fileInput').click() },
             { ico: '✎', label: 'Draw', accent: '#795548', sub: [
@@ -1579,6 +1595,7 @@
             { ico: '♥', label: 'System', accent: '#2E7D32', sub: [
                 { ico: '◉', label: 'Pulse',    accent: '#263238', run: () => togglePulse() },
                 { ico: '▤', label: 'Wire',     accent: '#37474F', run: () => toggleTicker() },
+                { ico: '▮', label: 'Usage',    accent: '#EF6C00', run: () => toggleUsage() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
                 { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
                 { ico: '🧹', label: 'Flush',   accent: '#455A64', run: () => flushCache() },
@@ -1630,7 +1647,9 @@
                 seg.onmouseenter = () => openSubRadial(seg, it);
                 seg.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); openSubRadial(seg, it); };
             } else {
-                seg.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); closeRadial(); try { it.run(); } catch (e) {} };
+                seg.onclick = (ev) => { ev.preventDefault(); ev.stopPropagation(); closeRadial();
+                    try { if (typeof usageRecord === 'function') usageRecord(it.label, 'radial'); } catch (e) {}
+                    try { it.run(); } catch (e) {} };
             }
             return seg;
         }
@@ -2523,6 +2542,7 @@
         }
 
         function openNameModal(image, cx, cy) {
+            if (typeof usageRecord === 'function') usageRecord('Element dialogue', 'canvas');
             if (image && image.cartLocked) {
                 if (typeof showConfirm === 'function') showConfirm({ title: '🔒 Read Only', body: 'This element came from a read-only cartridge and cannot be edited.', okText: 'OK', danger: false, hideCancel: true });
                 return;
@@ -4503,6 +4523,163 @@
             container.style.cursor = autoOpenMode ? 'help' : 'grab';
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ▮ USAGE — what the operator actually reaches for.
+        //
+        // One delegated listener on document, plus a hook in the radial. Nothing runs
+        // per frame; the cost is a Map increment on click and a render only while the
+        // panel is open. 228 buttons are captured without touching any of them.
+        // ═══════════════════════════════════════════════════════════════════
+        var usageOn = false, usageLog = new Map(), usageLast = [], _useRenderT = null;
+        var usageNight = false, usagePinned = false, usageAnchor = { x: 0, y: 0 };
+        const p2 = () => document.getElementById('usePanel');
+
+        function usageSyncPinned() {
+            if (!usagePinned) return;
+            const el = p2(); if (!el) return;
+            const rect = canvas.getBoundingClientRect();
+            el.style.left = (rect.left + camera.x + usageAnchor.x * camera.zoom) + 'px';
+            el.style.top = (rect.top + camera.y + usageAnchor.y * camera.zoom) + 'px';
+        }
+
+        function usageRecord(label, source) {
+            if (!label) return;
+            const key = label.replace(/\s+/g, ' ').trim().slice(0, 40);
+            if (!key) return;
+            const rec = usageLog.get(key) || { n: 0, at: 0, src: source };
+            rec.n++; rec.at = Date.now(); rec.src = source;
+            usageLog.set(key, rec);
+            usageLast.unshift({ key: key, at: rec.at, src: source });
+            if (usageLast.length > 40) usageLast.pop();
+            if (usageOn) {
+                // coalesce: a burst of clicks paints once
+                clearTimeout(_useRenderT);
+                _useRenderT = setTimeout(renderUsage, 120);
+            }
+        }
+
+        // A readable name for whatever was clicked, without touching the markup.
+        function usageLabelFor(el) {
+            if (!el) return '';
+            const b = el.closest ? el.closest('button') : null;
+            if (b) {
+                const t = (b.textContent || '').trim();
+                if (t) return t;
+                return b.getAttribute('title') || b.id || 'button';
+            }
+            if (el.tagName === 'SELECT') {
+                const lbl = el.getAttribute('title') || el.id || 'select';
+                return lbl + ' → ' + (el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : '');
+            }
+            return '';
+        }
+
+        function renderUsage() {
+            const body = document.getElementById('useBody');
+            const foot = document.getElementById('useFoot');
+            if (!body) return;
+            const rows = [...usageLog.entries()].sort((a, b) => b[1].n - a[1].n);
+            if (!rows.length) {
+                body.innerHTML = '<div style="color:#37474F; font:11px Arial; padding:14px 4px; line-height:1.6;">Nothing recorded yet.<br>Every button, menu and radial choice is tallied here as you work.</div>';
+                if (foot) foot.textContent = '';
+                return;
+            }
+            const max = rows[0][1].n;
+            const total = rows.reduce((a, r) => a + r[1].n, 0);
+            let html = '';
+            rows.slice(0, 40).forEach(([k, v]) => {
+                const pct = Math.max(4, Math.round((v.n / max) * 100));
+                const col = v.src === 'radial' ? '#4FC3F7' : '#FFB74D';
+                html += '<div style="margin:4px 0;">' +
+                    '<div style="display:flex; justify-content:space-between; gap:8px; font:11px Arial; color:#cfd8dc;">' +
+                    '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' +
+                    (usageNight ? ' opacity:.62;' : '') + '">' +
+                    (v.src === 'radial' ? '◉ ' : '') + k.replace(/</g, '&lt;') + '</span>' +
+                    '<b style="color:' + col + ';">' + v.n + '</b></div>' +
+                    '<div style="height:3px; margin-top:2px; background:#1b2530; border-radius:2px; overflow:hidden;">' +
+                    '<div style="height:100%; width:' + pct + '%; background:' + col + ';"></div></div></div>';
+            });
+            body.innerHTML = html;
+            if (foot) foot.textContent = total + ' clicks · ' + usageLog.size + ' distinct' +
+                (usageLast[0] ? ' · last: ' + usageLast[0].key.slice(0, 18) : '');
+        }
+
+        function toggleUsage() {
+            usageOn = !usageOn;
+            const p = document.getElementById('usePanel');
+            if (p) p.style.display = usageOn ? 'flex' : 'none';
+            const b = document.getElementById('usageBtn');
+            if (b) b.style.background = usageOn ? '#EF6C00' : '#455A64';
+            if (usageOn) renderUsage();
+        }
+
+        (function usageInit() {
+            // ONE listener for all 228 buttons. Capture phase so a handler that stops
+            // propagation cannot hide the click from the tally.
+            document.addEventListener('click', (ev) => {
+                const lbl = usageLabelFor(ev.target);
+                if (lbl) usageRecord(lbl, 'ui');
+            }, true);
+            document.addEventListener('change', (ev) => {
+                if (ev.target && ev.target.tagName === 'SELECT') {
+                    const lbl = usageLabelFor(ev.target);
+                    if (lbl) usageRecord(lbl, 'ui');
+                }
+            }, true);
+            const rb = document.getElementById('useResetBtn');
+            if (rb) rb.onclick = (ev) => { ev.stopPropagation(); usageLog = new Map(); usageLast = []; renderUsage(); };
+
+            const op = document.getElementById('useOp');
+            if (op) op.oninput = (ev) => { ev.stopPropagation(); p2().style.opacity = ev.target.value / 100; };
+
+            // night mode: a quiet readout that does not compete with the canvas
+            const nb = document.getElementById('useNightBtn');
+            if (nb) nb.onclick = (ev) => {
+                ev.stopPropagation();
+                usageNight = !usageNight;
+                const el = p2();
+                el.style.background = usageNight ? 'rgba(6,9,12,.72)' : 'linear-gradient(180deg,#12171d,#0b0f14)';
+                el.style.borderColor = usageNight ? '#151c22' : '#26343d';
+                el.style.boxShadow = usageNight ? 'none' : '0 16px 44px rgba(0,0,0,.5)';
+                nb.style.background = usageNight ? '#FFB74D' : 'rgba(255,183,77,.14)';
+                nb.style.color = usageNight ? '#000' : '#FFB74D';
+                renderUsage();
+            };
+
+            // pin into canvas space, like every other panel
+            const pb = document.getElementById('usePinBtn');
+            if (pb) pb.onclick = (ev) => {
+                ev.stopPropagation();
+                const el = p2(), rect = canvas.getBoundingClientRect(), r = el.getBoundingClientRect();
+                usagePinned = !usagePinned;
+                if (usagePinned) {
+                    usageAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom,
+                                    y: (r.top - rect.top - camera.y) / camera.zoom };
+                    el.style.bottom = 'auto'; el.style.resize = 'none';
+                    pb.style.background = '#FFB300'; pb.style.color = '#000';
+                    usageSyncPinned();
+                    if (typeof ensurePinTracker === 'function') ensurePinTracker();
+                } else {
+                    el.style.resize = 'both';
+                    pb.style.background = 'rgba(255,183,77,.14)'; pb.style.color = '#FFB74D';
+                }
+            };
+            // drag by header
+            const p = document.getElementById('usePanel'), head = document.getElementById('useHead');
+            if (!p || !head) return;
+            let dx = 0, dy = 0;
+            const mv = e2 => { p.style.left = Math.max(0, Math.min(e2.clientX - dx, window.innerWidth - 120)) + 'px';
+                               p.style.top = Math.max(0, Math.min(e2.clientY - dy, window.innerHeight - 44)) + 'px';
+                               p.style.bottom = 'auto'; };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            head.addEventListener('pointerdown', e2 => {
+                if (/^(BUTTON|INPUT|SELECT)$/.test(e2.target.tagName)) return;
+                const r = p.getBoundingClientRect();
+                dx = e2.clientX - r.left; dy = e2.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+        })();
+
         function saveState() {
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
             if (typeof recTouch === 'function') recTouch();
@@ -5813,6 +5990,7 @@
                 };
                 images.push(newDot);
                 selectedImage = newDot;
+                if (typeof usageRecord === 'function') usageRecord('Vector (double-click)', 'canvas');
                 saveState();
                 updateImageCount();
                 draw();
@@ -6708,9 +6886,15 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     const typeLabel = isImg ? (image.fileType || 'IMG') : (elKind(image) === 'line' ? 'DATUM LINE' : elKind(image).toUpperCase());
                     if (showMemInfo) memTag(typeLabel + '  ·  ' + formatBytes(elementBytes(image)), '#3F51B5');
                     if (showFilename && image.fileName) memTag('🖼 ' + image.fileName, '#009688');
-                    if (showPath) memTag('📄 ' + (image.sourcePath || image.filePath || image.fileName || '(no path)'), '#795548');
-                    if (showNotations) memTag('✎ ' + (image.notations || '(none)'), '#C2185B');
-                    if (showAgent) memTag('⚖ La= ' + (image.agent || '(none)'), '#00838F');
+                    // Only elements that HAVE a path get a path flag. A drawn vector or
+                    // arrow has no file behind it, so labelling it "(no path)" was noise
+                    // on every element. Matches how the Filename flag already behaves.
+                    {
+                        const _p = image.sourcePath || image.filePath || image.fileName;
+                        if (showPath && _p) memTag('📄 ' + _p, '#795548');
+                    }
+                    if (showNotations && image.notations) memTag('✎ ' + image.notations, '#C2185B');
+                    if (showAgent && image.agent) memTag('⚖ La= ' + image.agent, '#00838F');
                 }
 
                 if (image.name && !image.fromFormula) {
@@ -7997,6 +8181,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (typeof mediaPlayers !== 'undefined' && mediaPlayers.some(m => m.pinned)) return true;
             if (typeof docPanels !== 'undefined' && docPanels.some(d => d.pinned)) return true;
             if (typeof drawerPinned !== 'undefined' && drawerPinned) return true;
+            if (typeof usagePinned !== 'undefined' && usagePinned) return true;
             if (typeof calcPinned !== 'undefined' && calcPinned) return true;
             if (typeof chkPinned !== 'undefined' && chkPinned) return true;
             if (typeof helpPinned !== 'undefined' && helpPinned) return true;
@@ -8025,6 +8210,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (typeof calPinned !== 'undefined' && calPinned) calSyncPinned();
                 if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
                 if (typeof drawerPinned !== 'undefined' && drawerPinned) drawerSyncPinned();
+                if (typeof usagePinned !== 'undefined' && usagePinned) usageSyncPinned();
             }
             requestAnimationFrame(pinTick);
         }
@@ -8084,6 +8270,19 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 magPins: (typeof magPins !== 'undefined') ? magPins : [],
+                // usageLog is a Map, which JSON.stringify silently turns into {}. Store
+                // it as pairs so the tally genuinely survives a save.
+                usage: (function () {
+                    if (typeof usageLog === 'undefined' || !usageLog) return null;
+                    return {
+                        log: [...usageLog.entries()].map(([k, v]) => [k, v.n, v.at, v.src]),
+                        last: (typeof usageLast !== 'undefined') ? usageLast.slice(0, 40) : [],
+                        open: !!(typeof usageOn !== 'undefined' && usageOn),
+                        night: !!(typeof usageNight !== 'undefined' && usageNight),
+                        pinned: !!(typeof usagePinned !== 'undefined' && usagePinned),
+                        anchor: (typeof usageAnchor !== 'undefined') ? usageAnchor : null
+                    };
+                })(),
                 calEvents: (typeof calEvents !== 'undefined') ? calEvents : [],
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
                 assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '*',
@@ -8771,6 +8970,22 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     flagDrag = engineData.flagDrag || {};
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
                     if (typeof magPins !== 'undefined') { magPins = Array.isArray(engineData.magPins) ? engineData.magPins : []; updateMagPinCount(); }
+                    if (engineData.usage && typeof usageLog !== 'undefined') {
+                        usageLog = new Map();
+                        (engineData.usage.log || []).forEach(p => {
+                            usageLog.set(p[0], { n: p[1] || 0, at: p[2] || 0, src: p[3] || 'ui' });
+                        });
+                        usageLast = Array.isArray(engineData.usage.last) ? engineData.usage.last : [];
+                        if (typeof usageAnchor !== 'undefined' && engineData.usage.anchor) usageAnchor = engineData.usage.anchor;
+                        if (engineData.usage.open && typeof usageOn !== 'undefined' && !usageOn && typeof toggleUsage === 'function') toggleUsage();
+                        if (engineData.usage.night && typeof usageNight !== 'undefined' && !usageNight) {
+                            const nb2 = document.getElementById('useNightBtn'); if (nb2) nb2.click();
+                        }
+                        if (engineData.usage.pinned && typeof usagePinned !== 'undefined' && !usagePinned) {
+                            const pb2 = document.getElementById('usePinBtn'); if (pb2) pb2.click();
+                        }
+                        if (typeof renderUsage === 'function') renderUsage();
+                    }
                     if (typeof calEvents !== 'undefined') calEvents = Array.isArray(engineData.calEvents) ? engineData.calEvents : [];
                     if (engineData.recoveryMode && typeof setRecoveryMode === 'function') setRecoveryMode(engineData.recoveryMode);
                     if (engineData.maxHistory) { MAX_HISTORY = engineData.maxHistory; const hc = document.getElementById('histCap'); if (hc) hc.value = String(MAX_HISTORY); }
@@ -10504,7 +10719,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = (typeof magPins !== 'undefined' ? 'LENS' + magPins.length : '') + '|' + (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = (typeof usageLog !== 'undefined' && usageLog ? 'USE' + usageLog.size : '') + '|' + (typeof magPins !== 'undefined' ? 'LENS' + magPins.length : '') + '|' + (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -13949,6 +14164,45 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 });
                 (curBody || c).appendChild(tr);
                 totalBytes += cBytes;
+            }
+
+            // ▮ Usage — the operator's own click history, held in memory
+            if (typeof usageLog !== 'undefined' && usageLog && usageLog.size) {
+                section('Usage', usageLog.size);
+                const rows = [...usageLog.entries()].sort((a, b) => b[1].n - a[1].n);
+                const total = rows.reduce((a, r) => a + r[1].n, 0);
+                const radial = rows.filter(r => r[1].src === 'radial').reduce((a, r) => a + r[1].n, 0);
+                const canvasG = rows.filter(r => r[1].src === 'canvas').reduce((a, r) => a + r[1].n, 0);
+                let uBytes = 0;
+                rows.forEach(([k, v]) => { uBytes += k.length * 2 + 32; });
+                uBytes += (typeof usageLast !== 'undefined' ? usageLast.length * 64 : 0);
+                const P9 = [
+                    ['Distinct controls', usageLog.size],
+                    ['Total clicks', total],
+                    ['Most used', rows[0] ? rows[0][0] + '  (' + rows[0][1].n + ')' : '—'],
+                    ['Via toolbar', (total - radial - canvasG)],
+                    ['Via radial', radial],
+                    ['Canvas gestures', canvasG],
+                    ['Recent', (typeof usageLast !== 'undefined' && usageLast[0]) ? usageLast[0].key : '—'],
+                    ['Persistence', 'saved with the engine and in recovery points'],
+                    ['Memory', formatBytes(uBytes)]
+                ];
+                row(chip('▮', '#fff3e0'), 'Usage tally',
+                    usageLog.size + ' controls · ' + total + ' clicks · ' + formatBytes(uBytes),
+                    'Usage', P9,
+                    () => { if (typeof usageOn !== 'undefined' && !usageOn) toggleUsage(); }, '#EF6C00');
+                // top ten as a branch
+                const tr = document.createElement('div');
+                tr.style.cssText = 'font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.6;margin:-1px 0 6px 16px;padding-left:8px;border-left:2px solid #FFCC80;';
+                rows.slice(0, 10).forEach(([k, v], i, arr) => {
+                    const last = i === arr.length - 1;
+                    const line = document.createElement('div');
+                    line.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 3px;color:#5b5147;';
+                    line.textContent = (last ? '└─ ' : '├─ ') + (v.src === 'radial' ? '◉ ' : v.src === 'canvas' ? '✎ ' : '') + k + ' · ' + v.n;
+                    tr.appendChild(line);
+                });
+                (curBody || c).appendChild(tr);
+                totalBytes += uBytes;
             }
 
             // 🔍 Pinned lenses — canvas fixtures, so they are counted
