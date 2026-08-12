@@ -8491,7 +8491,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 })(),
                 calEvents: (typeof calEvents !== 'undefined') ? calEvents : [],
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
-                assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '*',
+                assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '',
                 guides: (typeof guides !== 'undefined') ? guides.map(g => ({ axis: g.axis, pos: g.pos, id: g.id, locked: !!g.locked, hidden: !!g.hidden })) : [],
                 grid: (typeof showGrid !== 'undefined') ? showGrid : true,
                 background: (typeof background !== 'undefined' && background && background.src) ? {
@@ -9234,7 +9234,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         assetFolders = Array.isArray(engineData.assetFolders) ? engineData.assetFolders : [];
                         // heal: any folder referenced by an asset but missing from the list
                         savedAssets.forEach(a => { if (a.folder && assetFolders.indexOf(a.folder) < 0) assetFolders.push(a.folder); });
-                        assetFolderView = engineData.assetFolderView || '*';
+                        assetFolderView = engineData.assetFolderView || '';
+                        if (assetFolderView === '*') assetFolderView = '';
                     }
                     if (engineData.background && engineData.background.src) {
                         const bgi = new Image();
@@ -15452,13 +15453,15 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         // Folders are metadata only: each asset carries a `folder` name, and the
         // drawer filters on it. The card rendering itself is untouched.
         var assetFolders = [];        // ['Meshes', 'Ports', ...]
-        var assetFolderView = '*';    // '*' = all, '' = unfiled, else folder name
+        // No 'All' view. It redrew every filed asset a second time, so a library of 60
+        // assets rendered 120 cards. A filed asset now lives in exactly one place.
+        var assetFolderView = '';     // '' = unfiled, else the folder name
 
         function renderAssetFolders() {
             const bar = document.getElementById('assetFolderBar');
             if (!bar) return;
             bar.innerHTML = '';
-            const count = key => savedAssets.filter(a => key === '*' ? true : (a.folder || '') === key).length;
+            const count = key => savedAssets.filter(a => (a.folder || '') === key).length;
             const tab = (key, label, closable) => {
                 const on = assetFolderView === key;
                 const d = document.createElement('div');
@@ -15477,7 +15480,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     ev.preventDefault(); d.style.outline = 'none';
                     const idx = parseInt(ev.dataTransfer.getData('text/asset-idx'), 10);
                     if (isNaN(idx) || !savedAssets[idx]) return;
-                    savedAssets[idx].folder = (key === '*') ? '' : key;
+                    savedAssets[idx].folder = key;
                     renderAssetDrawer();
                 };
                 if (closable) {
@@ -15490,7 +15493,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                         const doIt = () => {
                             savedAssets.forEach(a => { if ((a.folder || '') === key) a.folder = ''; });
                             assetFolders = assetFolders.filter(f => f !== key);
-                            if (assetFolderView === key) assetFolderView = '*';
+                            if (assetFolderView === key) assetFolderView = '';
                             renderAssetDrawer();
                         };
                         if (n && typeof showConfirm === 'function') {
@@ -15504,7 +15507,6 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 bar.appendChild(d);
             };
 
-            tab('*', '▤ All', false);
             tab('', '📄 Unfiled', false);
             assetFolders.forEach(f => tab(f, '📁 ' + f, true));
 
@@ -15539,7 +15541,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 b.innerHTML = '<div style="color:#999;padding:22px;text-align:center;width:100%;font-size:13px;">▤ No assets yet — lasso elements on the canvas, then click <b>Make Asset</b>.</div>';
                 return;
             }
-            if (assetFolderView !== '*' && !savedAssets.some(a => (a.folder || '') === assetFolderView)) {
+            if (!savedAssets.some(a => (a.folder || '') === assetFolderView)) {
                 b.innerHTML = '<div style="color:#999;padding:22px;text-align:center;width:100%;font-size:13px;">' +
                     (assetFolderView ? '📁 "' + assetFolderView + '" is empty' : '📄 Nothing unfiled') +
                     ' — drag an asset card onto a folder tab to file it.</div>';
@@ -15549,7 +15551,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 // Folder filter: skip assets that don't live in the open folder. This is
                 // the ONLY change to this loop — `i` still indexes savedAssets, so
                 // Place / Export / Del keep working exactly as before.
-                if (assetFolderView !== '*' && (a.folder || '') !== assetFolderView) return;
+                if ((a.folder || '') !== assetFolderView) return;
                 // Build a full metadata summary for the hover tooltip
                 const kinds = {};
                 let notes = 0, agents = 0, paths = 0, bytes = 0, fvec = 0;
@@ -15773,7 +15775,14 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (!savedAssets.length) { showConfirm({title:'Asset Library', body:'No assets to save yet — lasso some elements and Make Asset first.', okText:'OK', danger:false, hideCancel:true}); return; }
             const d = new Date(), pad = n => String(n).padStart(2, '0');
             askFileName('⇪ Export Asset Library', 'otom_assets_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()), 'json', (name) => {
-                const blob = new Blob([JSON.stringify({ type: 'OTOM_ASSETS', version: 1, assets: savedAssets }, null, 2)], { type: 'application/json' });
+                // Each asset carries its `folder` name, but the folder LIST was never
+                // exported — so on import the names existed on the assets with no
+                // folders to hold them, and every folder the operator made vanished.
+                const blob = new Blob([JSON.stringify({
+                    type: 'OTOM_ASSETS', version: 2,
+                    assets: savedAssets,
+                    folders: (typeof assetFolders !== 'undefined') ? assetFolders : []
+                }, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url; link.download = name + '.json';
@@ -15808,8 +15817,20 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     const d = JSON.parse(ev.target.result);
                     if (!d.assets) throw new Error('Not an OTOM asset file');
                     savedAssets = savedAssets.concat(d.assets);
+                    // restore the folders, then heal: any folder an asset points at but
+                    // that is missing from the list gets recreated rather than lost
+                    let added = 0;
+                    if (typeof assetFolders !== 'undefined') {
+                        (d.folders || []).forEach(f => { if (f && assetFolders.indexOf(f) < 0) { assetFolders.push(f); added++; } });
+                        d.assets.forEach(a => {
+                            if (a.folder && assetFolders.indexOf(a.folder) < 0) { assetFolders.push(a.folder); added++; }
+                        });
+                    }
                     renderAssetDrawer();
-                    showConfirm({title:'✅ Assets Loaded', body:'Loaded ' + d.assets.length + ' asset(s) into the drawer.', okText:'Nice', danger:false, hideCancel:true});
+                    showConfirm({title:'✅ Assets Loaded',
+                        body:'Loaded ' + d.assets.length + ' asset(s)' +
+                             (added ? ' and restored ' + added + ' folder' + (added > 1 ? 's' : '') : '') + '.',
+                        okText:'Nice', danger:false, hideCancel:true});
                 } catch (err) { showConfirm({title:'❌ Load Failed', body:err.message, okText:'OK', danger:true, hideCancel:true}); }
             };
             r.readAsText(f); e.target.value = '';
