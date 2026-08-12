@@ -318,6 +318,9 @@
         /* the wire must never trigger layout in the rest of the page */
         #tickerBar { contain: layout paint size; }
         #tickerWindow:hover #tickerTrack.rolling { animation-play-state: paused; }
+        /* A CSS animation is NOT throttled when the tab is hidden the way rAF is, so
+           the wire keeps compositing on a tab nobody is looking at. Halted explicitly. */
+        #tickerTrack.halted { animation-play-state: paused !important; }
         .tkItem { display:inline-flex; align-items:center; gap:8px; padding:0 22px; height:38px; transition:background .15s; }
         .tkItem[data-el] { cursor:pointer; }
         .tkChip { font:700 8.5px Arial; letter-spacing:1.4px; padding:2px 7px; border-radius:9px; white-space:nowrap; }
@@ -377,6 +380,24 @@
         body.dark #controls label, body.dark #nameModal label, body.dark #nameModal h3,
         body.dark #imageList h3, body.dark #dataPanel h3 { color: #c9d1d9 !important; }
         body.dark #dataString { background: #0d1117 !important; color: #c9d1d9 !important; }
+        /* The dialogue's inner blocks are inline-styled pastels with dark text — legible
+           on white, invisible on the dark panel. Each gets a dark equivalent that keeps
+           its identifying hue. */
+        body.dark #vectorFusion { background:#0d2320 !important; border-color:#1b5e56 !important; }
+        body.dark #vectorFusion label { color:#4DB6AC !important; }
+        body.dark #vectorFusion div { color:#80CBC4 !important; }
+        body.dark #vectorSocketBlock { background:#141a1f !important; border-color:#37474F !important; }
+        body.dark #vectorSocketBlock label { color:#B0BEC5 !important; }
+        body.dark #vectorSocketBlock div { color:#90A4AE !important; }
+        body.dark #meshStats { background:#1c1226 !important; border-color:#5e35b1 !important; color:#CE93D8 !important; }
+        body.dark #meshStats * { color:#CE93D8 !important; }
+        body.dark #textContentBlock { background:#0f2113 !important; border-color:#2E7D32 !important; }
+        body.dark #textContentBlock label { color:#81C784 !important; }
+        body.dark #textContentBlock span { color:#66BB6A !important; }
+        /* headings and helper text at the top of the dialogue */
+        body.dark #nameModal h3, body.dark #nameModal h4, body.dark #nameModal b,
+        body.dark #nameModal strong { color:#e6edf3 !important; }
+        body.dark #nameModal small, body.dark #nameModal .hint { color:#8b949e !important; }
         body.dark #notesComposer, body.dark #formulaComposer { background:#0f2430 !important; border-color:#164a5f !important; }
         body.dark input[type="text"], body.dark input[type="number"], body.dark input[type="time"],
         body.dark textarea, body.dark select {
@@ -3589,6 +3610,19 @@
             if (window.requestIdleCallback) requestIdleCallback(write, { timeout: 400 });
             else setTimeout(write, 0);
         }
+
+        // Stop the wire compositing when nobody can see it: hidden tab, or a window
+        // that has lost focus (the browser deprioritises those, which is what makes it
+        // lurch when you click back).
+        function tickerVisibility() {
+            const t = document.getElementById('tickerTrack');
+            if (!t) return;
+            const idle = document.hidden || !document.hasFocus();
+            t.classList.toggle('halted', idle);
+        }
+        document.addEventListener('visibilitychange', tickerVisibility);
+        window.addEventListener('blur', tickerVisibility);
+        window.addEventListener('focus', tickerVisibility);
 
         function tickerApplySpeed() {
             const track = document.getElementById('tickerTrack');
