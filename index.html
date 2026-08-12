@@ -313,7 +313,10 @@
         @keyframes tickerRoll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
         @keyframes tickerPulse { 0%,100% { opacity:1; box-shadow:0 0 8px #26C6DA; } 50% { opacity:.35; box-shadow:0 0 3px #26C6DA; } }
         #tickerPip { animation: tickerPulse 2.1s ease-in-out infinite; }
+        #tickerTrack { transform: translateZ(0); backface-visibility: hidden; contain: layout paint; }
         #tickerTrack.rolling { animation-name: tickerRoll; animation-timing-function: linear; animation-iteration-count: infinite; }
+        /* the wire must never trigger layout in the rest of the page */
+        #tickerBar { contain: layout paint size; }
         #tickerWindow:hover #tickerTrack.rolling { animation-play-state: paused; }
         .tkItem { display:inline-flex; align-items:center; gap:8px; padding:0 22px; height:38px; transition:background .15s; }
         .tkItem[data-el] { cursor:pointer; }
@@ -671,6 +674,7 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <button id="autoOpenBtn" onclick="toggleAutoOpen()" title="Auto Open: hover any element and its data dialogue opens, ready to edit" style="background:#455A64; font-size:11px; padding:6px 9px;">⇕ Auto Open</button>
         <button id="blockPanelBtn" onclick="toggleBlockPanel()" title="Show or hide the Block Elements panel" style="background:#5E35B1; font-size:11px; padding:6px 9px;">📋 Blocks</button>
         <button onclick="toggleZen()" title="Hide the toolbar (Tab). Everything is in the radial: Left Alt + click" style="background:#263238; font-size:11px; padding:6px 9px;">⌘ Zen</button>
         <button id="magBtn" onclick="toggleMagnifier()" style="background:#455A64; font-size:11px; padding:6px 9px;" title="Magnifier lens that follows the cursor, with body-cam barrel distortion">🔍 Lens</button>
@@ -1444,6 +1448,7 @@
         const RADIAL_ITEMS = [
             { ico: '•',  label: 'Vector',  accent: '#5C6BC0', run: () => { const p = _radialPos; if (!p) return; const nd = { img:null, x:p.x, y:p.y, width:40, height:40, rotation:0, id:Date.now()+Math.random(), name:'', fullName:'', isDot:true, isVector:true, baseWidth:40, fusable:false }; images.push(nd); selectedImage = nd; saveState(); updateImageCount(); draw(); } },
 
+            { ico: '🖼', label: 'Upload', accent: '#2196F3', run: () => document.getElementById('fileInput').click() },
             { ico: '✎', label: 'Draw', accent: '#795548', sub: [
                 { ico: '─', label: 'Datum',    accent: '#795548', run: () => toggleLineMode() },
                 { ico: '▭', label: 'Square',   accent: '#8D6E63', run: () => toggleRectMode() },
@@ -1452,7 +1457,6 @@
                 { ico: '➤', label: 'Arrow',    accent: '#5D4037', run: () => toggleArrowMode() },
                 { ico: 'T', label: 'Text',     accent: '#4E342E', run: () => toggleTextMode() },
                 { ico: '▦', label: 'Grid',     accent: '#607D8B', run: () => toggleGrid() },
-                { ico: '🖼', label: 'Upload',  accent: '#2196F3', run: () => document.getElementById('fileInput').click() },
                 { ico: '🌄', label: 'BG Move', accent: '#607D8B', run: () => toggleBgMove() },
                 { ico: '🗑', label: 'BG Clear', accent: '#78909C', run: () => deleteBackground() }
             ]},
@@ -1514,6 +1518,7 @@
                 { ico: '◌', label: 'Prox Border', accent: '#00BCD4', run: () => toggleProximityBorder() },
                 { ico: '👁', label: 'Hidden Line', accent: '#26C6DA', run: () => cycleHiddenOutline() },
                 { ico: 'ℹ', label: 'Hover Info', accent: '#0097A7', run: () => toggleHoverPreview() },
+                { ico: '⇕', label: 'Auto Open', accent: '#00838F', run: () => toggleAutoOpen() },
                 { ico: '🔍', label: 'Lens',     accent: '#00838F', run: () => toggleMagnifier() },
                 { ico: '📌', label: 'Pin Lens', accent: '#00838F', run: () => pinMagnifier() }
             ]},
@@ -3574,9 +3579,15 @@
             const track = document.getElementById('tickerTrack');
             if (!track) return;
             const html = tickerContent();
-            // duplicated once so a -50% translate loops with no visible seam
-            track.innerHTML = html + html;
-            tickerApplySpeed();
+            // Rebuilding replaces the whole track and forces a re-measure, which is the
+            // stall. Defer it to an idle moment so it never lands mid-frame.
+            const write = () => {
+                // duplicated once so a -50% translate loops with no visible seam
+                track.innerHTML = html + html;
+                tickerApplySpeed();
+            };
+            if (window.requestIdleCallback) requestIdleCallback(write, { timeout: 400 });
+            else setTimeout(write, 0);
         }
 
         function tickerApplySpeed() {
@@ -3584,8 +3595,13 @@
             const sp = document.getElementById('tickerSpeed');
             if (!track || !sp) return;
             const pxPerSec = parseInt(sp.value, 10) || 70;
-            // duration for ONE copy to pass, so the loop stays seamless at any speed
-            const half = track.scrollWidth / 2;
+            // scrollWidth forces a synchronous layout; it only changes when the content
+            // does, so measure once per rebuild rather than on every slider move
+            if (!track._halfW || track._sig !== track.innerHTML.length) {
+                track._halfW = track.scrollWidth / 2;
+                track._sig = track.innerHTML.length;
+            }
+            const half = track._halfW;
             const secs = Math.max(6, half / pxPerSec);
             track.style.animationDuration = secs + 's';
             track.classList.add('rolling');
@@ -3604,6 +3620,9 @@
                 clearInterval(_tickerT);
                 _tickerT = setInterval(() => {
                     if (document.hidden) return;
+                    // paused means someone is reading it — never rebuild under them
+                    const w = document.getElementById('tickerWindow');
+                    if (w && w.matches(':hover')) return;
                     const sig = images.length + '|' + connections.length + '|' +
                         (typeof canvasNotes !== 'undefined' ? canvasNotes.length : 0) + '|' +
                         (typeof savedAssets !== 'undefined' ? savedAssets.length : 0) + '|' +
@@ -4001,9 +4020,18 @@
         function startMagLoop() {
             if (_magLoop) return;
             _magLoop = true;
+            let lx = -1, ly = -1, lz = -1, lcx = -1, lcy = -1;
             (function tick() {
                 if (!magOn) { _magLoop = false; return; }
-                draw();
+                // A full repaint per frame is only needed when something actually
+                // changed. The lens follows the cursor, so redraw when the cursor moves
+                // or the camera does — not while the hand is still.
+                const m = _lastCanvasMouse;
+                const mx = m ? m.x : -1, my = m ? m.y : -1;
+                if (mx !== lx || my !== ly || camera.zoom !== lz || camera.x !== lcx || camera.y !== lcy) {
+                    lx = mx; ly = my; lz = camera.zoom; lcx = camera.x; lcy = camera.y;
+                    draw();
+                }
                 requestAnimationFrame(tick);
             })();
         }
@@ -4017,7 +4045,7 @@
         // copies the region ONCE into an offscreen buffer, then remaps every
         // destination pixel back through an inverse barrel function — a real fisheye,
         // with no feedback and no repeats.
-        var _magBuf = null, _magCtx = null;
+        var _magBuf = null, _magCtx = null, _magOut = null, _magOutCtx = null, _magID = null;
 
         // Drop the live lens onto the canvas at its current spot, or lift one off.
         function pinMagnifier() {
@@ -4127,27 +4155,37 @@
             try { src = _magCtx.getImageData(0, 0, sw, sh); } catch (err) { return; }
             const S = src.data;
 
-            const D = ctx.createImageData(R * 2, R * 2);
+            // reuse the pixel buffer across frames; only rebuild when the size changes
+            if (!_magID || _magID.width !== R * 2) _magID = ctx.createImageData(R * 2, R * 2);
+            const D = _magID;
             const T = D.data;
             const cxr = R, cyr = R;                 // lens centre in destination space
             const inv = 1 / zoomV;
 
-            for (let y = 0; y < R * 2; y++) {
+            // No trig. cos(atan2(dy,dx)) is just dx/d and sin is dy/d, so the whole
+            // per-pixel atan2 + cos + sin — roughly 200,000 calls a frame at default
+            // radius — collapses into one multiply. Only the rows that actually
+            // intersect the circle are walked, and the row span is solved directly
+            // instead of testing every pixel and discarding most of them.
+            const W2 = R * 2;
+            const R2 = R * R;
+            const invR = 1 / R;
+            for (let y = 0; y < W2; y++) {
                 const dy = y - cyr;
-                for (let x = 0; x < R * 2; x++) {
+                const dy2 = dy * dy;
+                if (dy2 > R2) continue;                       // row misses the glass
+                const half = Math.sqrt(R2 - dy2) | 0;         // exact span for this row
+                const rowBase = y * W2;
+                const xs = cxr - half, xe = cxr + half;
+                for (let x = xs; x <= xe; x++) {
                     const dx = x - cxr;
-                    const d = Math.sqrt(dx * dx + dy * dy);
-                    const di = (y * R * 2 + x) * 4;
-                    if (d > R) { T[di + 3] = 0; continue; }   // outside the glass
-
-                    const t = d / R;                          // 0 centre .. 1 rim
-                    // inverse barrel: sample further out toward the rim
+                    const d = Math.sqrt(dx * dx + dy2);
+                    const di = (rowBase + x) * 4;
+                    const t = d * invR;
                     const warp = 1 + bulgeV * t * t * 0.42;
-                    const srcD = d * inv * warp;
-                    const ang = Math.atan2(dy, dx);
-                    const ux = Math.round(reach + Math.cos(ang) * srcD);
-                    const uy = Math.round(reach + Math.sin(ang) * srcD);
-
+                    const k = d > 0.0001 ? (inv * warp) : 0;   // scale along the ray
+                    const ux = (reach + dx * k + 0.5) | 0;
+                    const uy = (reach + dy * k + 0.5) | 0;
                     if (ux < 0 || uy < 0 || ux >= sw || uy >= sh) { T[di + 3] = 0; continue; }
                     const si = (uy * sw + ux) * 4;
                     T[di]     = S[si];
@@ -4161,9 +4199,11 @@
             ctx.setTransform(1, 0, 0, 1, 0, 0);
 
             // the warped pixels, clipped to the glass
-            const tmp = document.createElement('canvas');
-            tmp.width = R * 2; tmp.height = R * 2;
-            tmp.getContext('2d').putImageData(D, 0, 0);
+            // reuse one scratch canvas instead of allocating a new one every frame
+            if (!_magOut) { _magOut = document.createElement('canvas'); _magOutCtx = _magOut.getContext('2d'); }
+            if (_magOut.width !== R * 2 || _magOut.height !== R * 2) { _magOut.width = R * 2; _magOut.height = R * 2; }
+            const tmp = _magOut;
+            _magOutCtx.putImageData(D, 0, 0);
             ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
             ctx.drawImage(tmp, cx - R, cy - R);
 
@@ -4388,6 +4428,7 @@
             off(typeof fuseMode !== 'undefined' && fuseMode, toggleFuse);
             off(typeof vFuseMode !== 'undefined' && vFuseMode, toggleVFuse);
             off(typeof flagsMode !== 'undefined' && flagsMode, toggleFlagsMode);
+            off(typeof autoOpenMode !== 'undefined' && autoOpenMode, toggleAutoOpen);
             off(typeof bgMoveMode !== 'undefined' && bgMoveMode, toggleBgMove);
             off(typeof centerMode !== 'undefined' && centerMode, toggleCenterMode);
             // in-progress gestures
@@ -4410,6 +4451,22 @@
             const b = document.getElementById('blockPanelBtn');
             if (b) { b.style.background = blockPanelOn ? '#5E35B1' : '#37474F';
                      b.textContent = blockPanelOn ? '📋 Blocks' : '📋 Blocks: OFF'; }
+        }
+
+        // ⇕ AUTO OPEN — the inverse of double-clicking to edit. Hover an element and
+        // its dialogue opens fully editable, one at a time. Distinct from Hover Info,
+        // which is a translucent read-only peek that follows the cursor.
+        var autoOpenMode = false, _autoOpenFor = null;
+        function toggleAutoOpen() {
+            autoOpenMode = !autoOpenMode;
+            const b = document.getElementById('autoOpenBtn');
+            if (b) { b.style.background = autoOpenMode ? '#00838F' : '#455A64';
+                     b.textContent = autoOpenMode ? '⇕ Auto Open: ON' : '⇕ Auto Open'; }
+            if (!autoOpenMode) {
+                _autoOpenFor = null;
+                if (imageToName && nameModal.style.display === 'block' && !nameModalHoverMode) closeNameModal();
+            }
+            container.style.cursor = autoOpenMode ? 'help' : 'grab';
         }
 
         function saveState() {
@@ -5160,7 +5217,9 @@
         });
 
         // Mouse move event
+        var _mmHit;
         canvas.addEventListener('mousemove', (e) => {
+            _mmHit = undefined;   // one hit-test per move, shared by everything below
             const pos = screenToCanvas(e.clientX, e.clientY);
 
             if (draggingFlag) {
@@ -5328,9 +5387,30 @@
                     ? (canvasNotes.find(v => Math.hypot(v.x - pos.x, v.y - pos.y) < 110 / camera.zoom) || null)
                     : null;
 
+                // ⇕ Auto Open: hovering opens the REAL dialogue, editable.
+                if (typeof autoOpenMode !== 'undefined' && autoOpenMode && !connectMode && !simultaneousMode) {
+                    // one hit-test shared with the hover preview below; it walks every
+                    // element, so running it twice per mousemove is pure waste
+                    const aoImg = (_mmHit !== undefined) ? _mmHit : (_mmHit = getImageAtPoint(pos.x, pos.y));
+                    if (aoImg && aoImg !== _autoOpenFor) {
+                        // one at a time: swap straight to the newly hovered element
+                        _autoOpenFor = aoImg;
+                        nameModalHoverMode = false;
+                        openNameModal(aoImg, e.clientX, e.clientY);
+                    } else if (!aoImg && _autoOpenFor) {
+                        // only close if the cursor left BOTH the element and the dialogue,
+                        // otherwise it would vanish the moment you reached for a field
+                        const r = nameModal.getBoundingClientRect();
+                        const inModal = e.clientX >= r.left - 8 && e.clientX <= r.right + 8 &&
+                                        e.clientY >= r.top - 8 && e.clientY <= r.bottom + 8;
+                        if (!inModal) { _autoOpenFor = null; closeNameModal(); }
+                    }
+                    return;
+                }
+
                 // Hover preview of the Name dialog (toggleable)
                 if (hoverPreviewEnabled && !connectMode && !simultaneousMode) {
-                    const hoverImg = getImageAtPoint(pos.x, pos.y);
+                    const hoverImg = (_mmHit !== undefined) ? _mmHit : (_mmHit = getImageAtPoint(pos.x, pos.y));
                     if (hoverImg) {
                         if (!(nameModal.style.display === 'block' && !nameModalHoverMode)) {
                             const justEntered = !nameModalHoverMode;
