@@ -349,6 +349,22 @@
             border-color: #30363d !important;
             box-shadow: 0 6px 28px rgba(0,0,0,.6) !important;
         }
+        /* Asset Drawer in dark mode. Its header and folder bar are inline-styled orange
+           on child elements, which no existing rule reached — so the panel went dark
+           while the chrome stayed bright. */
+        body.dark #assetDrawer > div:first-child {
+            background: linear-gradient(180deg,#1b2530,#141c24) !important;
+            color: #FFB74D !important;
+            border-bottom: 1px solid #30363d !important;
+        }
+        body.dark #assetDrawer > div:first-child button {
+            background: rgba(255,183,77,.14) !important; color: #FFB74D !important;
+        }
+        body.dark #assetFolderBar {
+            background: #0d1117 !important; border-bottom-color: #30363d !important;
+        }
+        body.dark #assetDrawerBody > div { color: #c9d1d9; }
+
         body.dark #notesReaderBody, body.dark #notesReaderTip, body.dark #notesComposer, body.dark #formulaComposer,
         body.dark #assetDrawerBody, body.dark #assetPanelContent, body.dark #assetPanelFooter,
         body.dark #dataPanelContent, body.dark #vpanelContent {
@@ -655,6 +671,7 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <button id="blockPanelBtn" onclick="toggleBlockPanel()" title="Show or hide the Block Elements panel" style="background:#5E35B1; font-size:11px; padding:6px 9px;">📋 Blocks</button>
         <button onclick="toggleZen()" title="Hide the toolbar (Tab). Everything is in the radial: Left Alt + click" style="background:#263238; font-size:11px; padding:6px 9px;">⌘ Zen</button>
         <button id="magBtn" onclick="toggleMagnifier()" style="background:#455A64; font-size:11px; padding:6px 9px;" title="Magnifier lens that follows the cursor, with body-cam barrel distortion">🔍 Lens</button>
         <span id="magCtl" style="display:none; align-items:center; gap:5px; font-size:10px; color:#333;">
@@ -793,6 +810,9 @@
                 <button onclick="saveAssetsFile()" title="Export the whole library as one portable file" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">⇪ Export Asset</button>
                 <button onclick="document.getElementById('assetLoadInput').click()" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">📂 Load Asset</button>
                 <input type="file" id="assetLoadInput" accept=".json" style="display:none;">
+                <button id="drawerPinBtn" onclick="toggleDrawerPin()" title="Pin to the canvas — moves and scales with pan and zoom" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">📌 Pin</button>
+                <span style="font-size:9px; letter-spacing:1px; opacity:.75;">OP</span>
+                <input id="drawerOp" type="range" min="25" max="100" value="100" oninput="document.getElementById('assetDrawer').style.opacity=this.value/100" style="width:52px;" title="Opacity">
                 <button onclick="toggleAssetDrawer()" style="margin:0; padding:4px 9px; font-size:12px; background:rgba(255,255,255,.25); border-radius:5px;">✕</button>
             </div>
             <div id="assetFolderBar" style="display:flex; align-items:center; gap:5px; padding:6px 9px; background:#fff3e0; border-bottom:1px solid #ffe0b2; overflow-x:auto; flex:0 0 auto;"></div>
@@ -1077,7 +1097,7 @@
         <canvas id="primerCanvas" width="1200" height="160" style="display:block; flex:1 1 auto; width:100%; min-height:0; background:#fafafa; cursor:pointer;"></canvas>
     </div>
 
-    <div id="drawerTip" style="position:fixed; pointer-events:none; z-index:4200; display:none; max-width:320px; background:#fff; border:1px solid #FFCC80; border-radius:10px; box-shadow:0 10px 34px rgba(180,80,0,.28); padding:10px 12px; font:12px Arial; color:#333;"></div>
+    <div id="drawerTip" style="position:fixed; pointer-events:none; z-index:300005; display:none; max-width:320px; background:#fff; border:1px solid #FFCC80; border-radius:10px; box-shadow:0 10px 34px rgba(180,80,0,.28); padding:10px 12px; font:12px Arial; color:#333;"></div>
 
     <!-- MESH GENERATOR — builds an offset diagonal lattice (neuromorphic mesh).
          Nodes are primers; the diagonal links are datum lines (inert geometry, not logic steps). -->
@@ -1405,7 +1425,7 @@
         <div id="assetPanelFooter" style="flex:0 0 auto; border-top:1px solid #e0d7f0; padding:8px 12px; background:#faf7ff; font-size:11px; color:#333; user-select:none;"></div>
     </div>
 
-    <div id="assetTip" style="position:fixed; pointer-events:none; z-index:4000; display:none; max-width:330px; background:#fff; border:1px solid #d1c4e9; border-radius:10px; box-shadow:0 10px 34px rgba(60,20,120,0.22); padding:10px 12px; font:12px Arial; color:#333;"></div>
+    <div id="assetTip" style="position:fixed; pointer-events:none; z-index:300005; display:none; max-width:330px; background:#fff; border:1px solid #d1c4e9; border-radius:10px; box-shadow:0 10px 34px rgba(60,20,120,0.22); padding:10px 12px; font:12px Arial; color:#333;"></div>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -1454,8 +1474,8 @@
 
             { ico: '▤', label: 'Cartridge', accent: '#546E7A', sub: [
                 { ico: '▤', label: 'New',      accent: '#795548', run: () => toggleCartridgeMode() },
-                { ico: '✎', label: 'Edit Cart', accent: '#6D4C41', run: () => toggleCartEdit() },
-                { ico: '⎔', label: 'Edit Port', accent: '#5D4037', run: () => togglePortEdit() },
+                { ico: '✎', label: 'Edit Cart', accent: '#6D4C41', run: () => toggleCartEditMode() },
+                { ico: '⎔', label: 'Edit Port', accent: '#5D4037', run: () => togglePortEditMode() },
                 { ico: '⇥', label: 'Collect',  accent: '#8D6E63', run: () => toggleCollectMode() },
                 { ico: '🕸', label: 'Branch',  accent: '#795548', run: () => toggleBranchMode() },
                 { ico: '▸▸', label: 'Links',   accent: '#546E7A', run: () => toggleCartLinks() },
@@ -1494,7 +1514,8 @@
                 { ico: '◌', label: 'Prox Border', accent: '#00BCD4', run: () => toggleProximityBorder() },
                 { ico: '👁', label: 'Hidden Line', accent: '#26C6DA', run: () => cycleHiddenOutline() },
                 { ico: 'ℹ', label: 'Hover Info', accent: '#0097A7', run: () => toggleHoverPreview() },
-                { ico: '🔍', label: 'Lens',     accent: '#00838F', run: () => toggleMagnifier() }
+                { ico: '🔍', label: 'Lens',     accent: '#00838F', run: () => toggleMagnifier() },
+                { ico: '📌', label: 'Pin Lens', accent: '#00838F', run: () => pinMagnifier() }
             ]},
 
             { ico: '🏷', label: 'Flags', accent: '#455A64', sub: [
@@ -1525,7 +1546,8 @@
                 { ico: '🕘', label: 'Clock',   accent: '#263238', run: () => toggleClock() },
                 { ico: '▭', label: 'Primer',  accent: '#00695C', run: () => togglePrimerPanel() },
                 { ico: '⌨', label: 'Parser',  accent: '#37474F', run: () => toggleParser() },
-                { ico: '?', label: 'Help',     accent: '#37474F', run: () => toggleHelp() }
+                { ico: '?', label: 'Help',     accent: '#37474F', run: () => toggleHelp() },
+                { ico: '📋', label: 'Blocks',   accent: '#5E35B1', run: () => toggleBlockPanel() }
             ]},
 
             { ico: '♥', label: 'System', accent: '#2E7D32', sub: [
@@ -2980,6 +3002,7 @@
         }
 
         function watermarkSelection() {
+            if (anyReadOnly(selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []))) { blockReadOnly('watermarked'); return; }
             const sel = (typeof selectedGroup !== 'undefined' && selectedGroup.length)
                 ? selectedGroup.slice()
                 : (selectedImage ? [selectedImage] : []);
@@ -3946,6 +3969,7 @@
                 if (/^(BUTTON|INPUT|SELECT)$/.test(ev.target.tagName)) return;
                 const r = p.getBoundingClientRect();
                 dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                drawerFree = true;   // moved by hand: stop re-docking it
                 window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
             });
         })();
@@ -3959,6 +3983,9 @@
         // body-cam or a fisheye — straight lines bow, and the centre reads sharpest.
         // ═══════════════════════════════════════════════════════════════════
         var magOn = false, magZoom = 1.6, magRadius = 130, magBulge = 0.28;
+        // Lenses nailed to the canvas. Each stores a WORLD position, so it pans and
+        // zooms with the work rather than floating over the screen.
+        var magPins = [];   // { id, wx, wy, zoom, radius, bulge }
 
         function toggleMagnifier() {
             magOn = !magOn;
@@ -3992,7 +4019,77 @@
         // with no feedback and no repeats.
         var _magBuf = null, _magCtx = null;
 
+        // Drop the live lens onto the canvas at its current spot, or lift one off.
+        function pinMagnifier() {
+            if (!magOn) {
+                showConfirm({ title: '🔍 Lens is off',
+                    body: 'Turn the lens on first, position it over what you want to keep magnified, then pin it.',
+                    okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+            const m = _lastCanvasMouse;
+            if (!m || !m.over) return;
+            const rect = canvas.getBoundingClientRect();
+            const R = Math.round(magRadius);
+            let ox = R + 26, oy = -(R + 26);
+            if (m.x - rect.left + ox + R > canvas.width) ox = -(R + 26);
+            if (m.y - rect.top + oy - R < 0) oy = R + 26;
+            const sx = m.x - rect.left + ox, sy = m.y - rect.top + oy;
+            // screen -> world, so it stays over the same elements at any zoom
+            if (!magPins) magPins = [];
+            magPins.push({
+                id: Date.now() + Math.random(),
+                wx: (sx - camera.x) / camera.zoom,
+                wy: (sy - camera.y) / camera.zoom,
+                zoom: magZoom, radius: magRadius, bulge: magBulge
+            });
+            updateMagPinCount();
+            saveState(); draw();
+        }
+
+        function magPinAt(sx, sy) {
+            if (typeof magPins === 'undefined' || !magPins) return null;
+            for (let i = magPins.length - 1; i >= 0; i--) {
+                const p = magPins[i];
+                const cx = p.wx * camera.zoom + camera.x, cy = p.wy * camera.zoom + camera.y;
+                const R = p.radius * camera.zoom;
+                if (Math.hypot(sx - cx, sy - cy) <= R) return p;
+            }
+            return null;
+        }
+
+        function clearMagPins() {
+            if (!magPins || !magPins.length) return;
+            showConfirm({ title: '🔍 Remove pinned lenses',
+                body: 'Take all ' + magPins.length + ' pinned lens' + (magPins.length > 1 ? 'es' : '') + ' off the canvas?',
+                okText: 'Remove', danger: true,
+                onConfirm: () => { magPins = []; updateMagPinCount(); saveState(); draw(); } });
+        }
+
+        function updateMagPinCount() {
+            const el = document.getElementById('magPinCount');
+            if (!el) return;
+            const n = (typeof magPins !== 'undefined' && magPins) ? magPins.length : 0;
+            el.textContent = n ? n + ' pinned' : ''; el.style.color = '#00838F';
+        }
+
+        // Painted after the live lens, using the same per-pixel warp.
+        function drawPinnedLenses() {
+            // draw() runs during startup, before the declaration above has executed
+            if (typeof magPins === 'undefined' || !magPins || !magPins.length) return;
+            const rect = canvas.getBoundingClientRect();
+            magPins.forEach(p => {
+                const cx = Math.round(p.wx * camera.zoom + camera.x);
+                const cy = Math.round(p.wy * camera.zoom + camera.y);
+                const R = Math.round(p.radius * camera.zoom);
+                if (R < 8) return;
+                if (cx < -R || cy < -R || cx > canvas.width + R || cy > canvas.height + R) return;
+                magRender(cx, cy, R, p.zoom, p.bulge, true);
+            });
+        }
+
         function drawMagnifier() {
+            drawPinnedLenses();
             if (!magOn) return;
             const m = _lastCanvasMouse;
             if (!m || !m.over) return;
@@ -4005,9 +4102,14 @@
             if (m.y - rect.top + oy - R < 0) oy = R + 26;
             const cx = Math.round(m.x - rect.left + ox), cy = Math.round(m.y - rect.top + oy);
             if (cx < -R || cy < -R || cx > canvas.width + R || cy > canvas.height + R) return;
+            magRender(cx, cy, R, magZoom, magBulge, false);
+        }
+
+        // The lens itself. Shared by the live lens and every pinned one.
+        function magRender(cx, cy, R, zoomV, bulgeV, isPinned) {
 
             // region we need to READ from: the widest the lens can reach
-            const reach = Math.ceil(R / Math.max(1.01, magZoom) * (1 + magBulge)) + 2;
+            const reach = Math.ceil(R / Math.max(1.01, zoomV) * (1 + bulgeV)) + 2;
             const sx = cx - reach, sy = cy - reach, sw = reach * 2, sh = reach * 2;
 
             // clean copy of the source region — never sample the target we are painting
@@ -4028,7 +4130,7 @@
             const D = ctx.createImageData(R * 2, R * 2);
             const T = D.data;
             const cxr = R, cyr = R;                 // lens centre in destination space
-            const inv = 1 / magZoom;
+            const inv = 1 / zoomV;
 
             for (let y = 0; y < R * 2; y++) {
                 const dy = y - cyr;
@@ -4040,7 +4142,7 @@
 
                     const t = d / R;                          // 0 centre .. 1 rim
                     // inverse barrel: sample further out toward the rim
-                    const warp = 1 + magBulge * t * t * 0.42;
+                    const warp = 1 + bulgeV * t * t * 0.42;
                     const srcD = d * inv * warp;
                     const ang = Math.atan2(dy, dx);
                     const ux = Math.round(reach + Math.cos(ang) * srcD);
@@ -4068,12 +4170,12 @@
             // vignette
             const vg = ctx.createRadialGradient(cx, cy, R * 0.62, cx, cy, R);
             vg.addColorStop(0, 'rgba(0,0,0,0)');
-            vg.addColorStop(1, 'rgba(0,0,0,' + (0.08 + magBulge * 0.14) + ')');
+            vg.addColorStop(1, 'rgba(0,0,0,' + (0.08 + bulgeV * 0.14) + ')');
             ctx.fillStyle = vg; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
 
             // glass highlight
             const gl = ctx.createRadialGradient(cx - R * 0.34, cy - R * 0.38, 1, cx - R * 0.34, cy - R * 0.38, R * 0.85);
-            gl.addColorStop(0, 'rgba(255,255,255,' + (0.06 + magBulge * 0.05) + ')');
+            gl.addColorStop(0, 'rgba(255,255,255,' + (0.06 + bulgeV * 0.05) + ')');
             gl.addColorStop(0.55, 'rgba(255,255,255,0.02)');
             gl.addColorStop(1, 'rgba(255,255,255,0)');
             ctx.fillStyle = gl; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
@@ -4083,15 +4185,16 @@
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(10,14,18,.85)'; ctx.lineWidth = 5; ctx.stroke();
+            ctx.strokeStyle = isPinned ? 'rgba(0,131,143,.92)' : 'rgba(10,14,18,.85)'; ctx.lineWidth = 5; ctx.stroke();
             ctx.beginPath(); ctx.arc(cx, cy, R - 3, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(120,160,180,.30)'; ctx.lineWidth = 1.4; ctx.stroke();
             ctx.font = 'bold 11px Arial';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            const lbl = magZoom.toFixed(1) + '×';
+            const lbl = isPinned ? '📌 ' + zoomV.toFixed(1) + '×'
+                                 : zoomV.toFixed(1) + '×  ·  Shift+click to pin';
             const w = ctx.measureText(lbl).width;
             ctx.fillStyle = 'rgba(10,14,18,.8)';
-            ctx.fillRect(cx - w / 2 - 7, cy + R - 20, w + 14, 16);
+            ctx.fillRect(cx - w / 2 - 9, cy + R - 20, w + 18, 16);
             ctx.fillStyle = '#4FC3F7';
             ctx.fillText(lbl, cx, cy + R - 12);
             ctx.restore();
@@ -4112,14 +4215,21 @@
                        marginTop: el.style.marginTop, zIndex: el.style.zIndex } });
             document.body.appendChild(el);
             el.style.position = 'fixed';
-            el.style.left = Math.max(8, Math.min(r.left || 120, window.innerWidth - (r.width || 400) - 8)) + 'px';
-            el.style.top = '90px';
+            const _w = r.width || 400;
+            el.style.left = (el.id === 'pulseTab' || el.id === 'healthTab')
+                ? Math.max(8, (window.innerWidth - _w) / 2) + 'px'
+                : Math.max(8, Math.min(r.left || 120, window.innerWidth - _w - 8)) + 'px';
+            // 38px was tighter than the pills are tall, so they overlapped
+            el.style.top = (el.id === 'pulseTab' ? 14 : el.id === 'healthTab' ? 62 : 110) + 'px';
             el.style.right = 'auto'; el.style.transform = 'none';
             el.style.marginTop = '0'; el.style.zIndex = '99200';
         }
 
         var _zenParked = [];
         function zenFloatPanels(on) {
+            // A panel dragged out still belongs to the toolbar in the DOM, so hiding
+            // the toolbar hides it. Float by DOM parentage, not by where it appears.
+
             const ids = ['padPanel', 'calcPanel', 'calPanel', 'notesReader', 'assetDrawer',
                          'parserPanel', 'primerDock', 'dataPanel', 'healthTab', 'pulseTab', 'assetPanel'];
             if (on) {
@@ -4129,6 +4239,7 @@
                     if (!el) return;
                     const vis = el.style.display && el.style.display !== 'none';
                     if (!vis) return;
+                    if (el.parentNode === document.body) return;   // already floating
                     const r = el.getBoundingClientRect();
                     if (!r.width) return;
                     _zenParked.push({
@@ -4155,6 +4266,11 @@
                 });
                 _zenParked = [];
                 if (typeof reanchorAllPanels === 'function') reanchorAllPanels();
+                // a hand-placed drawer keeps the spot the operator chose
+                if (drawerFree && !drawerPinned) {
+                    const d2 = document.getElementById('assetDrawer');
+                    if (d2) { d2.style.position = 'fixed'; d2.style.right = 'auto'; d2.style.marginTop = '0'; }
+                }
             }
         }
 
@@ -4182,6 +4298,118 @@
                 setTimeout(() => { const x = document.getElementById('zenTip'); if (x) x.remove(); }, 3200);
             }
             draw();
+        }
+
+        // A read-only cartridge is READ ONLY. Its elements can be looked at and moved,
+        // but never deconstructed, regrouped, welded, watermarked, renamed or deleted.
+        function cartReadOnly(el) { return !!(el && el.cartLocked); }
+        function anyReadOnly(list) { return (list || []).some(cartReadOnly); }
+        function blockReadOnly(what) {
+            if (typeof showConfirm === 'function') showConfirm({
+                title: '🔒 Read Only',
+                body: 'This came from a read-only cartridge, so it cannot be ' + what + '.\n\n' +
+                      'Its author locked it on export. Ask them for an unlocked cartridge if you need to change it.',
+                okText: 'OK', danger: false, hideCancel: true });
+            return true;
+        }
+
+        // Drawer pin — anchors it into CANVAS space like the other panels, and lets it
+        // be dragged when the toolbar is hidden and there is nothing to dock to.
+        var drawerPinned = false, drawerFree = false, drawerAnchor = { x: 0, y: 0 };
+        function toggleDrawerPin() {
+            const p = document.getElementById('assetDrawer');
+            const b = document.getElementById('drawerPinBtn');
+            const rect = canvas.getBoundingClientRect(), r = p.getBoundingClientRect();
+            drawerPinned = !drawerPinned;
+            if (drawerPinned) {
+                drawerAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom,
+                                 y: (r.top - rect.top - camera.y) / camera.zoom };
+                p.style.position = 'fixed'; p.style.right = 'auto'; p.style.marginTop = '0';
+                b.textContent = '📌 Unpin'; b.style.background = '#FFB300'; b.style.color = '#000';
+                drawerSyncPinned();
+                ensurePinTracker();
+            } else {
+                b.textContent = '📌 Pin'; b.style.background = 'rgba(255,255,255,.25)'; b.style.color = '#fff';
+                if (typeof reanchorPanel === 'function' && !zenMode) reanchorPanel(p, { right: '0' });
+            }
+        }
+        function drawerSyncPinned() {
+            if (!drawerPinned) return;
+            const p = document.getElementById('assetDrawer');
+            const rect = canvas.getBoundingClientRect();
+            p.style.left = (rect.left + camera.x + drawerAnchor.x * camera.zoom) + 'px';
+            p.style.top = (rect.top + camera.y + drawerAnchor.y * camera.zoom) + 'px';
+        }
+
+        (function drawerDrag() {
+            const p = document.getElementById('assetDrawer'); if (!p) return;
+            const head = p.firstElementChild; if (!head) return;
+            head.style.cursor = 'move';
+            let dx = 0, dy = 0;
+            const mv = ev => {
+                p.style.left = Math.max(0, Math.min(ev.clientX - dx, window.innerWidth - 140)) + 'px';
+                p.style.top = Math.max(0, Math.min(ev.clientY - dy, window.innerHeight - 44)) + 'px';
+                p.style.right = 'auto';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            head.addEventListener('pointerdown', ev => {
+                if (drawerPinned) return;
+                if (/^(BUTTON|INPUT|SELECT)$/.test(ev.target.tagName)) return;
+                const r = p.getBoundingClientRect();
+                p.style.position = 'fixed'; p.style.marginTop = '0';
+                p.style.left = r.left + 'px'; p.style.top = r.top + 'px'; p.style.right = 'auto';
+                dx = ev.clientX - r.left; dy = ev.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+        })();
+
+        // One place that disarms every mode. Called by Escape, and safe to call at any
+        // time: each toggle is only invoked when its flag is actually set.
+        function cancelAllModes() {
+            const off = (flag, fn) => {
+                try { if (typeof flag !== 'undefined' && flag && typeof fn === 'function') fn(); } catch (e) {}
+            };
+            off(typeof lassoMode !== 'undefined' && lassoMode, toggleLasso);
+            off(typeof lineMode !== 'undefined' && lineMode, toggleLineMode);
+            off(typeof rectMode !== 'undefined' && rectMode, toggleRectMode);
+            off(typeof circleMode !== 'undefined' && circleMode, toggleCircleMode);
+            off(typeof triMode !== 'undefined' && triMode, toggleTriMode);
+            off(typeof arrowMode !== 'undefined' && arrowMode, toggleArrowMode);
+            off(typeof textMode !== 'undefined' && textMode, toggleTextMode);
+            off(typeof connectMode !== 'undefined' && connectMode, toggleConnectMode);
+            off(typeof simultaneousMode !== 'undefined' && simultaneousMode, toggleSimultaneousMode);
+            off(typeof cartridgeMode !== 'undefined' && cartridgeMode, toggleCartridgeMode);
+            off(typeof collectMode !== 'undefined' && collectMode, toggleCollectMode);
+            off(typeof branchMode !== 'undefined' && branchMode, toggleBranchMode);
+            off(typeof cartLinksMode !== 'undefined' && cartLinksMode, toggleCartLinks);
+            off(typeof cartEditMode !== 'undefined' && cartEditMode, toggleCartEditMode);
+            off(typeof portEditMode !== 'undefined' && portEditMode, togglePortEditMode);
+            off(typeof socketMode !== 'undefined' && socketMode, toggleSocketMode);
+            off(typeof fuseMode !== 'undefined' && fuseMode, toggleFuse);
+            off(typeof vFuseMode !== 'undefined' && vFuseMode, toggleVFuse);
+            off(typeof flagsMode !== 'undefined' && flagsMode, toggleFlagsMode);
+            off(typeof bgMoveMode !== 'undefined' && bgMoveMode, toggleBgMove);
+            off(typeof centerMode !== 'undefined' && centerMode, toggleCenterMode);
+            // in-progress gestures
+            if (typeof lassoRect !== 'undefined') lassoRect = null;
+            if (typeof pendingTextPos !== 'undefined') pendingTextPos = null;
+            if (typeof isDrawingShape !== 'undefined') isDrawingShape = false;
+            if (typeof drawStart !== 'undefined') drawStart = null;
+            const ti = document.getElementById('textInput');
+            if (ti) ti.style.display = 'none';
+            container.style.cursor = 'grab';
+        }
+
+        // Hide the Block Elements panel. Nothing draws it when it is display:none, so
+        // the browser stops laying it out and painting it entirely.
+        var blockPanelOn = true;
+        function toggleBlockPanel() {
+            blockPanelOn = !blockPanelOn;
+            const el = document.getElementById('imageList');
+            if (el) el.style.display = blockPanelOn ? 'block' : 'none';
+            const b = document.getElementById('blockPanelBtn');
+            if (b) { b.style.background = blockPanelOn ? '#5E35B1' : '#37474F';
+                     b.textContent = blockPanelOn ? '📋 Blocks' : '📋 Blocks: OFF'; }
         }
 
         function saveState() {
@@ -4657,6 +4885,49 @@
                 dragStart = { x: pos.x - background.x, y: pos.y - background.y };
                 return;
             }
+            // ▤ Cartridge / ⎔ Port editing is now a SINGLE click while the matching
+            // Edit mode is armed. Double-click belongs to the element dialogue, and
+            // sharing it meant one gesture did two different things.
+            if (e.button === 0) {
+                const _ce = getImageAtPoint(pos.x, pos.y);
+                if (_ce && !connectMode) {
+                    const k = elKind(_ce);
+                    const armed = (k === 'cartridge' && typeof cartEditMode !== 'undefined' && cartEditMode) ||
+                                  (k === 'port' && typeof portEditMode !== 'undefined' && portEditMode);
+                    if (armed) {
+                        e.preventDefault();
+                        if (_ce.editLocked) {
+                            showConfirm({ title: '🔒 Locked',
+                                body: 'This was loaded through a Port and its allowed elements cannot be edited. Only the original creator can change it.',
+                                okText: 'OK', danger: false, hideCancel: true });
+                        } else {
+                            openCartridgeEditor(_ce);
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // 🔍 Lens pinning happens AT THE CURSOR, because moving the mouse to a
+            // button would move the lens off whatever you wanted to keep.
+            //   Shift + click  — drop the lens here
+            //   Shift + click on a pinned lens — lift it off again
+            if (e.button === 0 && e.shiftKey && typeof magOn !== 'undefined') {
+                const _gr = canvas.getBoundingClientRect();
+                const _hit = (typeof magPinAt === 'function') ? magPinAt(e.clientX - _gr.left, e.clientY - _gr.top) : null;
+                if (_hit) {
+                    e.preventDefault();
+                    magPins = magPins.filter(x => x !== _hit);
+                    updateMagPinCount(); saveState(); draw();
+                    return;
+                }
+                if (magOn) {
+                    e.preventDefault();
+                    pinMagnifier();
+                    return;
+                }
+            }
+
             // Grab a ruler guide (canvas-relative coords, so it works when the canvas is offset/centred)
             {
                 const gr = canvas.getBoundingClientRect();
@@ -5010,7 +5281,7 @@
                 }
                 selectedImage.rotation = rot;
                 scheduleDraw();
-            } else if (isResizing && selectedImage) {
+            } else if (isResizing && selectedImage && !cartReadOnly(selectedImage)) {
                 // Scale by how far the cursor is from the element's CENTRE, relative to
                 // where it was when the drag began. The old version measured from the
                 // grab point (0 at mousedown) against the half-diagonal, which made
@@ -5407,22 +5678,6 @@
 
             const clickedImage = getImageAtPoint(pos.x, pos.y);
 
-            if (clickedImage && clickedImage.kind === 'cartridge' && typeof cartEditMode !== 'undefined' && cartEditMode && !connectMode) {
-                if (clickedImage.editLocked) {
-                    if (typeof showConfirm === 'function') showConfirm({ title: '🔒 Locked', body: 'This was loaded through a Port and its allowed elements cannot be edited. Only the original creator can change it.', okText: 'OK', danger: false, hideCancel: true });
-                } else {
-                    openCartridgeEditor(clickedImage);
-                }
-                return;
-            }
-            if (clickedImage && clickedImage.kind === 'port' && typeof portEditMode !== 'undefined' && portEditMode && !connectMode) {
-                if (clickedImage.editLocked) {
-                    if (typeof showConfirm === 'function') showConfirm({ title: '🔒 Locked', body: 'This was loaded through a Port and its allowed elements cannot be edited. Only the original creator can change it.', okText: 'OK', danger: false, hideCancel: true });
-                } else {
-                    openCartridgeEditor(clickedImage);
-                }
-                return;
-            }
             if (clickedImage && !connectMode) {
                 openNameModal(clickedImage, e.clientX, e.clientY);
             }
@@ -5526,7 +5781,10 @@
                 selectedGroup = [];
                 connectFrom = null;
                 mergeFrom = null;
-                if (lassoMode) toggleLasso();
+                // Escape cancels EVERY armed mode, not just the lasso. Each toggle is
+                // called through its own function so its button label and colour reset
+                // correctly — flipping the flag alone would leave the UI lying.
+                cancelAllModes();
                 updateImageList();
                 draw();
                 return;
@@ -5553,6 +5811,7 @@
                 if (vfid.size) images.forEach(el => { if (el.vFusionId && vfid.has(el.vFusionId)) kill.add(el); });
                 if (mfid.size) images.forEach(el => { if (el.fusionId && mfid.has(el.fusionId)) kill.add(el); });
 
+                if (anyReadOnly([...kill])) { blockReadOnly('deleted'); return; }
                 const ids = new Set([...kill].map(el => el.id));
                 connections = connections.filter(c => !ids.has(c.from) && !ids.has(c.to));
                 images = images.filter(img => !kill.has(img));
@@ -5573,7 +5832,7 @@
                 updateImageList();
                 updateDataString();
                 draw();
-            } else if (e.key === 'Enter' && selectedImage && !nameModalHoverMode &&
+            } else if (e.key === 'Enter' && selectedImage && !cartReadOnly(selectedImage) && !nameModalHoverMode &&
                        nameModal.style.display !== 'block') {
                 // Enter opens the highlighted element's dialogue
                 e.preventDefault();
@@ -7623,6 +7882,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function anyPinned() {
             if (typeof mediaPlayers !== 'undefined' && mediaPlayers.some(m => m.pinned)) return true;
             if (typeof docPanels !== 'undefined' && docPanels.some(d => d.pinned)) return true;
+            if (typeof drawerPinned !== 'undefined' && drawerPinned) return true;
             if (typeof calcPinned !== 'undefined' && calcPinned) return true;
             if (typeof chkPinned !== 'undefined' && chkPinned) return true;
             if (typeof helpPinned !== 'undefined' && helpPinned) return true;
@@ -7650,6 +7910,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (typeof helpPinned !== 'undefined' && helpPinned) helpSyncPinned();
                 if (typeof calPinned !== 'undefined' && calPinned) calSyncPinned();
                 if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
+                if (typeof drawerPinned !== 'undefined' && drawerPinned) drawerSyncPinned();
             }
             requestAnimationFrame(pinTick);
         }
@@ -7708,6 +7969,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 maxHistory: (typeof MAX_HISTORY !== 'undefined') ? MAX_HISTORY : 50,
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
+                magPins: (typeof magPins !== 'undefined') ? magPins : [],
                 calEvents: (typeof calEvents !== 'undefined') ? calEvents : [],
                 assetFolders: (typeof assetFolders !== 'undefined') ? assetFolders : [],
                 assetFolderView: (typeof assetFolderView !== 'undefined') ? assetFolderView : '*',
@@ -7724,6 +7986,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         verticalUI: (typeof verticalUI !== 'undefined') ? verticalUI : false,
                         infoCollapsed: (function () { const is = document.getElementById('infoSection'); return is ? (is.style.display === 'none') : false; })(),
                         vpanelOpacity: (function () { const v = document.getElementById('vpanel'); return v ? v.style.opacity : null; })(),
+                        blockPanelOn: (typeof blockPanelOn !== 'undefined') ? blockPanelOn : true,
                         blockPanel: (function () { const el = document.getElementById('imageList'); return el ? { left: el.style.left, top: el.style.top, right: el.style.right } : null; })(),
                         assetDrawerOpen: (typeof assetDrawerOpen !== 'undefined') ? assetDrawerOpen : false,
                         notesReaderOpen: (typeof notesReaderOpen !== 'undefined') ? notesReaderOpen : false,
@@ -7955,6 +8218,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }
                 if (typeof verticalUI !== 'undefined' && typeof toggleVerticalUI === 'function' && !!s.verticalUI !== !!verticalUI) toggleVerticalUI();
                 if (s.vpanelOpacity != null) { const v = document.getElementById('vpanel'); if (v) v.style.opacity = s.vpanelOpacity; }
+                if (typeof s.blockPanelOn === 'boolean' && typeof blockPanelOn !== 'undefined' && s.blockPanelOn !== blockPanelOn) toggleBlockPanel();
                 if (s.blockPanel) { const el = document.getElementById('imageList'); if (el) {
                     if (s.blockPanel.left) { el.style.left = s.blockPanel.left; el.style.right = 'auto'; if (typeof panelPosition !== 'undefined') panelPosition.x = parseInt(s.blockPanel.left, 10) || panelPosition.x; }
                     if (s.blockPanel.top) { let ty = parseInt(s.blockPanel.top, 10); if (!isNaN(ty)) { ty = Math.max(20, ty); el.style.top = ty + 'px'; if (typeof panelPosition !== 'undefined') panelPosition.y = ty; } }
@@ -8392,6 +8656,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     }));
                     flagDrag = engineData.flagDrag || {};
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
+                    if (typeof magPins !== 'undefined') { magPins = Array.isArray(engineData.magPins) ? engineData.magPins : []; updateMagPinCount(); }
                     if (typeof calEvents !== 'undefined') calEvents = Array.isArray(engineData.calEvents) ? engineData.calEvents : [];
                     if (engineData.recoveryMode && typeof setRecoveryMode === 'function') setRecoveryMode(engineData.recoveryMode);
                     if (engineData.maxHistory) { MAX_HISTORY = engineData.maxHistory; const hc = document.getElementById('histCap'); if (hc) hc.value = String(MAX_HISTORY); }
@@ -10125,7 +10390,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = (typeof magPins !== 'undefined' ? 'LENS' + magPins.length : '') + '|' + (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -13572,6 +13837,30 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 totalBytes += cBytes;
             }
 
+            // 🔍 Pinned lenses — canvas fixtures, so they are counted
+            if (typeof magPins !== 'undefined' && magPins && magPins.length) {
+                section('Pinned Lenses', magPins.length);
+                let lBytes = 0; magPins.forEach(p => lBytes += objBytes(p));
+                magPins.forEach((p, li) => {
+                    row(chip('🔍', '#e0f7fa'), 'Lens ' + (li + 1),
+                        p.zoom.toFixed(1) + '× · ' + Math.round(p.radius) + 'px · ' + formatBytes(objBytes(p)),
+                        'Pinned Lens', [
+                            ['Magnification', p.zoom.toFixed(1) + '×'],
+                            ['Radius', Math.round(p.radius) + ' px'],
+                            ['Barrel distortion', Math.round(p.bulge * 100) + '%'],
+                            ['World position', Math.round(p.wx) + ', ' + Math.round(p.wy)],
+                            ['Behaviour', 'anchored to canvas — pans and scales with the work'],
+                            ['Remove', 'Alt + click the lens'],
+                            ['Memory', formatBytes(objBytes(p))]
+                        ],
+                        () => { const r = canvas.getBoundingClientRect();
+                                camera.x = r.width / 2 - p.wx * camera.zoom;
+                                camera.y = r.height / 2 - p.wy * camera.zoom; draw(); },
+                        '#00838F');
+                });
+                totalBytes += lBytes;
+            }
+
             // ◈ Watermarks — burnt into the canvas, no longer elements, but still bytes
             if (typeof watermarks !== 'undefined' && watermarks && watermarks.length) {
                 section('Watermarks', watermarks.length);
@@ -13728,7 +14017,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
                 // right-docked: the asset drawer
                 const dr = document.getElementById('assetDrawer');
-                if (dr && typeof assetDrawerOpen !== 'undefined' && assetDrawerOpen) reanchorPanel(dr, { right: '0' });
+                if (dr && typeof assetDrawerOpen !== 'undefined' && assetDrawerOpen &&
+                    !drawerFree && !drawerPinned && !zenMode) reanchorPanel(dr, { right: '0' });
 
                 // left-docked pill: health
                 const ht = document.getElementById('healthTab');
@@ -14396,6 +14686,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         }
 
         function groupToAsset() {
+            if (anyReadOnly(selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []))) { blockReadOnly('grouped'); return; }
             if (!selectedGroup.length && selectedImage) selectedGroup = [selectedImage];
             if (!selectedGroup.length) {
                 const b = document.getElementById('assetDrawerBody');
@@ -14446,7 +14737,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             assetDrawerOpen = !assetDrawerOpen;
             hideDrawerTip();
             const dr = document.getElementById('assetDrawer');
-            if (assetDrawerOpen) reanchorPanel(dr, { right: '0' });
+            if (assetDrawerOpen && !zenMode) reanchorPanel(dr, { right: '0' });
+            if (assetDrawerOpen && typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(dr), 0);
             dr.style.display = assetDrawerOpen ? 'flex' : 'none';
             const b = document.getElementById('drawerBtn');
             if (b) b.textContent = assetDrawerOpen ? '▤ Asset Drawer ▲' : '▤ Asset Drawer ▼';
@@ -14525,7 +14817,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const d = document.createElement('div');
                 d.style.cssText = 'display:flex; align-items:center; gap:5px; padding:4px 10px; border-radius:13px; cursor:pointer; white-space:nowrap;' +
                     'font:11px Arial; font-weight:' + (on ? '700' : '400') + ';' +
-                    (on ? 'background:#FF6F00; color:#fff;' : 'background:#fff; color:#8d6e63; border:1px solid #ffcc80;');
+                    (on ? 'background:#FF6F00; color:#fff;'
+                        : (document.body.classList.contains('dark')
+                            ? 'background:#161b22; color:#8b949e; border:1px solid #30363d;'
+                            : 'background:#fff; color:#8d6e63; border:1px solid #ffcc80;'));
                 d.innerHTML = '<span>' + label + '</span><span style="opacity:.7; font-size:10px;">' + count(key) + '</span>';
                 d.onclick = () => { assetFolderView = key; renderAssetDrawer(); };
                 // drop an asset card onto a folder tab to file it
@@ -14569,8 +14864,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const add = document.createElement('div');
             add.textContent = '+ Folder';
             add.title = 'Create a folder, then drag asset cards onto it';
+            const _dk = document.body.classList.contains('dark');
             add.style.cssText = 'padding:4px 10px; border-radius:13px; cursor:pointer; white-space:nowrap;' +
-                'font:11px Arial; background:#fff; color:#8d6e63; border:1px dashed #ffb74d;';
+                'font:11px Arial; border:1px dashed ' + (_dk ? '#5d4037' : '#ffb74d') + ';' +
+                (_dk ? 'background:#161b22; color:#8b949e;' : 'background:#fff; color:#8d6e63;');
             add.onclick = () => {
                 // prompt() is blocked in embedded viewers, so use the engine's own modal
                 assetFolderPrompt('Folder ' + (assetFolders.length + 1), (nm) => {
@@ -14742,6 +15039,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
         // Break a grouped asset back into its individual elements
         function ungroupAsset(gp) {
+            if (cartReadOnly(gp)) { blockReadOnly('deconstructed'); return; }
             if (gp && gp.welded) { showConfirm({title:'⊕ Welded Asset', body:'This is a welded asset — it is permanent and cannot be deconstructed.', okText:'OK', danger:false, hideCancel:true}); return; }
             const parts = gp.parts || [];
             const c2 = Math.cos(gp.rotation || 0), s2 = Math.sin(gp.rotation || 0);
@@ -16211,6 +16509,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             }
             if (!pulseOn && _pulseDomObs) { _pulseDomObs.disconnect(); _pulseDomObs = null; _pulseDomCount = 0; }
             pt.style.display = pulseOn ? 'block' : 'none';
+            // opened while the toolbar is hidden? float it or it is invisible
+            if (pulseOn && typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(pt), 0);
             document.getElementById('pulseBtn').style.background = pulseOn ? '#00897B' : '#263238';
         }
 
@@ -16324,6 +16624,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 }
             }
             ht.style.display = healthOn ? 'block' : 'none';
+            // opened while the toolbar is hidden? float it or it is invisible
+            if (healthOn && typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(ht), 0);
             document.getElementById('healthBtn').style.background = healthOn ? '#43A047' : '#2E7D32';
         }
         setInterval(() => {
@@ -16347,6 +16649,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
         // Rebuild the current selection into a single grouped asset element
         function regroupSelection() {
+            if (anyReadOnly(selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []))) { blockReadOnly('regrouped'); return; }
             let sel = selectedGroup.length ? selectedGroup.slice() : (selectedImage ? [selectedImage] : []);
             if (sel.length < 2) { alert('Lasso two or more elements first, then click Regroup.'); return; }
             let L = Infinity, T = Infinity, R = -Infinity, B = -Infinity;
@@ -16824,6 +17127,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         // turn off afterward.
         // ============================================================
         function weldSocket() {
+            if (anyReadOnly(images.filter(e => e.cartLocked))) { blockReadOnly('welded'); return; }
             const socks = images.filter(im => isSocket(im) && (im.socketLinks || []).length > 0);
             if (!socks.length) { showConfirm({title:'⊕ Weld', body:'Plug at least one mesh or asset into a socket first, then Weld.', okText:'OK', danger:false, hideCancel:true}); return; }
             let sock = socks[0];
