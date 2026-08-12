@@ -4966,6 +4966,35 @@
             const a = _gsPts[0], b = _gsPts[_gsPts.length - 1];
             const dx = b.x - a.x, dy = b.y - a.y;
             const span = Math.sqrt(dx * dx + dy * dy);
+
+            // ── CIRCLE ────────────────────────────────────────────────────
+            // Measured, not guessed: sum the turn at every point. A full loop
+            // accumulates about 2π of rotation, and the sign tells you which way.
+            // A straight line accumulates almost none, so the two cannot be confused.
+            if (_gsPts.length > 12) {
+                let turn = 0, path = 0;
+                let lx = 0, ly = 0, have = false;
+                for (let i = 1; i < _gsPts.length; i++) {
+                    const vx = _gsPts[i].x - _gsPts[i - 1].x;
+                    const vy = _gsPts[i].y - _gsPts[i - 1].y;
+                    const len = Math.sqrt(vx * vx + vy * vy);
+                    if (len < 2) continue;
+                    path += len;
+                    if (have) {
+                        // signed angle between consecutive segments
+                        let ang = Math.atan2(lx * vy - ly * vx, lx * vx + ly * vy);
+                        turn += ang;
+                    }
+                    lx = vx; ly = vy; have = true;
+                }
+                const TAU = Math.PI * 2;
+                // a loop: enough total rotation, enough path, and ends near its start
+                if (Math.abs(turn) > TAU * 0.72 && path > 180 && span < path * 0.42) {
+                    // screen Y grows downward, so a positive turn reads as clockwise
+                    return { dir: turn > 0 ? 'cw' : 'ccw', span: span, turn: turn, at: a };
+                }
+            }
+
             if (span < 45) return null;                       // too short to be intentional
 
             // straightness: path length vs direct distance. 1.0 is a perfect line.
@@ -5010,6 +5039,18 @@
                 if (typeof usageRecord === 'function') usageRecord('Gesture ↑ Notes Reader', 'canvas');
                 toggleNotesReader();
                 gestureFlash('↑  Notations Reader');
+            } else if (g.dir === 'right') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture → Asset Drawer', 'canvas');
+                toggleAssetDrawer();
+                gestureFlash('→  Asset Drawer');
+            } else if (g.dir === 'left') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ← Scratch Pad', 'canvas');
+                togglePad();
+                gestureFlash('←  Scratch Pad');
+            } else if (g.dir === 'cw') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ↻ Zen', 'canvas');
+                toggleZen();
+                gestureFlash('↻  ' + (zenMode ? 'Interface hidden' : 'Interface restored'));
             }
             draw();
         }
@@ -5058,7 +5099,8 @@
             // live reading
             const g = gestureClassify();
             const label = g ? ({ down: '↓  Vector', up: '↑  Notations Reader',
-                                 left: '←  unassigned', right: '→  unassigned' })[g.dir]
+                                 right: '→  Asset Drawer', left: '←  Scratch Pad',
+                                 cw: '↻  Hide interface', ccw: '↺  unassigned' })[g.dir]
                             : 'GESTURE FIELD';
             ctx.font = 'bold 11px Arial';
             const w = ctx.measureText(label).width;
