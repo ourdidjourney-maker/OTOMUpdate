@@ -1719,6 +1719,7 @@
         // counting the moment the pointer reached the toolbar, which is exactly the
         // travel worth measuring.
         window.addEventListener('mousemove', (e) => {
+            if (!usageOn) { _odoX = null; return; }   // off means genuinely off
             if (_odoX !== null) {
                 const _dx = e.clientX - _odoX, _dy = e.clientY - _odoY;
                 const _d = Math.sqrt(_dx * _dx + _dy * _dy);
@@ -3236,6 +3237,8 @@
         }
 
         function recStatus() {
+            // writes into the toolbar; pointless on a hidden tab or in Zen
+            if (document.hidden || (typeof zenMode !== 'undefined' && zenMode)) return;
             const el = document.getElementById('recStatus');
             if (!el) return;
             const mode = recoveryMode === 'edit' ? 'on change'
@@ -4410,6 +4413,12 @@
             // Docked panels live INSIDE the toolbar, so hiding it hides them too.
             // Float any that are open, remembering where they were so they dock again.
             zenFloatPanels(zenMode);
+            if (!zenMode) {
+                // bring the toolbar readouts back up to date at once, rather than
+                // leaving them stale until their next 5s tick
+                if (typeof recStatus === 'function') recStatus();
+                if (typeof updateHistoryInfo === 'function') updateHistoryInfo();
+            }
             const t = document.getElementById('zenTip');
             if (zenMode && !t) {
                 const d = document.createElement('div');
@@ -4597,7 +4606,7 @@
             odoDPI = Math.max(48, Math.min(400, parseInt(v, 10) || 96));
             const el = document.getElementById('odoDpiVal');
             if (el) el.textContent = odoDPI + ' dpi';
-            renderUsage();
+            renderUsage(true);
         }
         var usageNight = false, usagePinned = false, usageAnchor = { x: 0, y: 0 };
         const p2 = () => document.getElementById('usePanel');
@@ -4611,6 +4620,9 @@
         }
 
         function usageRecord(label, source) {
+            // Nothing is recorded unless the tracker is switched on. No reason to spend
+            // work — or hold data — for an instrument nobody is looking at.
+            if (!usageOn) return;
             if (!label) return;
             const key = label.replace(/\s+/g, ' ').trim().slice(0, 40);
             if (!key) return;
@@ -4678,7 +4690,17 @@
             el.onmouseleave = () => { el.style.background = 'transparent'; _odoTip.style.display = 'none'; };
         }
 
-        function renderUsage() {
+        var _useSig = '';
+        function renderUsage(force) {
+            // The panel repaints on a 1.5s tick, but the tally rarely changes and only
+            // the odometer numbers move. Rebuilding the whole list — a full sort plus an
+            // innerHTML replacement — when nothing is different is pure waste.
+            if (!force) {
+                const sig = usageLog.size + '|' + odoClicks + '|' + Math.round(odoPixels) + '|' +
+                            Math.round(dragUnits) + '|' + odoDPI + '|' + (usageNight ? 1 : 0);
+                if (sig === _useSig) return;
+                _useSig = sig;
+            } else _useSig = '';
             const body = document.getElementById('useBody');
             const foot = document.getElementById('useFoot');
             if (!body) return;
@@ -4745,11 +4767,14 @@
         var _odoTick = null;
         function toggleUsage() {
             usageOn = !usageOn;
+            // record the switch-on itself, since the guards above would have blocked it
+            if (usageOn) { const r = usageLog.get('▮ Usage') || { n: 0, at: 0, src: 'ui' };
+                           r.n++; r.at = Date.now(); usageLog.set('▮ Usage', r); }
             const p = document.getElementById('usePanel');
             if (p) p.style.display = usageOn ? 'flex' : 'none';
             const b = document.getElementById('usageBtn');
             if (b) b.style.background = usageOn ? '#EF6C00' : '#455A64';
-            if (usageOn) { renderUsage(); clearInterval(_odoTick); _odoTick = setInterval(() => { if (usageOn && !document.hidden) renderUsage(); }, 1500); }
+            if (usageOn) { renderUsage(true); clearInterval(_odoTick); _odoTick = setInterval(() => { if (usageOn && !document.hidden) renderUsage(); }, 1500); }
             else { clearInterval(_odoTick); _odoTick = null; }
         }
 
@@ -4759,13 +4784,15 @@
             // and was silently dropped — the most common action in the engine was
             // the one thing not being counted.
             canvas.addEventListener('mousedown', (ev) => {
+                if (!usageOn) return;
                 const b = ev.button;
                 const mod = (ev.shiftKey ? 'Shift+' : '') + (ev.ctrlKey ? 'Ctrl+' : '') + (ev.altKey ? 'Alt+' : '');
                 const name = b === 0 ? 'Left click' : b === 1 ? 'Middle click' : b === 2 ? 'Right click' : 'Mouse ' + b;
                 usageRecord(mod + name + ' (canvas)', 'canvas');
             }, true);
-            canvas.addEventListener('dblclick', () => usageRecord('Double click (canvas)', 'canvas'), true);
+            canvas.addEventListener('dblclick', () => { if (usageOn) usageRecord('Double click (canvas)', 'canvas'); }, true);
             canvas.addEventListener('wheel', () => {
+                if (!usageOn) return;
                 // one entry for a burst of scrolling, not one per notch
                 clearTimeout(_wheelT);
                 _wheelT = setTimeout(() => usageRecord('Scroll / zoom (canvas)', 'canvas'), 260);
@@ -4774,17 +4801,19 @@
             // ONE listener for all 228 buttons. Capture phase so a handler that stops
             // propagation cannot hide the click from the tally.
             document.addEventListener('click', (ev) => {
+                if (!usageOn) return;
                 const lbl = usageLabelFor(ev.target);
                 if (lbl) usageRecord(lbl, 'ui');
             }, true);
             document.addEventListener('change', (ev) => {
+                if (!usageOn) return;
                 if (ev.target && ev.target.tagName === 'SELECT') {
                     const lbl = usageLabelFor(ev.target);
                     if (lbl) usageRecord(lbl, 'ui');
                 }
             }, true);
             const rb = document.getElementById('useResetBtn');
-            if (rb) rb.onclick = (ev) => { ev.stopPropagation(); usageLog = new Map(); usageLast = []; odoPixels = 0; odoMoves = 0; odoClicks = 0; dragUnits = 0; dragCount = 0; renderUsage(); };
+            if (rb) rb.onclick = (ev) => { ev.stopPropagation(); usageLog = new Map(); usageLast = []; odoPixels = 0; odoMoves = 0; odoClicks = 0; dragUnits = 0; dragCount = 0; renderUsage(true); };
 
             const op = document.getElementById('useOp');
             if (op) op.oninput = (ev) => { ev.stopPropagation(); p2().style.opacity = ev.target.value / 100; };
@@ -4898,6 +4927,7 @@
         // megabytes when it holds image elements, so it is measured rarely and cached.
         var _histBytes = 0, _histBytesAt = 0, _histBytesLen = -1;
         function updateHistoryInfo() {
+            if (document.hidden || (typeof zenMode !== 'undefined' && zenMode)) return;
             const el = document.getElementById('histInfo');
             if (!el) return;
             const now = Date.now();
@@ -6068,7 +6098,7 @@
                 saveState();
             }
 
-            if (isDragging && _dragWhat) {
+            if (usageOn && isDragging && _dragWhat) {
                 const _mx = _dragWhat.x - _dragFromX, _my = _dragWhat.y - _dragFromY;
                 const _md = Math.sqrt(_mx * _mx + _my * _my);
                 if (_md > 1) {
