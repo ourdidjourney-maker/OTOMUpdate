@@ -5304,18 +5304,24 @@
 
         function ugRenderList() {
             const body = document.getElementById('confirmModalBody');
-            if (!body || document.getElementById('confirmModalTitle').textContent !== '✎ Your gestures') return;
+            if (!body) return;
+            // The reset control is ALWAYS present, whether or not any gestures exist —
+            // it was previously hidden inside the populated branch, so with an empty
+            // library there was no way to restore the built-ins.
+            let html = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; padding-bottom:9px; border-bottom:1px solid #e0e0e0;">' +
+                '<span style="flex:1; font-size:12px; color:#666;">' + userGestures.length +
+                ' gesture' + (userGestures.length === 1 ? '' : 's') +
+                (userGestures.length ? ' · yours override the built-ins' : '') + '</span>' +
+                '<span id="ugResetAll" style="cursor:pointer; font-size:11px; padding:5px 11px; background:' +
+                (userGestures.length ? '#C62828' : '#BDBDBD') + '; color:#fff; border-radius:5px;">↺ Restore built-ins</span></div>';
+
             if (!userGestures.length) {
-                body.innerHTML = '<div style="color:#90A4AE; font-size:13px; padding:10px 0; line-height:1.6;">' +
+                body.innerHTML = html + '<div style="color:#90A4AE; font-size:13px; padding:6px 0; line-height:1.6;">' +
                     'You have not made any gestures yet.<br><br>' +
                     'Record one, draw the shape you want, then choose what it should do. ' +
                     'Your gesture takes priority over the built-in strokes, and the built-ins can be restored at any time.</div>';
                 return;
             }
-            let html = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:9px;">' +
-                '<span style="flex:1; font-size:12px; color:#666;">' + userGestures.length +
-                ' gesture' + (userGestures.length === 1 ? '' : 's') + ' · yours override the built-ins</span>' +
-                '<span id="ugResetAll" style="cursor:pointer; font-size:11px; padding:4px 10px; background:#C62828; color:#fff; border-radius:5px;">↺ Reset all</span></div>';
             html += '<div style="max-height:40vh; overflow:auto;">';
             userGestures.forEach((g, i) => {
                 html += '<div style="display:flex; align-items:center; gap:10px; padding:7px 9px; margin:5px 0; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:7px;">' +
