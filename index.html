@@ -3766,6 +3766,7 @@
 
         window.addEventListener('keydown', (e) => {
             if (e.key !== 'Shift') return;
+            if (!_shiftHeld) { _shiftHeld = true; draw(); }
             if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
             if (!gestureAllowed()) return;
             const m = _lastCanvasMouse;
@@ -3779,6 +3780,7 @@
         });
 
         window.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') { _shiftHeld = false; draw(); }
             if (e.key === 'Shift' && _gsActive) gestureEnd();
         });
         // a button going down mid-stroke means the operator wants to manipulate, not draw
@@ -4993,7 +4995,7 @@
         //   Shift + stroke UP     → open the Notations Reader
         // ═══════════════════════════════════════════════════════════════════
         var gestureOn = true;                 // master toggle
-        var _gsActive = false, _gsPts = [], _gsBox = null, _gsWorld = null, _mouseDown = false;
+        var _gsActive = false, _gsPts = [], _gsBox = null, _gsWorld = null, _mouseDown = false, _shiftHeld = false;
 
         function gestureStart(sx, sy, world) {
             _gsActive = true;
@@ -6209,6 +6211,55 @@
             return distanceSquared < r * r;
         }
 
+        // The handle was hit-testable but never drawn — there was no way to know where
+        // to put the cursor. Rendered at exactly the point the test uses.
+        function drawResizeHandle() {
+            if (!selectedImage) return;
+            const im = selectedImage;
+            if (typeof cartReadOnly === 'function' && cartReadOnly(im)) return;
+            const z = camera.zoom;
+            const cos = Math.cos(im.rotation), sin = Math.sin(im.rotation);
+            const hx = im.x + (im.width / 2) * cos - (im.height / 2) * sin;
+            const hy = im.y + (im.width / 2) * sin + (im.height / 2) * cos;
+
+            const live = !!_shiftHeld;
+            const r = 7 / z;
+            ctx.save();
+            ctx.setLineDash([]);
+            // the grab zone, so its true size is visible while Shift is held
+            if (live) {
+                ctx.beginPath();
+                ctx.arc(hx, hy, 15 / z, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(76,175,80,.14)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(76,175,80,.55)';
+                ctx.lineWidth = 1 / z;
+                ctx.setLineDash([4 / z, 3 / z]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            // the handle
+            ctx.beginPath();
+            ctx.arc(hx, hy, r, 0, Math.PI * 2);
+            ctx.fillStyle = live ? '#4CAF50' : 'rgba(76,175,80,.75)';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.6 / z;
+            ctx.stroke();
+            // diagonal arrows, so its purpose is unmistakable
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.4 / z;
+            const a = 3.4 / z;
+            ctx.beginPath();
+            ctx.moveTo(hx - a, hy - a); ctx.lineTo(hx + a, hy + a);
+            ctx.moveTo(hx + a, hy + a); ctx.lineTo(hx + a, hy + a * 0.1);
+            ctx.moveTo(hx + a, hy + a); ctx.lineTo(hx + a * 0.1, hy + a);
+            ctx.moveTo(hx - a, hy - a); ctx.lineTo(hx - a, hy - a * 0.1);
+            ctx.moveTo(hx - a, hy - a); ctx.lineTo(hx - a * 0.1, hy - a);
+            ctx.stroke();
+            ctx.restore();
+        }
+
         function isPointInResizeHandle(x, y, image) {
             const cos = Math.cos(image.rotation);
             const sin = Math.sin(image.rotation);
@@ -6944,9 +6995,12 @@
                     }
                 }
 
+                if (!cursorSet) { container.style.removeProperty('cursor'); canvas.style.removeProperty('cursor'); }
                 if (!cursorSet && e.shiftKey && selectedImage) {
                     if (isPointInResizeHandle(pos.x, pos.y, selectedImage)) {
-                        container.style.cursor = 'nwse-resize';
+                        // !important, or the canvas's own custom cursor rule wins
+                        container.style.setProperty('cursor', 'nwse-resize', 'important');
+                        canvas.style.setProperty('cursor', 'nwse-resize', 'important');
                         cursorSet = true;
                     }
                 }
@@ -9522,6 +9576,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             }
 
             // the lens samples the finished frame, so it must be the last thing drawn
+            drawResizeHandle();
             drawMagnifier();
             drawGestureField();
         }
