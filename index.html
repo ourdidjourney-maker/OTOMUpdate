@@ -3055,6 +3055,7 @@
                 camera = { x: 0, y: 0, zoom: 1 };
                 historyStack = [];
                 historyIndex = -1;
+                if (typeof seedHistory === 'function') seedHistory();
                 canvasSize = null;
                 try { layoutCanvas(); } catch (e) {}
 
@@ -3159,6 +3160,7 @@
 
                     // history is cleared for these: an undo must not resurrect them
                     historyStack = []; historyIndex = -1;
+                    if (typeof seedHistory === 'function') seedHistory();
 
                     if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
                     updateImageCount(); updateConnectionCount(); updateImageList(); draw();
@@ -5105,8 +5107,13 @@
                 gestureFlash('←  Scratch Pad');
             } else if (g.dir === 'ccw') {
                 if (typeof usageRecord === 'function') usageRecord('Gesture ↺ Undo', 'canvas');
+                const _before = historyIndex;
                 undo();
-                gestureFlash('↺  Undo');
+                // show how far back the chain actually goes, so a limit is visible
+                // rather than something the operator has to infer
+                gestureFlash(_before === historyIndex
+                    ? '↺  Nothing left to undo'
+                    : '↺  Undo   ' + historyIndex + ' of ' + (historyStack.length - 1) + ' remaining');
             } else if (g.dir === 'cw') {
                 if (typeof usageRecord === 'function') usageRecord('Gesture ↻ Zen', 'canvas');
                 toggleZen();
@@ -5132,6 +5139,50 @@
             if (!_gsActive || !_gsPts.length) return;
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // ── the compass: what each direction produces, drawn around the origin
+            // so the operator never has to remember the vocabulary
+            {
+                const o = _gsPts[0];
+                const R = 74;
+                const legend = [
+                    [ 0,  1, '↓', 'VECTOR'],
+                    [ 0, -1, '↑', 'NOTES'],
+                    [ 1,  0, '→', 'DRAWER'],
+                    [-1,  0, '←', 'SCRATCH']
+                ];
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                legend.forEach(([ux, uy, arrow, name]) => {
+                    const x = o.x + ux * R, y = o.y + uy * R;
+                    // spoke
+                    ctx.beginPath();
+                    ctx.moveTo(o.x + ux * 26, o.y + uy * 26);
+                    ctx.lineTo(o.x + ux * (R - 16), o.y + uy * (R - 16));
+                    ctx.strokeStyle = 'rgba(229,57,53,.30)';
+                    ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+                    ctx.stroke(); ctx.setLineDash([]);
+                    // tag
+                    const w = ctx.measureText(name).width + 22;
+                    ctx.fillStyle = 'rgba(20,6,6,.82)';
+                    ctx.fillRect(x - w / 2, y - 9, w, 18);
+                    ctx.strokeStyle = 'rgba(229,57,53,.55)'; ctx.lineWidth = 1;
+                    ctx.strokeRect(x - w / 2, y - 9, w, 18);
+                    ctx.fillStyle = '#FF8A80';
+                    ctx.fillText(arrow + '  ' + name, x, y);
+                });
+                // the two rotations, named at the corners
+                ctx.font = 'bold 9px Arial';
+                ctx.fillStyle = 'rgba(255,138,128,.85)';
+                ctx.fillText('↻ HIDE UI', o.x + 62, o.y - 48);
+                ctx.fillText('↺ UNDO', o.x - 62, o.y - 48);
+                // origin marker
+                ctx.beginPath(); ctx.arc(o.x, o.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#E53935'; ctx.fill();
+                ctx.beginPath(); ctx.arc(o.x, o.y, 22, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(229,57,53,.35)'; ctx.lineWidth = 1;
+                ctx.setLineDash([3, 4]); ctx.stroke(); ctx.setLineDash([]);
+            }
 
             let lx = Infinity, ly = Infinity, rx = -Infinity, by = -Infinity;
             _gsPts.forEach(p => { lx = Math.min(lx, p.x); ly = Math.min(ly, p.y);
@@ -5497,6 +5548,7 @@
         })();
 
         function saveState() {
+            if (!historyStack.length) seedHistory();
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
             if (typeof recTouch === 'function') recTouch();
             if (historyIndex < historyStack.length - 1) {
@@ -5570,6 +5622,16 @@
             el.style.color = _histBytes > 20000000 ? '#EF6C00' : '#90A4AE';
         }
         setInterval(updateHistoryInfo, 5000);
+
+        // The stack began empty, so the FIRST saveState recorded the canvas with the
+        // first element already on it. There was no state representing "before", which
+        // is why undo could never step past the first vector. Seeding an empty state
+        // gives the chain somewhere to return to.
+        function seedHistory() {
+            if (historyStack.length) return;
+            historyStack.push({ images: [], connections: [], connectionCounter: 1 });
+            historyIndex = 0;
+        }
 
         function undo() {
             if (historyIndex > 0) {
