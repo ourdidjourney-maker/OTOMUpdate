@@ -5270,6 +5270,7 @@
                 const nm = (document.getElementById('ugName').value || '').trim() || f.label;
                 userGestures.push({ id: Date.now() + Math.random(), name: nm, cmd: f.label,
                                     group: f.group, pts: _ugPending, made: Date.now() });
+                _ugDirSig = ''; _ugDirCache = null;      // compass picks up the new label
                 close();
                 saveState();
                 gestureFlash('✎  Saved: ' + nm);
@@ -5309,7 +5310,11 @@
                     'Your gesture takes priority over the built-in strokes, and the built-ins can be restored at any time.</div>';
                 return;
             }
-            let html = '<div style="max-height:44vh; overflow:auto;">';
+            let html = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:9px;">' +
+                '<span style="flex:1; font-size:12px; color:#666;">' + userGestures.length +
+                ' gesture' + (userGestures.length === 1 ? '' : 's') + ' · yours override the built-ins</span>' +
+                '<span id="ugResetAll" style="cursor:pointer; font-size:11px; padding:4px 10px; background:#C62828; color:#fff; border-radius:5px;">↺ Reset all</span></div>';
+            html += '<div style="max-height:40vh; overflow:auto;">';
             userGestures.forEach((g, i) => {
                 html += '<div style="display:flex; align-items:center; gap:10px; padding:7px 9px; margin:5px 0; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:7px;">' +
                     '<canvas data-ug="' + i + '" width="46" height="46" style="background:#0d1117; border-radius:5px; flex:0 0 auto;"></canvas>' +
@@ -5333,10 +5338,44 @@
                 });
                 x.stroke();
             });
+            const ra = body.querySelector('#ugResetAll');
+            if (ra) ra.onclick = () => {
+                if (!userGestures.length) return;
+                // a second, explicit confirmation — this discards the operator's own work
+                const n = userGestures.length;
+                if (window.confirm === undefined) { userGestures = []; ugRenderList(); return; }
+                const modal = document.getElementById('confirmModal');
+                const okB = document.getElementById('confirmOkBtn');
+                const caB = document.getElementById('confirmCancelBtn');
+                const savedBody = body.innerHTML;
+                document.getElementById('confirmModalTitle').textContent = '↺ Reset all gestures';
+                body.innerHTML = '<div style="font-size:13px; line-height:1.6; color:#333;">Delete all <b>' + n +
+                    '</b> of your gestures and restore every built-in stroke?<br><br>' +
+                    '<span style="color:#C62828;">This cannot be undone.</span></div>';
+                okB.textContent = 'Delete them all'; okB.style.background = '#C62828';
+                okB.onclick = () => {
+                    userGestures = [];
+                    _ugDirSig = ''; _ugDirCache = null;   // the compass must forget them too
+                    saveState();
+                    document.getElementById('confirmModalTitle').textContent = '✎ Your gestures';
+                    okB.textContent = 'Record a new gesture'; okB.style.background = '#00838F';
+                    okB.onclick = () => { modal.style.display = 'none'; ugStartRecording(); };
+                    ugRenderList();
+                    draw();
+                };
+                caB.onclick = () => {
+                    document.getElementById('confirmModalTitle').textContent = '✎ Your gestures';
+                    okB.textContent = 'Record a new gesture'; okB.style.background = '#00838F';
+                    okB.onclick = () => { modal.style.display = 'none'; ugStartRecording(); };
+                    ugRenderList();
+                };
+            };
+
             body.querySelectorAll('[data-ugdel]').forEach(el => {
                 el.onclick = () => {
                     userGestures.splice(parseInt(el.getAttribute('data-ugdel'), 10), 1);
-                    saveState(); ugRenderList();
+                    _ugDirSig = ''; _ugDirCache = null;   // compass reverts to the built-in
+                    saveState(); ugRenderList(); draw();
                 };
             });
         }
