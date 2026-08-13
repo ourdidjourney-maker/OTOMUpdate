@@ -156,6 +156,22 @@
             background: #E91E63;
         }
 
+        /* A plain white arrow vanishes on a light canvas and a dark one alike. This is
+           a mid-grey arrow with a contrasting outline, so it stays visible on both —
+           and on a cheap panel where the default cursor washes out entirely. */
+        #canvasContainer, #canvasContainer canvas {
+            cursor: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>\
+<path d='M4 2 L4 19 L8.4 15.1 L11.2 21.4 L14.1 20.1 L11.4 14 L17 13.6 Z'\
+ fill='%239AA5AD' stroke='%23111820' stroke-width='1.6' stroke-linejoin='round'/></svg>") 3 2, grab;
+        }
+        body.dark #canvasContainer, body.dark #canvasContainer canvas {
+            cursor: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>\
+<path d='M4 2 L4 19 L8.4 15.1 L11.2 21.4 L14.1 20.1 L11.4 14 L17 13.6 Z'\
+ fill='%23FFFFFF' stroke='%23000000' stroke-width='1.6' stroke-linejoin='round'/></svg>") 3 2, grab;
+        }
+
         #canvasContainer {
             position: absolute;
             top: 0;
@@ -533,6 +549,22 @@
             <div id="helpBody" style="flex:1 1 auto; overflow-y:auto; padding:20px 26px; color:#cfd8dc; font-size:13px; line-height:1.75;"></div>
         </div>
     </div>
+    <div id="pathPanel" style="display:none; position:fixed; right:22px; bottom:60px; width:420px; height:340px; min-width:260px; min-height:200px; resize:both; z-index:1756;
+         background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:12px;
+         box-shadow:0 16px 44px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif;">
+        <div id="pathHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; cursor:move; user-select:none; border-bottom:1px solid #26343d;">
+            <span id="pathPip" style="width:7px; height:7px; border-radius:50%; background:#26C6DA; box-shadow:0 0 7px #26C6DA;"></span>
+            <span style="font:700 10px Arial; letter-spacing:2px; color:#26C6DA; flex:1;">MOUSE PATH</span>
+            <button id="pathSnapBtn" title="Snapshot this schematic now" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">⚡</button>
+            <button id="pathSaveBtn" title="Export the schematic as a PNG image" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">⇩</button>
+            <button id="pathPinBtn" title="Pin to the canvas — moves and scales with your work" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">📌</button>
+            <input id="pathOp" type="range" min="25" max="100" value="100" title="Opacity" style="width:44px;">
+            <button id="pathClearBtn" title="Clear the path" style="margin:0; padding:3px 8px; font-size:10px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">↺</button>
+            <button onclick="togglePathTracker()" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">✕</button>
+        </div>
+        <canvas id="pathCanvas" style="display:block; flex:1 1 auto; min-height:0; background:#080b0f;"></canvas>
+        <div id="pathFoot" style="padding:5px 11px; border-top:1px solid #1b2530; font:10px ui-monospace,Consolas,monospace; color:#FFFFFF;"></div>
+    </div>
     <div id="usePanel" style="display:none; position:fixed; left:22px; bottom:60px; width:250px; height:300px; min-width:190px; min-height:140px; max-height:70vh; resize:both; z-index:1755;
          background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:12px;
          box-shadow:0 16px 44px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif;">
@@ -719,6 +751,7 @@
             <option value="90">90 fps</option>
         </select>
         <button onclick="capBenchmark()" title="Measure whether the cap actually helps on this machine" style="background:#455A64; font-size:11px; padding:6px 8px;">⏲ Test</button>
+        <button id="pathBtn" onclick="togglePathTracker()" title="Mouse Path — a live schematic of where the hand has been" style="background:#455A64; font-size:11px; padding:6px 9px;">⟿ Path</button>
         <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
         <button id="autoOpenBtn" onclick="toggleAutoOpen()" title="Auto Open: hover any element and its data dialogue opens, ready to edit" style="background:#455A64; font-size:11px; padding:6px 9px;">⇕ Auto Open</button>
         <button id="blockPanelBtn" onclick="toggleBlockPanel()" title="Show or hide the Block Elements panel" style="background:#5E35B1; font-size:11px; padding:6px 9px;">📋 Blocks</button>
@@ -1605,6 +1638,7 @@
                 { ico: '◉', label: 'Pulse',    accent: '#263238', run: () => togglePulse() },
                 { ico: '▤', label: 'Wire',     accent: '#37474F', run: () => toggleTicker() },
                 { ico: '▮', label: 'Usage',    accent: '#EF6C00', run: () => toggleUsage() },
+                { ico: '⟿', label: 'Path',     accent: '#00838F', run: () => togglePathTracker() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
                 { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
                 { ico: '⏲', label: 'Cap 60',   accent: '#00838F', run: () => setFrameCap(frameCap ? 0 : 60) },
@@ -1729,7 +1763,12 @@
         // counting the moment the pointer reached the toolbar, which is exactly the
         // travel worth measuring.
         window.addEventListener('mousemove', (e) => {
-            if (!usageOn) { _odoX = null; return; }   // off means genuinely off
+            // The path tracker is its OWN instrument and must not depend on the usage
+            // tracker being on. It sat after the early return below, so with Usage off
+            // it was never reached — the panel opened and simply stayed empty.
+            if (pathOn) pathTrack(e.clientX, e.clientY);
+
+            if (!usageOn) { _odoX = null; return; }   // odometer only: off means off
             if (_odoX !== null) {
                 const _dx = e.clientX - _odoX, _dy = e.clientY - _odoY;
                 const _d = Math.sqrt(_dx * _dx + _dy * _dy);
@@ -4686,6 +4725,9 @@
         }
 
         function usageRecord(label, source) {
+            // the path tracker stamps the action onto its schematic, independently of
+            // whether the usage tally itself is switched on
+            if (typeof pathStamp === 'function') pathStamp(label);
             // Nothing is recorded unless the tracker is switched on. No reason to spend
             // work — or hold data — for an instrument nobody is looking at.
             if (!usageOn) return;
@@ -4850,15 +4892,15 @@
             // and was silently dropped — the most common action in the engine was
             // the one thing not being counted.
             canvas.addEventListener('mousedown', (ev) => {
-                if (!usageOn) return;
+                if (!usageOn && !pathOn) return;
                 const b = ev.button;
                 const mod = (ev.shiftKey ? 'Shift+' : '') + (ev.ctrlKey ? 'Ctrl+' : '') + (ev.altKey ? 'Alt+' : '');
                 const name = b === 0 ? 'Left click' : b === 1 ? 'Middle click' : b === 2 ? 'Right click' : 'Mouse ' + b;
                 usageRecord(mod + name + ' (canvas)', 'canvas');
             }, true);
-            canvas.addEventListener('dblclick', () => { if (usageOn) usageRecord('Double click (canvas)', 'canvas'); }, true);
+            canvas.addEventListener('dblclick', () => { if (usageOn || pathOn) usageRecord('Double click (canvas)', 'canvas'); }, true);
             canvas.addEventListener('wheel', () => {
-                if (!usageOn) return;
+                if (!usageOn && !pathOn) return;
                 // one entry for a burst of scrolling, not one per notch
                 clearTimeout(_wheelT);
                 _wheelT = setTimeout(() => usageRecord('Scroll / zoom (canvas)', 'canvas'), 260);
@@ -4866,13 +4908,17 @@
 
             // ONE listener for all 228 buttons. Capture phase so a handler that stops
             // propagation cannot hide the click from the tally.
+            // These feed TWO instruments — the tally and the path schematic — so they
+            // must run when EITHER is on. Gating them on usageOn alone meant button
+            // clicks never reached usageRecord, and nothing was ever stamped onto the
+            // path unless the tally happened to be open too.
             document.addEventListener('click', (ev) => {
-                if (!usageOn) return;
+                if (!usageOn && !pathOn) return;
                 const lbl = usageLabelFor(ev.target);
                 if (lbl) usageRecord(lbl, 'ui');
             }, true);
             document.addEventListener('change', (ev) => {
-                if (!usageOn) return;
+                if (!usageOn && !pathOn) return;
                 if (ev.target && ev.target.tagName === 'SELECT') {
                     const lbl = usageLabelFor(ev.target);
                     if (lbl) usageRecord(lbl, 'ui');
@@ -5057,6 +5103,10 @@
                 if (typeof usageRecord === 'function') usageRecord('Gesture ← Scratch Pad', 'canvas');
                 togglePad();
                 gestureFlash('←  Scratch Pad');
+            } else if (g.dir === 'ccw') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ↺ Undo', 'canvas');
+                undo();
+                gestureFlash('↺  Undo');
             } else if (g.dir === 'cw') {
                 if (typeof usageRecord === 'function') usageRecord('Gesture ↻ Zen', 'canvas');
                 toggleZen();
@@ -5110,7 +5160,7 @@
             const g = gestureClassify();
             const label = g ? ({ down: '↓  Vector', up: '↑  Notations Reader',
                                  right: '→  Asset Drawer', left: '←  Scratch Pad',
-                                 cw: '↻  Hide interface', ccw: '↺  unassigned' })[g.dir]
+                                 cw: '↻  Hide interface', ccw: '↺  Undo' })[g.dir]
                             : 'GESTURE FIELD';
             ctx.font = 'bold 11px Arial';
             const w = ctx.measureText(label).width;
@@ -5121,6 +5171,330 @@
             ctx.fillText(label, lx + 8, ly - 11);
             ctx.restore();
         }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⟿ MOUSE PATH — a live schematic of where the hand has been.
+        //
+        // The line follows the cursor. Every time the mouse STOPS, a node is dropped
+        // and the next line begins from it. After ten seconds of stillness the whole
+        // schematic is snapshotted.
+        //
+        // Drawn into its own small canvas, not the work surface, and only while the
+        // panel is open. Points are capped so a long session cannot grow unbounded.
+        // ═══════════════════════════════════════════════════════════════════
+        var pathOn = false;
+        var pathPts = [];          // { x, y } screen positions, normalised at draw time
+        var pathNodes = [];        // indices in pathPts where the mouse came to rest
+        var pathSnaps = [];        // { at, pts, nodes, w, h }
+        var _pathLastMove = 0, _pathStopT = null, _pathSnapT = null, _pathMoving = false;
+        const PATH_MAX = 1200;     // hard cap on retained points
+        const PATH_STOP_MS = 220;  // stillness that counts as "stopped"
+        const PATH_SNAP_MS = 10000;
+
+        function togglePathTracker() {
+            pathOn = !pathOn;
+            const p = document.getElementById('pathPanel');
+            if (p) p.style.display = pathOn ? 'flex' : 'none';
+            const b = document.getElementById('pathBtn');
+            if (b) b.style.background = pathOn ? '#00838F' : '#455A64';
+            if (pathOn) {
+                _pathLastMove = 0; _pathMoving = false;
+                pathResize(); pathRender();
+            } else {
+                // cancel everything in flight; a timer must not wake a closed instrument
+                clearTimeout(_pathStopT); clearTimeout(_pathSnapT);
+                _pathStopT = null; _pathSnapT = null; _pathMoving = false;
+                // release the trail so nothing is retained while it is off
+                pathPts = []; pathNodes = [];
+            }
+        }
+
+        function pathResize() {
+            const c = document.getElementById('pathCanvas');
+            if (!c) return;
+            const r = c.getBoundingClientRect();
+            if (!r.width) return;
+            if (c.width !== Math.round(r.width) || c.height !== Math.round(r.height)) {
+                c.width = Math.round(r.width);
+                c.height = Math.round(r.height);
+            }
+        }
+
+        // called from the existing window mousemove
+        function pathTrack(x, y) {
+            if (!pathOn) return;
+            pathPts.push({ x: x, y: y });
+            if (pathPts.length > PATH_MAX) {
+                pathPts.shift();
+                pathNodes = pathNodes.map(n => ({ i: n.i - 1, t: n.t })).filter(n => n.i >= 0);
+            }
+            _pathLastMove = Date.now();
+            _pathMoving = true;
+
+            // a node is dropped the moment the hand comes to rest
+            clearTimeout(_pathStopT);
+            _pathStopT = setTimeout(() => {
+                if (!pathOn) return;          // toggled off while this was pending
+                _pathMoving = false;
+                const last = pathPts[pathPts.length - 1];
+                if (last) {
+                    pathNodes.push({ i: pathPts.length - 1, t: '' });   // a pause, unlabelled
+                    pathRender();
+                }
+                // and the schematic is snapshotted after ten seconds of stillness
+                clearTimeout(_pathSnapT);
+                _pathSnapT = setTimeout(pathSnapshot, PATH_SNAP_MS - PATH_STOP_MS);
+            }, PATH_STOP_MS);
+
+            pathRender();
+        }
+
+        // A node is no longer just "the hand paused here" — it records WHAT happened
+        // there. Clicking a control stamps its name onto the path at that point, so the
+        // schematic reads as a sequence of actions rather than a bare trail.
+        function pathStamp(label) {
+            if (!pathOn || !label) return;
+            const m = _lastCanvasMouse;
+            const x = m ? m.x : (_odoX || 0), y = m ? m.y : (_odoY || 0);
+            pathPts.push({ x: x, y: y });
+            if (pathPts.length > PATH_MAX) {
+                pathPts.shift();
+                pathNodes = pathNodes.map(n => ({ i: n.i - 1, t: n.t })).filter(n => n.i >= 0);
+            }
+            pathNodes.push({ i: pathPts.length - 1, t: pathLabel(label) });
+            pathRender();
+        }
+
+        // Fit a control's name to the panel: first meaningful word, symbols dropped.
+        function pathLabel(s) {
+            let t = String(s).replace(/[⏏◈⚑▤◉⟿⇕⌘🔍📋⏲⏻▮📅🧮✎♥📊🌐▶⛃🕘⇪⤺⚡☠🗑📂💾↶↷⊞⊟◎⛓⚯⊕◯△➤─▭]/g, '').trim();
+            t = t.split(/[\/(:]/)[0].trim();          // "Upload Coding Block/Element" -> "Upload Coding Block"
+            const w = t.split(/\s+/).filter(Boolean);
+            if (!w.length) return String(s).slice(0, 10);
+            if (w.length === 1) return w[0].slice(0, 12);
+            // two words if they are short, otherwise just the first
+            const two = w[0] + ' ' + w[1];
+            return (two.length <= 13 ? two : w[0]).slice(0, 13);
+        }
+
+        // Export the schematic at 2x for a clean, legible image. Rendered fresh onto an
+        // offscreen canvas with a title block, rather than grabbing the live panel — so
+        // the file is a proper record, not a screenshot.
+        function pathExport() {
+            const src = document.getElementById('pathCanvas');
+            if (!src) return;
+            const S = 2, PADT = 46;
+            const out = document.createElement('canvas');
+            out.width = src.width * S;
+            out.height = src.height * S + PADT * S;
+            const g = out.getContext('2d');
+
+            g.fillStyle = '#080b0f';
+            g.fillRect(0, 0, out.width, out.height);
+
+            // title block
+            g.fillStyle = '#0d1117';
+            g.fillRect(0, 0, out.width, PADT * S);
+            g.fillStyle = '#26C6DA';
+            g.font = 'bold ' + (11 * S) + 'px Arial';
+            g.textBaseline = 'middle';
+            g.fillText('OTOM  ·  MOUSE PATH SCHEMATIC', 14 * S, 16 * S);
+            const acts = pathNodes.filter(n => n.t).length;
+            g.fillStyle = '#FFFFFF';
+            g.font = (9 * S) + 'px ui-monospace, Consolas, monospace';
+            g.fillText(new Date().toLocaleString() + '   ·   ' + pathNodes.length + ' nodes   ·   ' +
+                       acts + ' actions   ·   ' + pathPts.length + ' points', 14 * S, 33 * S);
+            g.strokeStyle = '#26343d'; g.lineWidth = 1 * S;
+            g.beginPath(); g.moveTo(0, PADT * S); g.lineTo(out.width, PADT * S); g.stroke();
+
+            // the schematic itself, scaled up
+            g.imageSmoothingEnabled = false;
+            g.drawImage(src, 0, PADT * S, out.width, src.height * S);
+
+            const stamp = new Date();
+            const p2 = n => String(n).padStart(2, '0');
+            const name = 'OTOM_path_' + stamp.getFullYear() + p2(stamp.getMonth() + 1) + p2(stamp.getDate()) +
+                         '_' + p2(stamp.getHours()) + p2(stamp.getMinutes()) + p2(stamp.getSeconds()) + '.png';
+            out.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = name;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        var pathPinned = false, pathAnchor = { x: 0, y: 0 };
+        function pathSyncPinned() {
+            if (!pathPinned) return;
+            const p = document.getElementById('pathPanel');
+            if (!p) return;
+            const rect = canvas.getBoundingClientRect();
+            p.style.left = (rect.left + camera.x + pathAnchor.x * camera.zoom) + 'px';
+            p.style.top = (rect.top + camera.y + pathAnchor.y * camera.zoom) + 'px';
+        }
+
+        function pathSnapshot() {
+            if (!pathOn) return;              // never fire for a closed instrument
+            if (!pathPts.length) return;
+            const c = document.getElementById('pathCanvas');
+            pathSnaps.push({
+                at: Date.now(),
+                pts: pathPts.slice(),
+                nodes: pathNodes.slice(),
+                w: c ? c.width : 300, h: c ? c.height : 200
+            });
+            if (pathSnaps.length > 20) pathSnaps.shift();
+            const pip = document.getElementById('pathPip');
+            if (pip) {
+                pip.style.background = '#FFB74D'; pip.style.boxShadow = '0 0 9px #FFB74D';
+                setTimeout(() => { pip.style.background = '#26C6DA'; pip.style.boxShadow = '0 0 7px #26C6DA'; }, 1200);
+            }
+            pathRender();
+        }
+
+        function pathClear() {
+            pathPts = []; pathNodes = [];
+            clearTimeout(_pathStopT); clearTimeout(_pathSnapT);
+            pathRender();
+        }
+
+        function pathRender() {
+            if (!pathOn) return;
+            const c = document.getElementById('pathCanvas');
+            if (!c) return;
+            pathResize();
+            const g = c.getContext('2d');
+            const W = c.width, H = c.height;
+            g.clearRect(0, 0, W, H);
+            g.fillStyle = '#080b0f';
+            g.fillRect(0, 0, W, H);
+
+            // faint reference grid, same language as the engine's own
+            g.strokeStyle = 'rgba(38,198,218,.06)';
+            g.lineWidth = 1;
+            for (let x = 0; x < W; x += 30) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+            for (let y = 0; y < H; y += 30) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+
+            const foot = document.getElementById('pathFoot');
+            if (!pathPts.length) {
+                if (foot) foot.textContent = 'waiting for movement';
+                return;
+            }
+
+            // the whole screen maps into the panel, so the shape is a true schematic
+            const sx = W / Math.max(1, window.innerWidth);
+            const sy = H / Math.max(1, window.innerHeight);
+            const s = Math.min(sx, sy);
+            const ox = (W - window.innerWidth * s) / 2;
+            const oy = (H - window.innerHeight * s) / 2;
+            const P = i => ({ x: ox + pathPts[i].x * s, y: oy + pathPts[i].y * s });
+
+            // the travelled line, fading toward the oldest points
+            for (let i = 1; i < pathPts.length; i++) {
+                const a = P(i - 1), b = P(i);
+                const age = i / pathPts.length;
+                g.strokeStyle = 'rgba(38,198,218,' + (0.10 + age * 0.75).toFixed(3) + ')';
+                g.lineWidth = 1 + age * 1.2;
+                g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+            }
+
+            // a node wherever the hand came to rest
+            g.font = 'bold 9px Arial';
+            g.textBaseline = 'middle';
+            pathNodes.forEach((nd, n) => {
+                const idx = nd.i;
+                if (idx < 0 || idx >= pathPts.length) return;
+                const p = P(idx);
+                const fresh = n === pathNodes.length - 1;
+                const act = !!nd.t;                       // a labelled node is an ACTION
+                g.beginPath();
+                g.arc(p.x, p.y, act ? 5 : (fresh ? 4.5 : 3), 0, Math.PI * 2);
+                g.fillStyle = act ? '#FFB74D' : (fresh ? '#FFFFFF' : '#26C6DA');
+                g.fill();
+                if (act) {
+                    g.beginPath(); g.arc(p.x, p.y, 9, 0, Math.PI * 2);
+                    g.strokeStyle = 'rgba(255,183,77,.5)'; g.lineWidth = 1.4; g.stroke();
+                }
+
+                if (!nd.t) return;
+                // the stamp, kept inside the panel
+                const tw = g.measureText(nd.t).width;
+                let lx = p.x + 11, ly = p.y - 11;
+                if (lx + tw + 10 > W) lx = p.x - tw - 21;
+                if (ly < 10) ly = p.y + 13;
+                g.fillStyle = 'rgba(10,14,18,.88)';
+                g.fillRect(lx - 4, ly - 7, tw + 8, 14);
+                g.strokeStyle = 'rgba(255,183,77,.55)'; g.lineWidth = 1;
+                g.strokeRect(lx - 4, ly - 7, tw + 8, 14);
+                g.fillStyle = '#FFD9A0';
+                g.textAlign = 'left';
+                g.fillText(nd.t, lx, ly);
+            });
+
+            // the live head
+            if (_pathMoving) {
+                const h2 = P(pathPts.length - 1);
+                g.beginPath(); g.arc(h2.x, h2.y, 3, 0, Math.PI * 2);
+                g.fillStyle = '#FFFFFF'; g.fill();
+            }
+
+            if (foot) {
+                const acts = pathNodes.filter(n => n.t).length;
+                foot.textContent = pathNodes.length + ' nodes · ' + acts + ' actions · ' + pathPts.length + ' pts' +
+                    (pathSnaps.length ? ' · ' + pathSnaps.length + ' snapshot' + (pathSnaps.length > 1 ? 's' : '') : '') +
+                    (_pathMoving ? ' · moving' : ' · still');
+            }
+        }
+
+        (function pathInit() {
+            const sb = document.getElementById('pathSnapBtn');
+            if (sb) sb.onclick = (e) => { e.stopPropagation(); pathSnapshot(); };
+            const cb = document.getElementById('pathClearBtn');
+            if (cb) cb.onclick = (e) => { e.stopPropagation(); pathClear(); };
+
+            const xb = document.getElementById('pathSaveBtn');
+            if (xb) xb.onclick = (e) => { e.stopPropagation(); pathExport(); };
+
+            const op = document.getElementById('pathOp');
+            if (op) op.oninput = (e) => { e.stopPropagation();
+                document.getElementById('pathPanel').style.opacity = e.target.value / 100; };
+
+            const pb = document.getElementById('pathPinBtn');
+            if (pb) pb.onclick = (e) => {
+                e.stopPropagation();
+                const el = document.getElementById('pathPanel');
+                const rect = canvas.getBoundingClientRect(), r = el.getBoundingClientRect();
+                pathPinned = !pathPinned;
+                if (pathPinned) {
+                    pathAnchor = { x: (r.left - rect.left - camera.x) / camera.zoom,
+                                   y: (r.top - rect.top - camera.y) / camera.zoom };
+                    el.style.right = 'auto'; el.style.bottom = 'auto'; el.style.resize = 'none';
+                    pb.style.background = '#FFB300'; pb.style.color = '#000';
+                    pathSyncPinned();
+                    if (typeof ensurePinTracker === 'function') ensurePinTracker();
+                } else {
+                    el.style.resize = 'both';
+                    pb.style.background = 'rgba(38,198,218,.14)'; pb.style.color = '#26C6DA';
+                }
+            };
+
+            const p = document.getElementById('pathPanel'), head = document.getElementById('pathHead');
+            if (!p || !head) return;
+            let dx = 0, dy = 0;
+            const mv = e2 => {
+                p.style.left = Math.max(0, Math.min(e2.clientX - dx, window.innerWidth - 120)) + 'px';
+                p.style.top = Math.max(0, Math.min(e2.clientY - dy, window.innerHeight - 44)) + 'px';
+                p.style.right = 'auto'; p.style.bottom = 'auto';
+            };
+            const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); };
+            head.addEventListener('pointerdown', e2 => {
+                if (/^(BUTTON|INPUT|SELECT)$/.test(e2.target.tagName)) return;
+                const r = p.getBoundingClientRect();
+                dx = e2.clientX - r.left; dy = e2.clientY - r.top;
+                window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+            });
+        })();
 
         function saveState() {
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
@@ -8737,6 +9111,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (typeof docPanels !== 'undefined' && docPanels.some(d => d.pinned)) return true;
             if (typeof drawerPinned !== 'undefined' && drawerPinned) return true;
             if (typeof usagePinned !== 'undefined' && usagePinned) return true;
+            if (typeof pathPinned !== 'undefined' && pathPinned) return true;
             if (typeof calcPinned !== 'undefined' && calcPinned) return true;
             if (typeof chkPinned !== 'undefined' && chkPinned) return true;
             if (typeof helpPinned !== 'undefined' && helpPinned) return true;
@@ -8766,6 +9141,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (typeof docPanels !== 'undefined' && docPanels.length) syncDocPanels();
                 if (typeof drawerPinned !== 'undefined' && drawerPinned) drawerSyncPinned();
                 if (typeof usagePinned !== 'undefined' && usagePinned) usageSyncPinned();
+                if (typeof pathPinned !== 'undefined' && pathPinned) pathSyncPinned();
             }
             requestAnimationFrame(pinTick);
         }
