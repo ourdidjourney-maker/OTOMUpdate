@@ -14432,6 +14432,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const nr = document.getElementById('notesReader');
             if (notesReaderOpen) reanchorPanel(nr, { left: '50%', transform: 'translateX(-50%)' });
             nr.style.display = notesReaderOpen ? 'flex' : 'none';
+            // The reader lives inside the toolbar, so in Zen it opened into a hidden
+            // container and was invisible. Every other docked panel already floats
+            // itself here; this one was simply missed.
+            if (notesReaderOpen && typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(nr), 0);
             const b = document.getElementById('notesReaderBtn');
             if (b) b.style.background = notesReaderOpen ? '#01579B' : '#0288D1';
             if (notesReaderOpen) renderNotesReader();
