@@ -710,6 +710,15 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <select id="capSel" onchange="setFrameCap(this.value)" title="Frame cap. On a high-refresh screen this gives the engine a bigger time budget per frame — usually smoother on a slower machine, not slower." style="font-size:11px; padding:4px 5px; border-radius:5px;">
+            <option value="0">⏲ Cap: OFF</option>
+            <option value="30">30 fps (half of 60Hz)</option>
+            <option value="45">45 fps</option>
+            <option value="60">60 fps</option>
+            <option value="72">72 fps (half of 144Hz)</option>
+            <option value="90">90 fps</option>
+        </select>
+        <button onclick="capBenchmark()" title="Measure whether the cap actually helps on this machine" style="background:#455A64; font-size:11px; padding:6px 8px;">⏲ Test</button>
         <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
         <button id="autoOpenBtn" onclick="toggleAutoOpen()" title="Auto Open: hover any element and its data dialogue opens, ready to edit" style="background:#455A64; font-size:11px; padding:6px 9px;">⇕ Auto Open</button>
         <button id="blockPanelBtn" onclick="toggleBlockPanel()" title="Show or hide the Block Elements panel" style="background:#5E35B1; font-size:11px; padding:6px 9px;">📋 Blocks</button>
@@ -824,21 +833,21 @@
             <span style="display:inline-flex; align-items:center; gap:11px;">
                 <span style="display:inline-flex; align-items:center; gap:5px;">
                     <span id="pulseCpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
-                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">CPU</span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">CPU</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
                     <span id="pulseMem" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
-                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">MEM</span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">MEM</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
                     <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
-                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">GPU</span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">GPU</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
                     <span id="pulseDom" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
-                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#5b6b75;">DOM</span>
+                    <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">DOM</span>
                 </span>
-                <span id="pulseRate" style="font:9px 'Courier New',monospace; color:#37474F; letter-spacing:.5px;"></span>
+                <span id="pulseRate" style="font:10px 'Courier New',monospace; color:#FFFFFF; letter-spacing:.5px;"></span>
             </span>
         </div>
         <div id="healthTab" style="display:none; position:absolute; top:100%; left:0; margin-top:8px; width:200px; box-sizing:border-box; padding:6px 10px; border:2px solid #2E7D32; border-radius:9px; line-height:1.2; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,.18); font:bold 11px Arial; white-space:nowrap; overflow:hidden;">
@@ -1598,6 +1607,7 @@
                 { ico: '▮', label: 'Usage',    accent: '#EF6C00', run: () => toggleUsage() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
                 { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
+                { ico: '⏲', label: 'Cap 60',   accent: '#00838F', run: () => setFrameCap(frameCap ? 0 : 60) },
                 { ico: '🧹', label: 'Flush',   accent: '#455A64', run: () => flushCache() },
                 { ico: '☠', label: 'Purge',   accent: '#B71C1C', run: () => purgeProtocol() },
                 { ico: '⏱', label: 'Auto Purge', accent: '#455A64', run: () => cycleAutoPurge() },
@@ -6683,11 +6693,109 @@
             placeFormula(parseFloat(raw), e.clientX, e.clientY);
         });
 
+        // ── FRAME CAP ─────────────────────────────────────────────────────
+        // requestAnimationFrame fires once per DISPLAY refresh, so a 144Hz screen
+        // gives the draw only 6.9ms per frame while a 60Hz screen gives 16.7ms. On a
+        // slower machine that means a draw which is comfortable on a workstation
+        // overruns every single frame on a fast-refresh laptop.
+        //
+        // Capping does not slow the engine down — it hands the draw a BIGGER budget by
+        // letting it use the time of the frames it skips. 144Hz capped to 72 turns a
+        // 6.9ms budget into 13.8ms, and a 9.2ms draw goes from overrunning to fitting.
+        var frameCap = 0;              // 0 = uncapped, else target fps
+        var _capLast = 0;
+
+        function capAllows(now) {
+            if (!frameCap) return true;
+            const need = 1000 / frameCap;
+            // 1.5ms tolerance, or a 72 cap on a 144Hz screen lands just past the
+            // boundary every other frame and delivers 48fps instead of 72
+            if (now - _capLast < need - 1.5) return false;
+            _capLast = now;
+            return true;
+        }
+
+        // Measure the cap rather than take it on trust. Samples real frame delivery
+        // for two seconds with the cap off, then two with it on, and reports both.
+        function capBenchmark() {
+            const original = frameCap;
+            const out = {};
+            const run = (cap, label, done) => {
+                setFrameCap(cap);
+                let frames = 0, over = 0, worst = 0, sum = 0;
+                const t0 = performance.now();
+                let stop = false;
+                const tick = () => {
+                    if (stop) return;
+                    frames++;
+                    const d = PERF.lastDrawMs || 0;
+                    sum += d;
+                    if (d > worst) worst = d;
+                    if (d > (PERF.budget || 16.7)) over++;
+                    requestAnimationFrame(tick);
+                };
+                requestAnimationFrame(tick);
+                // keep the canvas genuinely busy so the numbers mean something
+                const churn = setInterval(() => { camera.x += 1; draw(); camera.x -= 1; }, 8);
+                setTimeout(() => {
+                    stop = true; clearInterval(churn);
+                    const secs = (performance.now() - t0) / 1000;
+                    out[label] = {
+                        fps: Math.round(frames / secs),
+                        budget: (PERF.budget || 16.7),
+                        avg: sum / Math.max(1, frames),
+                        worst: worst,
+                        overPct: Math.round(over / Math.max(1, frames) * 100)
+                    };
+                    done();
+                }, 2000);
+            };
+
+            showConfirm({ title: '⏲ Measuring…',
+                body: 'Running four seconds of live measurement — two with the cap off, two with it on.\n\nDo not move the mouse.',
+                okText: 'OK', danger: false, hideCancel: true });
+
+            run(0, 'off', () => run(original || 72, 'on', () => {
+                setFrameCap(original);
+                const a = out.off, b = out.on;
+                const verdict = b.overPct < a.overPct
+                    ? '✅ The cap helps on this machine — fewer frames run over budget.'
+                    : (a.overPct === 0 ? 'ℹ This machine has headroom either way; the cap is not needed.'
+                                       : '⚠ No improvement measured here.');
+                showConfirm({
+                    title: '⏲ Frame cap — measured',
+                    body:
+                        'UNCAPPED\n' +
+                        '  delivered ' + a.fps + ' fps · budget ' + a.budget.toFixed(1) + ' ms\n' +
+                        '  draw averaged ' + a.avg.toFixed(1) + ' ms, worst ' + a.worst.toFixed(1) + ' ms\n' +
+                        '  ' + a.overPct + '% of frames ran over budget\n\n' +
+                        'CAPPED AT ' + (original || 72) + '\n' +
+                        '  delivered ' + b.fps + ' fps · budget ' + b.budget.toFixed(1) + ' ms\n' +
+                        '  draw averaged ' + b.avg.toFixed(1) + ' ms, worst ' + b.worst.toFixed(1) + ' ms\n' +
+                        '  ' + b.overPct + '% of frames ran over budget\n\n' + verdict,
+                    okText: 'Done', danger: false, hideCancel: true });
+            }));
+        }
+
+        function setFrameCap(v) {
+            frameCap = parseInt(v, 10) || 0;
+            _capLast = 0;
+            const b = document.getElementById('capBtn');
+            if (b) {
+                b.textContent = frameCap ? '⏲ Cap: ' + frameCap : '⏲ Cap: OFF';
+                b.style.background = frameCap ? '#00838F' : '#455A64';
+            }
+            const s = document.getElementById('capSel');
+            if (s && s.value !== String(frameCap)) s.value = String(frameCap);
+            draw();
+        }
+
         function scheduleDraw() {
             if (!drawScheduled) {
                 drawScheduled = true;
-                requestAnimationFrame(() => {
+                requestAnimationFrame((now) => {
                     drawScheduled = false;
+                    if (!capAllows(now)) { scheduleDraw(); return; }   // defer, don't drop
                     draw();
                 });
             }
@@ -8712,6 +8820,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 formulaLibrary: formulaLibrary.map(f => ({ id: f.id, title: f.title || '', text: f.text, notations: f.notations || '', agent: f.agent || '', ts: f.ts })),
                 flagDrag: flagDrag,
                 savedAssets: (typeof savedAssets !== 'undefined') ? savedAssets : [],
+                frameCap: (typeof frameCap !== 'undefined') ? frameCap : 0,
                 recoveryMode: (typeof recoveryMode !== 'undefined') ? recoveryMode : 'edit',
                 maxHistory: (typeof MAX_HISTORY !== 'undefined') ? MAX_HISTORY : 50,
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
@@ -9448,6 +9557,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         if (typeof renderUsage === 'function') renderUsage();
                     }
                     if (typeof calEvents !== 'undefined') calEvents = Array.isArray(engineData.calEvents) ? engineData.calEvents : [];
+                    if (typeof engineData.frameCap === 'number' && typeof setFrameCap === 'function') setFrameCap(engineData.frameCap);
                     if (engineData.recoveryMode && typeof setRecoveryMode === 'function') setRecoveryMode(engineData.recoveryMode);
                     if (engineData.maxHistory) { MAX_HISTORY = engineData.maxHistory; const hc = document.getElementById('histCap'); if (hc) hc.value = String(MAX_HISTORY); }
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
@@ -11208,10 +11318,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function healthSnapshot() {
             const M = performance.memory;
             const heapPct = M ? M.usedJSHeapSize / M.jsHeapSizeLimit : 0;
-            const fps = PERF.fps || 60, dt = PERF.lastDrawMs || 0;
+            // judge on ACTUAL repaints, not on display refreshes
+            const fps = PERF.drawFps || PERF.fps || 60, dt = PERF.lastDrawMs || 0;
+            const bud = PERF.budget || 16.7;
             let status;
-            if (fps < 24 || dt > 33 || heapPct > 0.85) status = 'Engine critical';
-            else if (fps < 45 || dt > 16.7 || heapPct > 0.6) status = 'Engine strained';
+            if (fps < 24 || dt > bud * 2 || heapPct > 0.85) status = 'Engine critical';
+            else if (fps < 45 || dt > bud || heapPct > 0.6) status = 'Engine strained';
             else status = 'Engine stable';
             // full element tally, broken down the way the operator thinks about it
             let vectors = 0, meshes = 0, groups = 0, images_ = 0, lines_ = 0,
@@ -15179,7 +15291,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         // ============================================================
         let perfOn = false;
         const PERF = {
-            refresh: 60, budget: 16.7, draws: 0, drawMs: 0, lastDrawMs: 0, maxDrawMs: 0, frames: 0, fps: 0, minFps: 999, maxFps: 0, hist: [], drawHist: [], started: performance.now(), longFrames: 0 };
+            refresh: 60, budget: 16.7, drawFps: 0, draws: 0, drawMs: 0, lastDrawMs: 0, maxDrawMs: 0, frames: 0, fps: 0, minFps: 999, maxFps: 0, hist: [], drawHist: [], started: performance.now(), longFrames: 0 };
         (function instrumentDraw() {
             const orig = window.draw;
             if (typeof orig !== 'function') return;
@@ -15310,6 +15422,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             }, 140);
         }
 
+        var _lastDrawCount = 0;
         (function perfLoop() {
             let last = performance.now(), acc = 0, fCount = 0;
             function tick(now) {
@@ -15323,7 +15436,16 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     // matters is how much of ONE frame the draw consumes, and that
                     // budget shrinks as the refresh rate rises.
                     if (PERF.fps > PERF.refresh) PERF.refresh = PERF.fps;
-                    PERF.budget = 1000 / Math.max(30, PERF.refresh);
+                    // PERF.fps counts rAF callbacks, which fire at the DISPLAY rate
+                    // whether or not the canvas drew. That is the refresh rate, not the
+                    // engine's throughput — it reported 144 while the canvas was only
+                    // repainting 25 times a second. drawFps counts real draws.
+                    PERF.drawFps = Math.round(((PERF.draws - _lastDrawCount) * 1000) / acc);
+                    _lastDrawCount = PERF.draws;
+                    // a cap hands the draw the time of the frames it skips, so the
+                    // effective budget is the CAP's interval, not the display's
+                    const _eff = (typeof frameCap !== 'undefined' && frameCap) ? frameCap : PERF.refresh;
+                    PERF.budget = 1000 / Math.max(20, _eff);
                     if (PERF.fps < PERF.minFps) PERF.minFps = PERF.fps;
                     if (PERF.fps > PERF.maxFps) PERF.maxFps = PERF.fps;
                     PERF.hist.push(PERF.fps); if (PERF.hist.length > 120) PERF.hist.shift();
@@ -15375,12 +15497,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const S = (t) => '<div style="color:#58a6ff;font-weight:bold;margin:9px 0 3px;border-bottom:1px solid #21262d;padding-bottom:2px;">' + t + '</div>';
             const R = (k, v, c) => '<div style="display:flex;justify-content:space-between;gap:14px;padding:1px 0;"><span style="color:#8b949e;flex:0 0 auto;white-space:nowrap;">' + k + '</span><span style="color:' + (c || '#c9d1d9') + ';text-align:right;flex:1 1 auto;word-break:break-word;">' + v + '</span></div>';
             const pct = (a, b) => b ? ((a / b) * 100).toFixed(1) + '%' : '—';
-            const fpsColor = PERF.fps >= 55 ? '#3fb950' : PERF.fps >= 30 ? '#d29922' : '#f85149';
+            const fpsColor = '#8b949e';   // refresh rate is informational, not a score
 
             let h = '';
             h += S('⚡ RENDER');
-            h += R('FPS (now / min / max)', PERF.fps + ' / ' + (PERF.minFps === 999 ? '—' : PERF.minFps) + ' / ' + PERF.maxFps, fpsColor);
-            h += R('Frame budget', (1000 / Math.max(1, PERF.fps)).toFixed(2) + ' ms / 16.67 ms');
+            h += R('Canvas repaints/sec', (PERF.drawFps || 0) + '  ← the real throughput',
+                (PERF.drawFps >= 55 ? '#3fb950' : PERF.drawFps >= 30 ? '#d29922' : '#f85149'));
+            h += R('Display refreshes/sec', PERF.fps + ' / ' + (PERF.minFps === 999 ? '—' : PERF.minFps) + ' / ' + PERF.maxFps, fpsColor);
             h += R('draw() last', PERF.lastDrawMs.toFixed(3) + ' ms');
             h += R('draw() avg', (PERF.draws ? PERF.drawMs / PERF.draws : 0).toFixed(3) + ' ms');
             h += R('draw() peak', PERF.maxDrawMs.toFixed(3) + ' ms', PERF.maxDrawMs > 16.7 ? '#f85149' : '#c9d1d9');
@@ -15436,6 +15559,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
             h += S('🌳 DOM');
             h += R('Display refresh', (PERF.refresh || 60) + ' Hz');
+            h += R('Frame cap', (typeof frameCap !== 'undefined' && frameCap)
+                ? frameCap + ' fps  (budget widened from ' + (1000 / (PERF.refresh || 60)).toFixed(1) + 'ms)'
+                : 'off — using the full display rate');
             h += R('Frame budget', (PERF.budget || 16.7).toFixed(1) + ' ms per frame');
             h += R('Draw uses', ((PERF.lastDrawMs || 0) / (PERF.budget || 16.7) * 100).toFixed(0) + '% of budget');
             h += R('Total nodes', document.getElementsByTagName('*').length);
@@ -17522,9 +17648,14 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             } else pulseRest('pulseDom');
 
             const r = document.getElementById('pulseRate');
-            if (r) r.textContent = (PERF.fps || 0) + 'fps@' + (PERF.refresh || 60) + 'Hz · ' +
-                (PERF.lastDrawMs || 0).toFixed(1) + '/' + (PERF.budget || 16.7).toFixed(1) + 'ms · ' +
+            if (r) {
+                const cap = (typeof frameCap !== 'undefined' && frameCap) ? ' ⏲' + frameCap : '';
+                const used = (PERF.lastDrawMs || 0) / (PERF.budget || 16.7) * 100;
+                r.textContent = (PERF.drawFps || 0) + ' repaints/s @' + (PERF.refresh || 60) + 'Hz' + cap + ' · ' +
+                    (PERF.lastDrawMs || 0).toFixed(1) + '/' + (PERF.budget || 16.7).toFixed(1) + 'ms (' +
+                    used.toFixed(0) + '%) · ' +
                 document.getElementsByTagName('*').length + ' nodes';
+            }
 
             _pulseRAF = requestAnimationFrame(pulseLoop);
         }
