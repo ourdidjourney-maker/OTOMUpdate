@@ -751,6 +751,7 @@
             <option value="90">90 fps</option>
         </select>
         <button onclick="capBenchmark()" title="Measure whether the cap actually helps on this machine" style="background:#455A64; font-size:11px; padding:6px 8px;">⏲ Test</button>
+        <button onclick="ugManager()" title="Your own gestures — record a stroke and choose what it does" style="background:#455A64; font-size:11px; padding:6px 9px;">✎ Gestures</button>
         <button id="pathBtn" onclick="togglePathTracker()" title="Mouse Path — a live schematic of where the hand has been" style="background:#455A64; font-size:11px; padding:6px 9px;">⟿ Path</button>
         <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
         <button id="autoOpenBtn" onclick="toggleAutoOpen()" title="Auto Open: hover any element and its data dialogue opens, ready to edit" style="background:#455A64; font-size:11px; padding:6px 9px;">⇕ Auto Open</button>
@@ -1639,6 +1640,7 @@
                 { ico: '▤', label: 'Wire',     accent: '#37474F', run: () => toggleTicker() },
                 { ico: '▮', label: 'Usage',    accent: '#EF6C00', run: () => toggleUsage() },
                 { ico: '⟿', label: 'Path',     accent: '#00838F', run: () => togglePathTracker() },
+                { ico: '✎', label: 'Gestures', accent: '#00838F', run: () => ugManager() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
                 { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
                 { ico: '⏲', label: 'Cap 60',   accent: '#00838F', run: () => setFrameCap(frameCap ? 0 : 60) },
@@ -5066,7 +5068,11 @@
             // dominant axis
             if (Math.abs(dy) > Math.abs(dx) * 1.6) return { dir: dy > 0 ? 'down' : 'up', span: span, straight: straight, at: a };
             if (Math.abs(dx) > Math.abs(dy) * 1.6) return { dir: dx > 0 ? 'right' : 'left', span: span, straight: straight, at: a };
-            return null;                                      // diagonal: unassigned
+            // diagonals: up-right and up-left, both requiring a genuine 45-degree run
+            if (dy < 0 && Math.abs(dx) > span * 0.45 && Math.abs(dy) > span * 0.45) {
+                return { dir: dx > 0 ? 'ne' : 'nw', span: span, straight: straight, at: a };
+            }
+            return null;                                      // other diagonals unassigned
         }
 
         function gestureEnd() {
@@ -5074,7 +5080,292 @@
             try { gestureResolve(); } catch (err) { gestureAbort(); }
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ✎ USER GESTURES — the operator's own strokes, their own meanings.
+        //
+        // A stroke is resampled to a fixed number of points, scaled into a unit box and
+        // centred, so size and screen position stop mattering — only SHAPE remains.
+        // Matching is then the average distance between corresponding points.
+        //
+        // A user gesture OVERRIDES a built-in when it matches better. Nothing is lost:
+        // the built-ins are always restorable.
+        // ═══════════════════════════════════════════════════════════════════
+        var userGestures = [];        // { id, name, cmd, pts:[{x,y}], made }
+        var _ugRecording = false, _ugPending = null;
+        const UG_N = 32;              // resample resolution
+        // Measured against real shapes: a sloppy repeat of the same stroke scores ~0.03,
+        // while genuinely different shapes sit at 0.35 and above. 0.28 separates them
+        // cleanly without demanding a perfect redraw.
+        const UG_THRESHOLD = 0.28;
+
+        // What a direction actually does right now. A user gesture whose shape reads as
+        // this direction overrides the built-in, so the compass must say so.
+        var _ugDirCache = null, _ugDirSig = '';
+        function ugLabelFor(dir, fallback) {
+            if (!userGestures.length) return fallback;
+            const sig = userGestures.length + ':' + userGestures.map(g => g.id).join(',');
+            if (sig !== _ugDirSig) { _ugDirSig = sig; _ugDirCache = {}; }
+            if (_ugDirCache[dir] !== undefined) return _ugDirCache[dir];
+
+            // build a canonical stroke for this direction and see which gesture wins
+            const S = 100, mk = (x0, y0, x1, y1) => {
+                const out = [];
+                for (let i = 0; i < 25; i++) out.push({ x: x0 + (x1 - x0) * i / 24, y: y0 + (y1 - y0) * i / 24 });
+                return out;
+            };
+            const CIRC = (cwise) => {
+                const out = [];
+                for (let i = 0; i < 40; i++) {
+                    const t = (cwise ? 1 : -1) * i / 39 * Math.PI * 2;
+                    out.push({ x: Math.cos(t) * S, y: Math.sin(t) * S });
+                }
+                return out;
+            };
+            const PROTO = {
+                down:  mk(0, 0, 0, S),   up:    mk(0, S, 0, 0),
+                right: mk(0, 0, S, 0),   left:  mk(S, 0, 0, 0),
+                ne:    mk(0, S, S, 0),   nw:    mk(S, S, 0, 0),
+                cw:    CIRC(true),       ccw:   CIRC(false)
+            };
+            const proto = PROTO[dir];
+            let label = fallback;
+            if (proto) {
+                const m = ugMatch(proto);
+                if (m) label = String(m.g.name).toUpperCase().slice(0, 14);
+            }
+            _ugDirCache[dir] = label;
+            return label;
+        }
+
+        function ugResample(pts) {
+            if (!pts || pts.length < 2) return null;
+            // total path length, then walk it at even intervals
+            let total = 0;
+            for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+            if (total < 1) return null;
+            const step = total / (UG_N - 1);
+            const out = [{ x: pts[0].x, y: pts[0].y }];
+            let d = 0;
+            const src = pts.slice();
+            for (let i = 1; i < src.length; i++) {
+                const seg = Math.hypot(src[i].x - src[i - 1].x, src[i].y - src[i - 1].y);
+                if (d + seg >= step && seg > 0) {
+                    const t = (step - d) / seg;
+                    const nx = src[i - 1].x + t * (src[i].x - src[i - 1].x);
+                    const ny = src[i - 1].y + t * (src[i].y - src[i - 1].y);
+                    out.push({ x: nx, y: ny });
+                    src.splice(i, 0, { x: nx, y: ny });
+                    d = 0;
+                } else d += seg;
+                if (out.length >= UG_N) break;
+            }
+            while (out.length < UG_N) out.push({ x: src[src.length - 1].x, y: src[src.length - 1].y });
+
+            // scale into a unit box and centre on the origin, so size and position
+            // stop mattering and only the shape is compared
+            let lx = Infinity, ly = Infinity, rx = -Infinity, by = -Infinity;
+            out.forEach(p => { lx = Math.min(lx, p.x); ly = Math.min(ly, p.y);
+                               rx = Math.max(rx, p.x); by = Math.max(by, p.y); });
+            const w = Math.max(1, rx - lx), hgt = Math.max(1, by - ly);
+            const s = 1 / Math.max(w, hgt);
+            const norm = out.map(p => ({ x: (p.x - lx) * s, y: (p.y - ly) * s }));
+            let cx = 0, cy = 0;
+            norm.forEach(p => { cx += p.x; cy += p.y; });
+            cx /= norm.length; cy /= norm.length;
+            return norm.map(p => ({ x: p.x - cx, y: p.y - cy }));
+        }
+
+        function ugDistance(a, b) {
+            if (!a || !b || a.length !== b.length) return Infinity;
+            let sum = 0;
+            for (let i = 0; i < a.length; i++) sum += Math.hypot(a[i].x - b[i].x, a[i].y - b[i].y);
+            return sum / a.length;
+        }
+
+        // Best user gesture for a stroke, or null.
+        function ugMatch(rawPts) {
+            if (!userGestures.length) return null;
+            const cand = ugResample(rawPts);
+            if (!cand) return null;
+            let best = null, bestD = Infinity;
+            userGestures.forEach(g => {
+                const d = ugDistance(cand, g.pts);
+                if (d < bestD) { bestD = d; best = g; }
+            });
+            return (best && bestD <= UG_THRESHOLD) ? { g: best, d: bestD } : null;
+        }
+
+        // ── recording ─────────────────────────────────────────────────────
+        function ugStartRecording() {
+            _ugRecording = true;
+            gestureFlash('✎  Draw your gesture now — hold Shift and stroke');
+        }
+
+        // called by gestureResolve when a stroke completes during recording
+        function ugCaptured(rawPts) {
+            _ugRecording = false;
+            const norm = ugResample(rawPts);
+            if (!norm) { gestureFlash('✎  Stroke too short'); return; }
+            _ugPending = norm;
+            // warn if it sits close to something already bound
+            let clash = null, clashD = Infinity;
+            userGestures.forEach(g => { const d = ugDistance(norm, g.pts); if (d < clashD) { clashD = d; clash = g; } });
+            const builtinClash = ugBuiltinClash(rawPts);
+            ugPickCommand(clash && clashD <= UG_THRESHOLD ? clash.name : null, builtinClash);
+        }
+
+        // does this stroke also read as one of the eight built-ins?
+        function ugBuiltinClash(rawPts) {
+            const saved = _gsPts;
+            _gsPts = rawPts;
+            let dir = null;
+            try { const g = gestureClassify(); if (g) dir = g.dir; } catch (e) {}
+            _gsPts = saved;
+            const NAMES = { down: '↓ Vector', up: '↑ Notations Reader', right: '→ Asset Drawer',
+                            left: '← Scratch Pad', cw: '↻ Hide interface', ccw: '↺ Undo',
+                            ne: '↗ Make Asset', nw: '↖ Calculator' };
+            return dir ? NAMES[dir] : null;
+        }
+
+        // ── assigning a command ───────────────────────────────────────────
+        function ugPickCommand(clashName, builtinName) {
+            const flat = [];
+            RADIAL_ITEMS.forEach(it => {
+                if (it.sub) it.sub.forEach(s => flat.push({ label: s.label, run: s.run, group: it.label }));
+                else flat.push({ label: it.label, run: it.run, group: '' });
+            });
+
+            const modal = document.getElementById('confirmModal');
+            const body = document.getElementById('confirmModalBody');
+            const ok = document.getElementById('confirmOkBtn');
+            const cancel = document.getElementById('confirmCancelBtn');
+            document.getElementById('confirmModalTitle').textContent = '✎ Assign your gesture';
+
+            let warn = '';
+            if (clashName) warn += '<div style="padding:8px 10px; margin-bottom:9px; background:#fff3e0; border-left:3px solid #EF6C00; border-radius:5px; font-size:12px; color:#5d4037;">⚠ This stroke is close to your existing gesture <b>' + clashName + '</b>. Saving it may make the two hard to tell apart.</div>';
+            if (builtinName) warn += '<div style="padding:8px 10px; margin-bottom:9px; background:#e3f2fd; border-left:3px solid #1565C0; border-radius:5px; font-size:12px; color:#0d47a1;">ℹ This stroke also reads as the built-in <b>' + builtinName + '</b>. Your version will take priority — the built-in can be restored at any time.</div>';
+
+            let opts = '';
+            flat.forEach((f, i) => {
+                opts += '<option value="' + i + '">' + (f.group ? f.group + ' › ' : '') + f.label + '</option>';
+            });
+
+            body.innerHTML = warn +
+                '<label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">Name this gesture</label>' +
+                '<input id="ugName" placeholder="e.g. Quick mesh" style="width:100%; box-sizing:border-box; padding:9px 11px; margin-bottom:10px; font-size:14px; border:1px solid #90CAF9; border-radius:6px;">' +
+                '<label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">What should it do?</label>' +
+                '<select id="ugCmd" size="12" style="width:100%; box-sizing:border-box; padding:6px; font-size:13px; border:1px solid #90CAF9; border-radius:6px;">' + opts + '</select>';
+
+            ok.textContent = 'Save gesture';
+            ok.style.background = '#00838F';
+            cancel.style.display = '';
+            modal.style.display = 'flex';
+            setTimeout(() => { const n = document.getElementById('ugName'); if (n) n.focus(); }, 30);
+
+            const close = () => { modal.style.display = 'none'; ok.onclick = cancel.onclick = modal.onclick = null; ok.style.background = '#C62828'; _ugPending = null; };
+            ok.onclick = () => {
+                const idx = parseInt(document.getElementById('ugCmd').value, 10);
+                const f = flat[idx];
+                if (!f || !_ugPending) { close(); return; }
+                const nm = (document.getElementById('ugName').value || '').trim() || f.label;
+                userGestures.push({ id: Date.now() + Math.random(), name: nm, cmd: f.label,
+                                    group: f.group, pts: _ugPending, made: Date.now() });
+                close();
+                saveState();
+                gestureFlash('✎  Saved: ' + nm);
+                ugRenderList();
+            };
+            cancel.onclick = close;
+            modal.onclick = ev => { if (ev.target === modal) close(); };
+        }
+
+        // ── the library ───────────────────────────────────────────────────
+        function ugManager() {
+            const modal = document.getElementById('confirmModal');
+            const body = document.getElementById('confirmModalBody');
+            const ok = document.getElementById('confirmOkBtn');
+            const cancel = document.getElementById('confirmCancelBtn');
+            document.getElementById('confirmModalTitle').textContent = '✎ Your gestures';
+            ok.textContent = 'Record a new gesture';
+            ok.style.background = '#00838F';
+            cancel.style.display = '';
+            cancel.textContent = 'Close';
+            modal.style.display = 'flex';
+            ugRenderList();
+            const close = () => { modal.style.display = 'none'; ok.onclick = cancel.onclick = modal.onclick = null;
+                                  ok.style.background = '#C62828'; cancel.textContent = 'Cancel'; };
+            ok.onclick = () => { close(); ugStartRecording(); };
+            cancel.onclick = close;
+            modal.onclick = ev => { if (ev.target === modal) close(); };
+        }
+
+        function ugRenderList() {
+            const body = document.getElementById('confirmModalBody');
+            if (!body || document.getElementById('confirmModalTitle').textContent !== '✎ Your gestures') return;
+            if (!userGestures.length) {
+                body.innerHTML = '<div style="color:#90A4AE; font-size:13px; padding:10px 0; line-height:1.6;">' +
+                    'You have not made any gestures yet.<br><br>' +
+                    'Record one, draw the shape you want, then choose what it should do. ' +
+                    'Your gesture takes priority over the built-in strokes, and the built-ins can be restored at any time.</div>';
+                return;
+            }
+            let html = '<div style="max-height:44vh; overflow:auto;">';
+            userGestures.forEach((g, i) => {
+                html += '<div style="display:flex; align-items:center; gap:10px; padding:7px 9px; margin:5px 0; background:#f5f5f5; border:1px solid #e0e0e0; border-radius:7px;">' +
+                    '<canvas data-ug="' + i + '" width="46" height="46" style="background:#0d1117; border-radius:5px; flex:0 0 auto;"></canvas>' +
+                    '<span style="flex:1; min-width:0;"><b style="font-size:13px;">' + String(g.name).replace(/</g, '&lt;') + '</b>' +
+                    '<br><span style="font-size:11px; color:#777;">' + (g.group ? g.group + ' › ' : '') + String(g.cmd).replace(/</g, '&lt;') + '</span></span>' +
+                    '<span data-ugdel="' + i + '" style="cursor:pointer; color:#C62828; padding:0 6px; font-size:13px;">✕</span></div>';
+            });
+            html += '</div>';
+            body.innerHTML = html;
+
+            // draw each stored shape into its thumbnail
+            body.querySelectorAll('[data-ug]').forEach(c => {
+                const g = userGestures[parseInt(c.getAttribute('data-ug'), 10)];
+                if (!g) return;
+                const x = c.getContext('2d');
+                x.strokeStyle = '#26C6DA'; x.lineWidth = 2; x.lineCap = 'round'; x.lineJoin = 'round';
+                x.beginPath();
+                g.pts.forEach((p, i) => {
+                    const px = 23 + p.x * 36, py = 23 + p.y * 36;
+                    if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+                });
+                x.stroke();
+            });
+            body.querySelectorAll('[data-ugdel]').forEach(el => {
+                el.onclick = () => {
+                    userGestures.splice(parseInt(el.getAttribute('data-ugdel'), 10), 1);
+                    saveState(); ugRenderList();
+                };
+            });
+        }
+
+        // Commands are stored by LABEL, not by reference, so a saved gesture survives
+        // a reload and keeps working.
+        function ugRun(g) {
+            let found = null;
+            RADIAL_ITEMS.forEach(it => {
+                if (it.sub) it.sub.forEach(s => { if (s.label === g.cmd && (!g.group || it.label === g.group)) found = s; });
+                else if (it.label === g.cmd) found = it;
+            });
+            if (found && typeof found.run === 'function') found.run();
+        }
+
         function gestureResolve() {
+            const raw = _gsPts.slice();
+            // recording mode swallows the stroke instead of acting on it
+            if (_ugRecording) {
+                _gsActive = false; _gsPts = []; _gsBox = null; _gsWorld = null;
+                draw();
+                ugCaptured(raw);
+                return;
+            }
+
+            // The operator's own gestures are checked FIRST and override the built-ins.
+            // Their design is law; ours is only the default underneath it.
+            const um = ugMatch(raw);
+
             const g = gestureClassify();
             // capture the start point BEFORE clearing, or the vector has nowhere to go
             const p = _gsWorld || { x: 0, y: 0 };
@@ -5082,6 +5373,15 @@
             _gsPts = [];
             _gsBox = null;
             _gsWorld = null;
+
+            if (um) {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ✎ ' + um.g.name, 'canvas');
+                try { ugRun(um.g); } catch (e) {}
+                gestureFlash('✎  ' + um.g.name);
+                draw();
+                return;
+            }
+
             if (!g) { scheduleDraw(); return; }
 
             if (g.dir === 'down') {
@@ -5105,6 +5405,14 @@
                 if (typeof usageRecord === 'function') usageRecord('Gesture ← Scratch Pad', 'canvas');
                 togglePad();
                 gestureFlash('←  Scratch Pad');
+            } else if (g.dir === 'ne') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ↗ Make Asset', 'canvas');
+                groupToAsset();
+                gestureFlash('↗  Make Asset');
+            } else if (g.dir === 'nw') {
+                if (typeof usageRecord === 'function') usageRecord('Gesture ↖ Calculator', 'canvas');
+                toggleCalculator();
+                gestureFlash('↖  Calculator');
             } else if (g.dir === 'ccw') {
                 if (typeof usageRecord === 'function') usageRecord('Gesture ↺ Undo', 'canvas');
                 const _before = historyIndex;
@@ -5144,38 +5452,58 @@
             // so the operator never has to remember the vocabulary
             {
                 const o = _gsPts[0];
-                const R = 74;
+                const R = 92;
+                // explicit distance per direction, so nothing is left to a shared radius
+                // The compass must show what a direction ACTUALLY does. A user gesture
+                // shaped like a straight stroke overrides the built-in, so the label is
+                // resolved through the library rather than hardcoded.
                 const legend = [
-                    [ 0,  1, '↓', 'VECTOR'],
-                    [ 0, -1, '↑', 'NOTES'],
-                    [ 1,  0, '→', 'DRAWER'],
-                    [-1,  0, '←', 'SCRATCH']
+                    [ 0,  1, '↓', ugLabelFor('down',  'VECTOR'),   78],
+                    [ 0, -1, '↑', ugLabelFor('up',    'NOTES'),    78],
+                    [ 1,  0, '→', ugLabelFor('right', 'DRAWER'),  118],
+                    [-1,  0, '←', ugLabelFor('left',  'SCRATCH'), 118]
                 ];
-                ctx.font = 'bold 10px Arial';
+                ctx.font = 'bold 12px Arial';
                 ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                legend.forEach(([ux, uy, arrow, name]) => {
-                    const x = o.x + ux * R, y = o.y + uy * R;
+                legend.forEach(([ux, uy, arrow, name, rad]) => {
+                    const x = o.x + ux * rad, y = o.y + uy * rad;
                     // spoke
                     ctx.beginPath();
-                    ctx.moveTo(o.x + ux * 26, o.y + uy * 26);
-                    ctx.lineTo(o.x + ux * (R - 16), o.y + uy * (R - 16));
+                    ctx.moveTo(o.x + ux * 24, o.y + uy * 24);
+                    ctx.lineTo(o.x + ux * (rad - 13), o.y + uy * (rad - 13));
                     ctx.strokeStyle = 'rgba(229,57,53,.30)';
                     ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
                     ctx.stroke(); ctx.setLineDash([]);
                     // tag
-                    const w = ctx.measureText(name).width + 22;
+                    const w = ctx.measureText(name).width + 26;
                     ctx.fillStyle = 'rgba(20,6,6,.82)';
-                    ctx.fillRect(x - w / 2, y - 9, w, 18);
+                    ctx.fillRect(x - w / 2, y - 11, w, 22);
                     ctx.strokeStyle = 'rgba(229,57,53,.55)'; ctx.lineWidth = 1;
-                    ctx.strokeRect(x - w / 2, y - 9, w, 18);
+                    ctx.strokeRect(x - w / 2, y - 11, w, 22);
                     ctx.fillStyle = '#FF8A80';
                     ctx.fillText(arrow + '  ' + name, x, y);
                 });
-                // the two rotations, named at the corners
-                ctx.font = 'bold 9px Arial';
-                ctx.fillStyle = 'rgba(255,138,128,.85)';
-                ctx.fillText('↻ HIDE UI', o.x + 62, o.y - 48);
-                ctx.fillText('↺ UNDO', o.x - 62, o.y - 48);
+                // the two rotations, drawn as proper tags on the ring like the rest
+                const D = 104;
+                [[-0.707, -0.707, '↖', ugLabelFor('nw', 'CALC')],
+                 [ 0.707, -0.707, '↗', ugLabelFor('ne', 'ASSET')],
+                 [-0.707,  0.707, '↺', ugLabelFor('ccw', 'UNDO')],
+                 [ 0.707,  0.707, '↻', ugLabelFor('cw', 'HIDE UI')]].forEach(([ux, uy, arrow, name]) => {
+                    const x = o.x + ux * D, y = o.y + uy * D;
+                    ctx.beginPath();
+                    ctx.moveTo(o.x + ux * 20, o.y + uy * 20);
+                    ctx.lineTo(o.x + ux * (D - 18), o.y + uy * (D - 18));
+                    ctx.strokeStyle = 'rgba(229,57,53,.30)';
+                    ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+                    ctx.stroke(); ctx.setLineDash([]);
+                    const w2 = ctx.measureText(name).width + 24;
+                    ctx.fillStyle = 'rgba(20,6,6,.82)';
+                    ctx.fillRect(x - w2 / 2, y - 11, w2, 22);
+                    ctx.strokeStyle = 'rgba(229,57,53,.55)'; ctx.lineWidth = 1;
+                    ctx.strokeRect(x - w2 / 2, y - 11, w2, 22);
+                    ctx.fillStyle = '#FF8A80';
+                    ctx.fillText(arrow + '  ' + name, x, y);
+                });
                 // origin marker
                 ctx.beginPath(); ctx.arc(o.x, o.y, 4, 0, Math.PI * 2);
                 ctx.fillStyle = '#E53935'; ctx.fill();
@@ -5211,7 +5539,8 @@
             const g = gestureClassify();
             const label = g ? ({ down: '↓  Vector', up: '↑  Notations Reader',
                                  right: '→  Asset Drawer', left: '←  Scratch Pad',
-                                 cw: '↻  Hide interface', ccw: '↺  Undo' })[g.dir]
+                                 cw: '↻  Hide interface', ccw: '↺  Undo',
+                                 ne: '↗  Make Asset', nw: '↖  Calculator' })[g.dir]
                             : 'GESTURE FIELD';
             ctx.font = 'bold 11px Arial';
             const w = ctx.measureText(label).width;
@@ -9264,6 +9593,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 magPins: (typeof magPins !== 'undefined') ? magPins : [],
+                userGestures: (typeof userGestures !== 'undefined') ? userGestures : [],
                 // usageLog is a Map, which JSON.stringify silently turns into {}. Store
                 // it as pairs so the tally genuinely survives a save.
                 usage: (function () {
@@ -9970,6 +10300,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     flagDrag = engineData.flagDrag || {};
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
                     if (typeof magPins !== 'undefined') { magPins = Array.isArray(engineData.magPins) ? engineData.magPins : []; updateMagPinCount(); }
+                    if (typeof userGestures !== 'undefined') userGestures = Array.isArray(engineData.userGestures) ? engineData.userGestures : [];
                     if (engineData.usage && typeof usageLog !== 'undefined') {
                         usageLog = new Map();
                         (engineData.usage.log || []).forEach(p => {
