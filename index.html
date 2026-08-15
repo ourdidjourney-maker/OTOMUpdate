@@ -751,6 +751,15 @@
             <option value="90">90 fps</option>
         </select>
         <button onclick="capBenchmark()" title="Measure whether the cap actually helps on this machine" style="background:#455A64; font-size:11px; padding:6px 8px;">⏲ Test</button>
+        <select id="lcSel" onchange="setLiveCanvas(this.value)" title="Live Canvas: after this long, the engine offers to hide controls you never touched." style="font-size:11px; padding:4px 5px; border-radius:5px;">
+            <option value="0">⧗ Live Canvas: OFF</option>
+            <option value="15">review every 15m</option>
+            <option value="30">review every 30m</option>
+            <option value="60">review every hour</option>
+            <option value="180">review every 3h</option>
+        </select>
+        <span id="lcStatus" style="font-size:10px; color:#00838F;"></span>
+        <button onclick="ctlManager()" title="Choose which toolbar controls you want. Hidden ones stay reachable in the radial menu." style="background:#455A64; font-size:11px; padding:6px 9px;">⊘ Controls</button>
         <button onclick="ugManager()" title="Your own gestures — record a stroke and choose what it does" style="background:#455A64; font-size:11px; padding:6px 9px;">✎ Gestures</button>
         <button id="pathBtn" onclick="togglePathTracker()" title="Mouse Path — a live schematic of where the hand has been" style="background:#455A64; font-size:11px; padding:6px 9px;">⟿ Path</button>
         <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
@@ -894,6 +903,7 @@
                 <button onclick="saveAssetsFile()" title="Export the whole library as one portable file" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">⇪ Export Asset</button>
                 <button onclick="document.getElementById('assetLoadInput').click()" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">📂 Load Asset</button>
                 <input type="file" id="assetLoadInput" accept=".json" style="display:none;">
+                <button id="drawerEyeBtn" onclick="toggleDrawerThumbs()" title="Hide thumbnails — releases their decoded image memory" style="margin:0; padding:4px 9px; font-size:12px; background:rgba(255,255,255,.25); border-radius:5px;">👁</button>
                 <button id="drawerPinBtn" onclick="toggleDrawerPin()" title="Pin to the canvas — moves and scales with pan and zoom" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">📌 Pin</button>
                 <span style="font-size:9px; letter-spacing:1px; opacity:.75;">OP</span>
                 <input id="drawerOp" type="range" min="25" max="100" value="100" oninput="document.getElementById('assetDrawer').style.opacity=this.value/100" style="width:52px;" title="Opacity">
@@ -1620,6 +1630,7 @@
 
             { ico: '🗔', label: 'Panels', accent: '#0288D1', sub: [
                 { ico: '▤', label: 'Drawer',   accent: '#FF6F00', run: () => toggleAssetDrawer() },
+                { ico: '👁', label: 'Thumbs',   accent: '#FF6F00', run: () => toggleDrawerThumbs() },
                 { ico: '🗂', label: 'Assets',  accent: '#673AB7', run: () => openAssetBrowser() },
                 { ico: '📖', label: 'Notes',   accent: '#0288D1', run: () => toggleNotesReader() },
                 { ico: '✎', label: 'Scratch',  accent: '#455A64', run: () => togglePad() },
@@ -1641,6 +1652,8 @@
                 { ico: '▮', label: 'Usage',    accent: '#EF6C00', run: () => toggleUsage() },
                 { ico: '⟿', label: 'Path',     accent: '#00838F', run: () => togglePathTracker() },
                 { ico: '✎', label: 'Gestures', accent: '#00838F', run: () => ugManager() },
+                { ico: '⊘', label: 'Controls', accent: '#455A64', run: () => ctlManager() },
+                { ico: '⧗', label: 'Live Canvas', accent: '#00838F', run: () => lcReview() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
                 { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
                 { ico: '⏲', label: 'Cap 60',   accent: '#00838F', run: () => setFrameCap(frameCap ? 0 : 60) },
@@ -4734,6 +4747,8 @@
             // the path tracker stamps the action onto its schematic, independently of
             // whether the usage tally itself is switched on
             if (typeof pathStamp === 'function') pathStamp(label);
+            // and Live Canvas notes it as touched, whatever else is switched on
+            if (typeof lcNote === 'function') lcNote(label);
             // Nothing is recorded unless the tracker is switched on. No reason to spend
             // work — or hold data — for an instrument nobody is looking at.
             if (!usageOn) return;
@@ -5922,6 +5937,286 @@
                 window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
             });
         })();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⊘ CONTROL MANAGER — remove what you do not use.
+        //
+        // A hidden control is set to display:none, which takes it out of layout, paint
+        // and hit-testing entirely. It is never destroyed: everything remains reachable
+        // through the radial menu, and can be restored at any time.
+        // ═══════════════════════════════════════════════════════════════════
+        var hiddenControls = [];      // ids of controls the operator has removed
+
+        function ctlKey(el) {
+            if (el.id) return el.id;
+            // no id: fall back to its visible text, which is stable in this file
+            return 'txt:' + (el.textContent || '').trim().slice(0, 30);
+        }
+
+        function ctlApplyHidden() {
+            const bar = document.getElementById('controls');
+            if (!bar) return;
+            const set = new Set(hiddenControls);
+            bar.querySelectorAll('button, select, input[type="range"], input[type="color"]').forEach(el => {
+                if (el.closest('#imageList')) return;
+                el.style.display = set.has(ctlKey(el)) ? 'none' : '';
+            });
+            if (typeof invalidateUiBottom === 'function') invalidateUiBottom();
+        }
+
+        function ctlManager() {
+            const bar = document.getElementById('controls');
+            if (!bar) return;
+            const modal = document.getElementById('confirmModal');
+            const body = document.getElementById('confirmModalBody');
+            const ok = document.getElementById('confirmOkBtn');
+            const cancel = document.getElementById('confirmCancelBtn');
+            document.getElementById('confirmModalTitle').textContent = '⊘ Toolbar controls';
+
+            // walk the bar in order, grouping by the separators already there
+            const items = [];
+            let group = 'GENERAL';
+            Array.from(bar.children).forEach(node => {
+                if (node.classList && node.classList.contains('gsep')) {
+                    group = node.getAttribute('data-grp') || group;
+                    return;
+                }
+                const tag = node.tagName;
+                if (tag === 'BUTTON' || tag === 'SELECT' ||
+                    (tag === 'INPUT' && /range|color/.test(node.type))) {
+                    items.push({ el: node, key: ctlKey(node), group: group,
+                                 label: (node.textContent || '').trim() ||
+                                        node.getAttribute('title') || node.id || tag.toLowerCase() });
+                }
+            });
+
+            const set = new Set(hiddenControls);
+            let html = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; padding-bottom:9px; border-bottom:1px solid #e0e0e0;">' +
+                '<span style="flex:1; font-size:12px; color:#666;">' + items.length + ' controls · <b>' +
+                set.size + '</b> hidden</span>' +
+                '<span id="ctlAllOn" style="cursor:pointer; font-size:11px; padding:5px 11px; background:#2E7D32; color:#fff; border-radius:5px;">Show all</span></div>' +
+                '<div style="max-height:46vh; overflow:auto;">';
+
+            let lastGroup = '';
+            items.forEach((it, i) => {
+                if (it.group !== lastGroup) {
+                    lastGroup = it.group;
+                    html += '<div style="font:700 9px Arial; letter-spacing:1.4px; color:#9e9e9e; margin:10px 0 4px;">' +
+                            it.group + '</div>';
+                }
+                const off = set.has(it.key);
+                html += '<label style="display:flex; align-items:center; gap:9px; padding:5px 8px; margin:2px 0; ' +
+                    'background:' + (off ? '#fafafa' : '#f5f5f5') + '; border:1px solid #e8e8e8; border-radius:6px; cursor:pointer;">' +
+                    '<input type="checkbox" data-ctl="' + i + '"' + (off ? '' : ' checked') + ' style="width:15px;height:15px;">' +
+                    '<span style="flex:1; font-size:12.5px; color:' + (off ? '#bbb' : '#333') + ';' +
+                    (off ? ' text-decoration:line-through;' : '') + '">' +
+                    String(it.label).replace(/</g, '&lt;').slice(0, 44) + '</span></label>';
+            });
+            html += '</div>';
+            body.innerHTML = html;
+
+            body.querySelectorAll('[data-ctl]').forEach(cb => {
+                cb.onchange = () => {
+                    const it = items[parseInt(cb.getAttribute('data-ctl'), 10)];
+                    if (!it) return;
+                    if (cb.checked) hiddenControls = hiddenControls.filter(k => k !== it.key);
+                    else if (hiddenControls.indexOf(it.key) < 0) hiddenControls.push(it.key);
+                    ctlApplyHidden();
+                    const span = cb.parentNode.querySelector('span');
+                    if (span) {
+                        span.style.color = cb.checked ? '#333' : '#bbb';
+                        span.style.textDecoration = cb.checked ? 'none' : 'line-through';
+                    }
+                };
+            });
+
+            const all = body.querySelector('#ctlAllOn');
+            if (all) all.onclick = () => { hiddenControls = []; ctlApplyHidden(); ctlManager(); };
+
+            ok.textContent = 'Done';
+            ok.style.background = '#2E7D32';
+            cancel.style.display = 'none';
+            modal.style.display = 'flex';
+            const close = () => {
+                modal.style.display = 'none';
+                ok.onclick = modal.onclick = null;
+                ok.style.background = '#C62828';
+                cancel.style.display = '';
+                saveState();
+            };
+            ok.onclick = close;
+            modal.onclick = ev => { if (ev.target === modal) close(); };
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⧗ LIVE CANVAS — the interface prunes itself to the operator.
+        //
+        // On a chosen interval the engine compares every toolbar control against what
+        // was actually touched, and PROPOSES removing the untouched ones. It never acts
+        // on its own: buttons vanishing unannounced would be worse than the clutter.
+        // Everything hidden stays reachable in the radial and can be restored at once.
+        // ═══════════════════════════════════════════════════════════════════
+        var lcMinutes = 0;              // 0 = off
+        var lcTimer = null, lcSince = 0, lcNeverAsk = false;
+        var lcTouched = new Set();      // control labels used since the clock started
+
+        function lcNote(label) {
+            if (!lcMinutes || !label) return;
+            lcTouched.add(String(label).replace(/\s+/g, ' ').trim().slice(0, 40));
+        }
+
+        function setLiveCanvas(v) {
+            lcMinutes = parseInt(v, 10) || 0;
+            if (lcTimer) { clearInterval(lcTimer); lcTimer = null; }
+            lcTouched = new Set();
+            lcSince = Date.now();
+            const s = document.getElementById('lcSel');
+            if (s && s.value !== String(lcMinutes)) s.value = String(lcMinutes);
+            if (lcMinutes) lcTimer = setInterval(lcReview, lcMinutes * 60000);
+            lcStatus();
+        }
+
+        function lcStatus() {
+            const el = document.getElementById('lcStatus');
+            if (!el) return;
+            if (!lcMinutes) { el.textContent = ''; return; }
+            const mins = Math.floor((Date.now() - lcSince) / 60000);
+            el.textContent = '⧗ ' + lcTouched.size + ' used · ' + mins + '/' + lcMinutes + 'm';
+            el.style.color = '#00838F';
+        }
+        setInterval(lcStatus, 15000);
+
+        // Everything currently on the bar, with the same keys the manager uses.
+        function lcInventory() {
+            const bar = document.getElementById('controls');
+            const out = [];
+            if (!bar) return out;
+            let group = 'GENERAL';
+            Array.from(bar.children).forEach(node => {
+                if (node.classList && node.classList.contains('gsep')) {
+                    group = node.getAttribute('data-grp') || group; return;
+                }
+                const tag = node.tagName;
+                if (tag === 'BUTTON' || tag === 'SELECT' ||
+                    (tag === 'INPUT' && /range|color/.test(node.type))) {
+                    out.push({ key: ctlKey(node), group: group,
+                               label: (node.textContent || '').trim() ||
+                                      node.getAttribute('title') || node.id || tag.toLowerCase() });
+                }
+            });
+            return out;
+        }
+
+        // What hiding a set of controls actually gives back. Measured from the real
+        // elements rather than estimated: their DOM footprint, the layout boxes the
+        // browser maintains, and the hit-tests every mouse move performs against them.
+        function lcSavings(items) {
+            const bar = document.getElementById('controls');
+            let nodes = 0, chars = 0, area = 0;
+            const byKey = {};
+            if (bar) {
+                bar.querySelectorAll('button, select, input[type="range"], input[type="color"]').forEach(el => {
+                    byKey[ctlKey(el)] = el;
+                });
+            }
+            items.forEach(it => {
+                const el = byKey[it.key];
+                nodes++;
+                chars += (it.label || '').length;
+                if (el) {
+                    const r = el.getBoundingClientRect();
+                    area += Math.max(0, r.width) * Math.max(0, r.height);
+                    nodes += el.children.length;
+                }
+            });
+            // a rendered element carries its style object, layout box and accessibility
+            // node; ~1.6KB each is the conventional working figure
+            const mem = nodes * 1600 + chars * 2;
+            return {
+                nodes: nodes,
+                mem: mem,
+                area: Math.round(area),
+                hits: items.length            // hit-tests removed from every mouse move
+            };
+        }
+
+        function lcReview() {
+            if (lcNeverAsk || !lcMinutes) return;
+            const hidden = new Set(hiddenControls);
+            const items = lcInventory().filter(it => !hidden.has(it.key));
+            // a control counts as used if its label was recorded during the window
+            const unused = items.filter(it => {
+                const lbl = String(it.label).replace(/\s+/g, ' ').trim().slice(0, 40);
+                return !lcTouched.has(lbl);
+            });
+            if (!unused.length) { lcTouched = new Set(); lcSince = Date.now(); return; }
+
+            const modal = document.getElementById('confirmModal');
+            const body = document.getElementById('confirmModalBody');
+            const ok = document.getElementById('confirmOkBtn');
+            const cancel = document.getElementById('confirmCancelBtn');
+            document.getElementById('confirmModalTitle').textContent = '⧗ Live Canvas — ' + lcMinutes + ' minute review';
+
+            let list = '', last = '';
+            unused.forEach(it => {
+                if (it.group !== last) {
+                    last = it.group;
+                    list += '<div style="font:700 9px Arial; letter-spacing:1.4px; color:#9e9e9e; margin:9px 0 3px;">' + it.group + '</div>';
+                }
+                list += '<div style="font-size:12px; color:#666; padding:2px 4px;">' +
+                        String(it.label).replace(/</g, '&lt;').slice(0, 44) + '</div>';
+            });
+
+            const sv = lcSavings(unused);
+            const fmtKB = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.round(b / 1024) + ' KB';
+
+            body.innerHTML =
+                '<div style="font-size:13px; line-height:1.6; color:#333; margin-bottom:10px;">' +
+                'In the last ' + lcMinutes + ' minutes you used <b>' + lcTouched.size + '</b> controls and did not touch <b>' +
+                unused.length + '</b>.<br><br>Hide the untouched ones?</div>' +
+
+                '<div style="background:#e8f5e9; border:1px solid #A5D6A7; border-left:3px solid #2E7D32; border-radius:7px; padding:10px 12px; margin-bottom:10px;">' +
+                  '<div style="font:700 9px Arial; letter-spacing:1.5px; color:#2E7D32; margin-bottom:6px;">WHAT THIS GIVES BACK</div>' +
+                  '<div style="display:flex; justify-content:space-between; font-size:12px; color:#33691E; padding:2px 0;">' +
+                    '<span>DOM elements removed</span><b>' + sv.nodes + '</b></div>' +
+                  '<div style="display:flex; justify-content:space-between; font-size:12px; color:#33691E; padding:2px 0;">' +
+                    '<span>Memory released</span><b>' + fmtKB(sv.mem) + '</b></div>' +
+                  '<div style="display:flex; justify-content:space-between; font-size:12px; color:#33691E; padding:2px 0;">' +
+                    '<span>Hit-tests per mouse move</span><b>−' + sv.hits + '</b></div>' +
+                  '<div style="display:flex; justify-content:space-between; font-size:12px; color:#33691E; padding:2px 0;">' +
+                    '<span>Screen area reclaimed</span><b>' + sv.area.toLocaleString() + ' px²</b></div>' +
+                  '<div style="font-size:11px; color:#558B2F; margin-top:6px; line-height:1.5;">' +
+                    'Each removal is taken out of layout, paint and hit-testing — work the browser performs on the same thread as the canvas.</div>' +
+                '</div>' +
+
+                '<div style="font-size:12px; color:#777; margin-bottom:8px;">They stay reachable in the radial menu, and <b>⊘ Controls</b> restores them at any time.</div>' +
+                '<div style="max-height:38vh; overflow:auto; background:#fafafa; border:1px solid #eee; border-radius:6px; padding:6px 10px;">' + list + '</div>' +
+                '<label style="display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; color:#777; cursor:pointer;">' +
+                '<input type="checkbox" id="lcNever" style="width:15px;height:15px;"> Stop asking me</label>';
+
+            ok.textContent = 'Hide these ' + unused.length;
+            ok.style.background = '#00838F';
+            cancel.textContent = 'Not yet';
+            cancel.style.display = '';
+            modal.style.display = 'flex';
+
+            const finish = () => {
+                const nv = document.getElementById('lcNever');
+                if (nv && nv.checked) { lcNeverAsk = true; setLiveCanvas(0); }
+                modal.style.display = 'none';
+                ok.onclick = cancel.onclick = modal.onclick = null;
+                ok.style.background = '#C62828'; cancel.textContent = 'Cancel';
+                lcTouched = new Set(); lcSince = Date.now(); lcStatus();
+            };
+            ok.onclick = () => {
+                unused.forEach(it => { if (hiddenControls.indexOf(it.key) < 0) hiddenControls.push(it.key); });
+                ctlApplyHidden();
+                saveState();
+                finish();
+            };
+            cancel.onclick = finish;
+            modal.onclick = ev => { if (ev.target === modal) finish(); };
+        }
 
         function saveState() {
             if (!historyStack.length) seedHistory();
@@ -9694,6 +9989,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 magPins: (typeof magPins !== 'undefined') ? magPins : [],
                 userGestures: (typeof userGestures !== 'undefined') ? userGestures : [],
+                hiddenControls: (typeof hiddenControls !== 'undefined') ? hiddenControls : [],
+                drawerThumbs: (typeof drawerThumbs !== 'undefined') ? drawerThumbs : true,
+                liveCanvas: (typeof lcMinutes !== 'undefined') ? lcMinutes : 0,
                 // usageLog is a Map, which JSON.stringify silently turns into {}. Store
                 // it as pairs so the tally genuinely survives a save.
                 usage: (function () {
@@ -9804,6 +10102,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                      height: p.style.height, opacity: p.style.opacity, transform: p.style.transform };
                         })(),
                         tickerOn: !!(typeof tickerOn !== 'undefined' && tickerOn),
+                        autoOpenMode: !!(typeof autoOpenMode !== 'undefined' && autoOpenMode),
+                        zenMode: !!(typeof zenMode !== 'undefined' && zenMode),
+                        pathOn: !!(typeof pathOn !== 'undefined' && pathOn),
+                        usagePanelOn: !!(typeof usageOn !== 'undefined' && usageOn),
                         pulseOn:  !!(typeof pulseOn  !== 'undefined' && pulseOn),
                         magOn:    !!(typeof magOn    !== 'undefined' && magOn),
                         helpOpen: !!(typeof helpOpen !== 'undefined' && helpOpen),
@@ -10070,6 +10372,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     }
                 }
                 if (s.tickerOn && typeof tickerOn !== 'undefined' && !tickerOn && typeof toggleTicker === 'function') toggleTicker();
+                if (s.autoOpenMode && typeof autoOpenMode !== 'undefined' && !autoOpenMode && typeof toggleAutoOpen === 'function') toggleAutoOpen();
+                if (s.pathOn && typeof pathOn !== 'undefined' && !pathOn && typeof togglePathTracker === 'function') togglePathTracker();
+                if (s.usagePanelOn && typeof usageOn !== 'undefined' && !usageOn && typeof toggleUsage === 'function') toggleUsage();
+                // Zen last: it re-parents every open panel, so everything else must
+                // already be restored before the toolbar is hidden
+                if (s.zenMode && typeof zenMode !== 'undefined' && !zenMode && typeof toggleZen === 'function') setTimeout(toggleZen, 0);
                 if (s.pulseOn  && typeof pulseOn  !== 'undefined' && !pulseOn  && typeof togglePulse  === 'function') togglePulse();
                 if (s.magOn    && typeof magOn    !== 'undefined' && !magOn    && typeof toggleMagnifier === 'function') toggleMagnifier();
                 if (s.helpOpen && typeof helpOpen !== 'undefined' && !helpOpen && typeof toggleHelp === 'function') toggleHelp();
@@ -10401,6 +10709,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
                     if (typeof magPins !== 'undefined') { magPins = Array.isArray(engineData.magPins) ? engineData.magPins : []; updateMagPinCount(); }
                     if (typeof userGestures !== 'undefined') userGestures = Array.isArray(engineData.userGestures) ? engineData.userGestures : [];
+                    if (typeof hiddenControls !== 'undefined') { hiddenControls = Array.isArray(engineData.hiddenControls) ? engineData.hiddenControls : []; ctlApplyHidden(); }
+                    if (typeof engineData.drawerThumbs === 'boolean' && typeof drawerThumbs !== 'undefined' && engineData.drawerThumbs !== drawerThumbs) toggleDrawerThumbs();
+                    if (typeof engineData.liveCanvas === 'number' && typeof setLiveCanvas === 'function') setLiveCanvas(engineData.liveCanvas);
                     if (engineData.usage && typeof usageLog !== 'undefined') {
                         usageLog = new Map();
                         (engineData.usage.log || []).forEach(p => {
@@ -13923,6 +14234,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>⛃ Checkers</b> — a real minimax AI with alpha-beta pruning. Three depths.</li>
 <li><b>🕘 Clock</b> — clock, stopwatch, timestamps, and an alarm that blinks the whole UI.</li>
 <li><b>📅 Calendar</b> — due dates, meetings and milestones. Events attach to canvas elements, which then wear the date and turn red when it passes.</li>
+<li><b>⊘ Controls</b> — choose which toolbar buttons exist for you. <b>⧗ Live Canvas</b> offers to remove the ones you never touch.</li>
+<li><b>✎ Gestures</b> — record your own strokes and bind them to any command in the engine.</li>
+<li><b>⟿ Path</b> — a live schematic of your hand's route, with every action stamped on it.</li>
 <li><b>⏻ Recovery</b> — the crash net. Writes a restorable point of the whole session; offered back automatically if OTOM closes without a save.</li>
 <li><b>📖 Notes Reader</b> — every notation in the engine in one list, with priority flags and a formula library you can drag onto the canvas.</li>
 </ul>
@@ -13978,6 +14292,16 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <p>Toolbar presses show amber, radial choices show blue with a <b>◉</b> marker. So you can see not only <i>what</i> you use, but <b>which route you took to reach it</b> — whether a control earns its place in the toolbar, or would be better living only in the radial.</p>
 <p>Canvas gestures are counted too, and separately: left, middle and right clicks, modifier combinations like <b>Shift+click</b>, double-clicks, scroll, and element drags.</p>
 
+<h3>⟿ The path schematic</h3>
+<p>Press <b>⟿ Path</b> and a second panel draws a live map of where your hand has been. The line follows the cursor; every time the mouse <b>stops</b>, a node is dropped and the next line begins from it.</p>
+<p><b>Every control you click stamps its name onto the path at that point</b> — so the schematic is not a bare trail, it is a readable sequence of actions. A pause is a small cyan dot; an action is a larger amber one wearing its label.</p>
+<ul>
+<li>After <b>ten seconds of stillness</b> the schematic is snapshotted automatically. <b>⚡</b> snapshots on demand.</li>
+<li><b>⇩</b> exports it as a PNG at double resolution with a title block carrying the timestamp and counts — a record you can file or hand to someone, not a screenshot.</li>
+<li>The whole screen maps into the panel proportionally, so what you see is a true schematic of your hand's route.</li>
+</ul>
+<p style="color:#78909C;">A frequency list can tell you what you use. Only a map can tell you how far you travelled to reach it, and in what order — which is what makes rearranging a toolbar possible rather than guesswork.</p>
+
 <h3>The mouse odometer</h3>
 <p>At the top of the panel is a running total of <b>how far your hand has actually travelled</b> while working. Every movement is summed in pixels and converted to real distance using your screen density.</p>
 ` + hFig('Hand travel, converted to real-world units. Amber shows how far elements themselves were dragged.',
@@ -13996,6 +14320,90 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 </ul>
 <p>The tally and the odometer are saved with the engine, ride along in snapshots, and survive a crash. <b>↺</b> in the panel header clears them.</p>
 <p style="color:#78909C;">Why measure any of this? Because software has never known which of its own features earn their keep. A cockpit tells you: the switches a pilot uses have the paint worn off. This is the same evidence, for software.</p>` },
+
+        { id:'gest', t:'Mouse Gestures', h:`
+<h3>Running the engine without a click</h3>
+<p>Hold <b>Shift</b> with the cursor over bare canvas and a red field opens. Move the mouse to draw a stroke; release Shift and it runs. <b>No button is ever pressed.</b></p>
+<p>A compass appears around the point where you began, naming what each direction produces — so the vocabulary is on screen rather than something to memorise:</p>
+` + hFig('The gesture compass. It appears the moment you hold Shift, centred where the stroke begins.',
+`<svg viewBox="0 0 420 260" style="width:100%; max-width:420px; display:block; margin:0 auto;">
+  <rect x="60" y="30" width="300" height="200" fill="rgba(229,57,53,.05)" stroke="#E53935" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="70" y="22" fill="#FF8A80" font-size="10" font-weight="bold">↓  VECTOR</text>
+  <circle cx="210" cy="130" r="4" fill="#E53935"/>
+  <circle cx="210" cy="130" r="22" fill="none" stroke="rgba(229,57,53,.35)" stroke-width="1" stroke-dasharray="3 4"/>
+  <g font-size="10" font-weight="bold" fill="#FF8A80" text-anchor="middle">
+    <rect x="176" y="41" width="68" height="20" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.55)"/>
+    <text x="210" y="55">↑  NOTES</text>
+    <rect x="176" y="199" width="68" height="20" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.55)"/>
+    <text x="210" y="213">↓  VECTOR</text>
+    <rect x="66" y="120" width="76" height="20" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.55)"/>
+    <text x="104" y="134">←  SCRATCH</text>
+    <rect x="278" y="120" width="76" height="20" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.55)"/>
+    <text x="316" y="134">→  DRAWER</text>
+    <rect x="106" y="66" width="62" height="19" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.45)"/>
+    <text x="137" y="79">↖  CALC</text>
+    <rect x="252" y="66" width="62" height="19" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.45)"/>
+    <text x="283" y="79">↗  ASSET</text>
+    <rect x="106" y="176" width="62" height="19" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.45)"/>
+    <text x="137" y="189">↺  UNDO</text>
+    <rect x="252" y="176" width="62" height="19" fill="rgba(20,6,6,.85)" stroke="rgba(229,57,53,.45)"/>
+    <text x="283" y="189">↻  HIDE UI</text>
+  </g>
+</svg>`) + `
+<ul>
+<li><b>↓ down</b> — creates a vector <b>at the point the stroke began</b>, not wherever a menu left the cursor.</li>
+<li><b>↑ up</b> — Notations Reader · <b>→ right</b> — Asset Drawer · <b>← left</b> — Scratch Pad</li>
+<li><b>↗ up-right</b> — Make Asset · <b>↖ up-left</b> — Calculator</li>
+<li><b>↻ clockwise circle</b> — hide the interface · <b>↺ anticlockwise</b> — Undo</li>
+</ul>
+<p>As you draw, a label at the corner of the field reads back what it currently understands — <b>↓ Vector</b>, <b>↻ Hide interface</b> — so you know the interpretation <i>before</i> you release. Release and it confirms what it did.</p>
+<p>A stroke must run at least 45px and be reasonably straight to register, so an accidental movement will not fire. Circles are measured by accumulated turn, not shape-matched, so a sloppy loop still reads correctly.</p>
+
+<h3>Shift is shared, so gestures wait their turn</h3>
+<p>Shift also resizes, constrains a shape to 45°, adds to a selection and pins the lens. A gesture only arms when none of those are in play: the mouse button is up, nothing is being dragged or resized, no drawing mode is active, the lens is off, and the cursor is over bare canvas. Press a button mid-stroke and the gesture cancels — a click means you meant to manipulate, not draw.</p>
+
+<h3>✎ Your own gestures</h3>
+<p>The eight above are only the defaults. Press <b>✎ Gestures</b> → <b>Record a new gesture</b>, draw whatever shape you like, and choose from <b>every command in the engine</b> what it should do.</p>
+<ul>
+<li><b>Your gesture wins.</b> If your stroke also reads as a built-in, yours takes priority — the dialogue tells you so plainly.</li>
+<li>You are warned if a new stroke is too close to one you already made.</li>
+<li>The library shows each gesture as a <b>thumbnail of the shape you actually drew</b>, with its command beneath.</li>
+<li><b>↺ Restore built-ins</b> clears them all; the <b>✕</b> on any row reverts just that one.</li>
+</ul>
+<p>Shape matching ignores size and position entirely — a stroke is resampled and scaled, so drawing your gesture large in one corner or small in another makes no difference. Only the shape counts.</p>
+<p style="color:#78909C;">The compass updates itself: bind a downward stroke to Upload and it reads <b>↓ UPLOAD</b> from then on.</p>` },
+
+        { id:'yours', t:'Making It Yours', h:`
+<h3>⊘ Remove the controls you do not use</h3>
+<p>Press <b>⊘ Controls</b> and every button on the toolbar is listed, grouped exactly as the bar is. Untick anything you will not need and it goes immediately.</p>
+<p>Nothing is destroyed. Everything hidden stays reachable in the <b>radial menu</b> — hold <b>Left Alt</b> and click — and <b>Show all</b> brings the whole bar back at once.</p>
+<p>This is not a cosmetic preference. A hidden control is taken out of <b>layout, paint and hit-testing</b>: the browser stops testing your cursor against it on every mouse move, and stops walking it on every layout pass — work performed on the same thread as the canvas.</p>
+
+<h3>⧗ Live Canvas — the interface prunes itself</h3>
+<p>Choose an interval — <b>15 minutes, 30, an hour, three hours</b> — and the engine watches which controls you actually touch. At the mark it asks:</p>
+` + hRow(
+  '<b style="color:#eceff1;">In the last 60 minutes you used 19 controls and did not touch 47.</b><br>' +
+  '<span style="color:#90A4AE; font-size:12px;">Hide the untouched ones?</span>' +
+  '<div style="margin-top:9px; padding:9px 11px; background:#0f2113; border-left:3px solid #2E7D32; border-radius:6px; font-size:12px; color:#A5D6A7; line-height:1.7;">' +
+  '<b style="color:#81C784;">WHAT THIS GIVES BACK</b><br>' +
+  'DOM elements removed &nbsp;<b>108</b><br>Memory released &nbsp;<b>169 KB</b><br>' +
+  'Hit-tests per mouse move &nbsp;<b>−47</b><br>Screen area reclaimed &nbsp;<b>105,092 px²</b></div>'
+) + `
+<p>It <b>proposes, it never acts alone.</b> You get the full list, grouped, and three answers: hide them, not yet, or stop asking. A button vanishing unannounced would be worse than the clutter it removed — your workspace stays yours.</p>
+<p>A live readout beside the control shows where you are: <b>⧗ 19 used · 34/60m</b>. The window resets after each review, so it always reflects recent work rather than ancient history.</p>
+
+<h3>👁 Thumbnails in the Asset Drawer</h3>
+<p>The eye in the drawer header hides asset thumbnails. Cards keep their names and every action; only the picture goes.</p>
+<p>A decoded image costs <b>width × height × 4 bytes</b> in memory however small it is displayed — around <b>12 MB for 300 assets</b>. With thumbnails off the image source is never set at all, so that memory is genuinely released rather than merely hidden.</p>
+
+<h3>⏲ Frame cap</h3>
+<p>A fast display can work against you. <b>requestAnimationFrame</b> fires once per screen refresh, so a 144 Hz laptop gives the engine only <b>6.9 ms</b> per frame while a 60 Hz screen gives <b>16.7 ms</b>. A draw that is comfortable on one is late on every frame of the other.</p>
+<p>Capping does not slow the engine down — <b>it hands the draw the time of the frames it skips.</b> 144 Hz capped to 72 turns a 6.9 ms budget into 13.9 ms.</p>
+<p>Press <b>⏲ Test</b> and the engine measures it on your machine: two seconds uncapped, two capped, reporting delivered frame rate, average and worst draw time, and what percentage of frames ran over budget. If your machine has headroom either way, it says so rather than claiming a win.</p>
+<p style="color:#78909C;">A cap lands cleanly only when it divides the refresh rate. On a 144 Hz screen, 72 gives a true 71 fps; 60 gives 47.</p>
+
+<h3>⌘ Zen</h3>
+<p><b>Tab</b> hides the toolbar entirely. Any open panel floats free rather than disappearing with it, and the radial still reaches all 129 commands. With gestures on, you can work with no interface on screen at all.</p>` },
 
         { id:'watch', t:'Watching the Engine', h:`
 <h3>◉ Pulse — the engine's vital signs</h3>
@@ -14100,6 +14508,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>Esc</b></td><td>Clear selection and cancel <b>every</b> armed mode</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>Tab</b></td><td>Hide / show the toolbar (Zen)</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>Shift+click</b></td><td>Pin the lens to the canvas · hide a ruler</td></tr>
+<tr><td style="padding:4px 0; color:#26C6DA;"><b>Hold Shift + move</b></td><td>Draw a gesture on bare canvas</td></tr>
 <tr><td style="padding:4px 0; color:#26C6DA;"><b>F11</b></td><td>Fullscreen</td></tr>
 </table>
 <h3>Mouse</h3>
@@ -14120,6 +14529,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>The engine feels heavy</b> — open <b>Pulse</b> and see which dot is hot, then <b>Perf</b> for the detail. <b>PURGE</b> reclaims memory and reports exactly what it freed.</li>
 <li><b>A model will not select</b> — it may have been <b>watermarked</b>. Watermarked geometry is part of the canvas, not an element, and that is permanent. The Asset Manager still lists it under Watermarks.</li>
 <li><b>A red date is stuck on an element</b> — that is an overdue calendar event. Open <b>📅 Calendar</b>, find it in the day list, and tick it done or move the date.</li>
+<li><b>A button I need has disappeared</b> — it was hidden, either by you or by a Live Canvas review. Open <b>⊘ Controls</b> and tick it back on, or press <b>Show all</b>. Everything is also still in the radial: <b>Left Alt + click</b>.</li>
+<li><b>A gesture does nothing</b> — gestures only arm on bare canvas with the mouse button up, the lens off, and no drawing or selection mode active. They also need a 45px run. If one is stuck, press <b>Esc</b>.</li>
+<li><b>My gesture does the wrong thing</b> — one of your own gestures may be close in shape to another. Open <b>✎ Gestures</b> to see them as thumbnails, and delete the one you do not want.</li>
 <li><b>I closed the tab and lost everything</b> — reopen OTOM. If a recovery point exists it is offered on startup. Press <b>⏻ Recovery</b> at any time to write one now or pull the stored one back.</li>
 <li><b>Text says the wrong thing</b> — double-click it. The dialogue has a Text content field; editing it re-measures the box.</li>
 <li><b>MEM or DOM never lights</b> — that is the healthy state. Both ignore the engine's own clock and readouts, and MEM only fires on real allocation spikes.</li>
@@ -16786,6 +17198,23 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             bar.appendChild(add);
         }
 
+        // Thumbnails off: cards keep their names and actions, but no image is decoded
+        // or held. Reversible at any time.
+        var drawerThumbs = true;
+        function toggleDrawerThumbs() {
+            drawerThumbs = !drawerThumbs;
+            const b = document.getElementById('drawerEyeBtn');
+            if (b) {
+                b.textContent = drawerThumbs ? '👁' : '👁̸';
+                b.title = drawerThumbs ? 'Hide thumbnails — releases their decoded image memory'
+                                       : 'Show thumbnails';
+                b.style.background = drawerThumbs ? 'rgba(255,255,255,.25)' : '#FFB300';
+                b.style.color = drawerThumbs ? '#fff' : '#000';
+            }
+            renderAssetDrawer();
+            saveState();
+        }
+
         function renderAssetDrawer() {
             const b = document.getElementById('assetDrawerBody');
             if (!b) return;
@@ -16849,8 +17278,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     card.style.boxShadow = '0 2px 7px rgba(0,0,0,.08)'; card.style.transform = 'none';
                     hideDrawerTip();
                 };
-                card.innerHTML =
-                    '<img src="' + a.thumb + '" style="width:100%;height:100px;object-fit:contain;background:#fff;border-bottom:1px solid #eee;display:block;">';
+                // A decoded thumbnail costs width x height x 4 bytes in memory no matter
+                // how small it is shown. With hundreds of assets that is tens of
+                // megabytes held permanently — so when thumbnails are off the src is
+                // never set at all, rather than merely hidden.
+                card.innerHTML = drawerThumbs
+                    ? '<img src="' + a.thumb + '" style="width:100%;height:100px;object-fit:contain;background:#fff;border-bottom:1px solid #eee;display:block;">'
+                    : '<div style="width:100%;height:34px;background:#f5f5f5;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:15px;">▤</div>';
                 const nm = document.createElement('input');
                 nm.value = a.name;
                 nm.title = 'Click to rename';
