@@ -15791,9 +15791,12 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             }
 
             if (groups.length) {
-                section('Grouped Assets', groups.length);
-                groups.forEach(gp => {
-                    const parts = gp.parts || [];            const socketVecs = dots.filter(d => isSocket(d));
+                // Each grouped asset gets its OWN collapsible section. One shared
+                // heading treated three different models with five parts each as a
+                // single set of fifteen, and none could be collapsed on its own.
+                groups.forEach((gp, gi) => {
+                    const parts = gp.parts || [];
+                    section('▦ ' + (gp.assetName || gp.name || ('Grouped Asset ' + (gi + 1))), parts.length);            const socketVecs = dots.filter(d => isSocket(d));
             if (socketVecs.length) {
                 section('Sockets', socketVecs.length);
                 socketVecs.forEach(im => {
@@ -15883,7 +15886,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     const ic = gp.thumb ? thumb(gp.thumb) : chip(gp.welded ? '⊕' : '◈', gp.welded ? '#e0f7fa' : '#fff3e0');
                     const fvCount = parts.filter(p => p.fusable && (p.kind === 'dot' || p.isDot) && !p.meshLink && p.meshRow === undefined).length;
                     row(ic, gp.name || 'Group', (gp.welded ? '⊕ welded · ' : '') + parts.length + ' els · ' + (fvCount ? '⛓ ' + fvCount + ' fusion vectors · ' : '') + formatBytes(elementBytes(gp)),
-                        gp.name || 'Grouped Asset', P, () => selectEl(gp), gp.welded ? '#0097A7' : PRIORITY_COLORS[gp.priority]);
+                        gp.name || 'Grouped Asset', P, () => selectEl(gp), gp.welded ? '#0097A7' : PRIORITY_COLORS[gp.priority], gp);
 
                     // nested branch of the parts that make up this asset
                     const tree = document.createElement('div');
