@@ -711,6 +711,9 @@
         <span class="gsep" data-grp="VISIBILITY"></span>
         <button title="Cycle the dashed outline on hidden elements: full, half, off" id="hiddenOutlineBtn" onclick="cycleHiddenOutline()" style="background: #455A64;">Hidden Outline: 100%</button>
         <button title="Hidden elements brighten as the cursor nears their centre" id="glowBtn" onclick="toggleProximityGlow()" style="background: #455A64;">Proximity Glow: OFF</button>
+        <span style="font-size:11px; color:#333;" title="How close the mouse must get before hidden objects glow">🔦 Radius</span>
+        <input type="range" id="glowRadiusSlider" min="80" max="700" value="320" step="10" oninput="setGlowRadius(this.value)" style="width:80px; vertical-align:middle;" title="Glow radius">
+        <span id="glowRadiusValue" style="font-size:11px; color:#333; width:28px; display:inline-block;">320</span>
         <button title="Hidden element borders fade in as the cursor nears their edge" id="borderBtn" onclick="toggleProximityBorder()" style="background: #455A64;">Proximity Border: OFF</button>
         <button title="Show an element's data card when you hover over it" id="hoverBtn" onclick="toggleHoverPreview()" style="background: #3F51B5;">Hover Info: ON</button>
         <button id="notesBtn" onclick="toggleNotes()" style="background: #0288D1;" title="Middle-click the canvas to drop a thought bubble">💭 Canvas Notations: ON</button>
@@ -825,12 +828,6 @@
         <button onclick="toggleVerticalUI()" style="float: right; font-size: 16px; padding: 4px 10px; background: #37474F; margin-top: 5px;" title="Collapse into a draggable vertical toolbar">⋮</button>
         <input type="file" id="loadInput" accept=".json" style="display: none;">
         <input type="file" id="snapshotInput" accept=".json" style="display: none;">
-        <div style="margin-top: 10px; font-size: 12px; color: #333; display: flex; align-items: center; gap: 8px;">
-            <span title="How close the mouse must get before hidden objects glow">🔦 Glow Radius</span>
-            <input type="range" id="glowRadiusSlider" min="80" max="700" value="320" step="10"
-                   oninput="setGlowRadius(this.value)" style="flex: 1; min-width: 130px;">
-            <span id="glowRadiusValue" style="width: 34px; text-align: right; font-variant-numeric: tabular-nums;">320</span>
-        </div>
         <!-- Collapsible Info Section -->
         <div id="infoSection">
             <div class="zoom-info">Zoom: <span id="zoomLevel">100%</span></div>
@@ -1803,7 +1800,9 @@
             const ll = document.getElementById('modeLabel');
             if (ll) {
                 const t = currentModeLabel();
-                if (t) { ll.textContent = t; ll.style.display = 'block'; ll.style.left = (e.clientX + 16) + 'px'; ll.style.top = (e.clientY + 16) + 'px'; }
+                // position is handled by layoutCursorOverlays, which stacks every
+                // cursor-following label so they cannot sit on top of one another
+                if (t) { ll.textContent = t; ll.style.display = 'block'; }
                 else ll.style.display = 'none';
             }
         });
@@ -6237,6 +6236,95 @@
             modal.onclick = ev => { if (ev.target === modal) finish(); };
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ⇕ LAYERING — position in the images array IS the layer.
+        //
+        // Draw order and hit-testing both read the same array (the hit-test walks it
+        // backwards), so moving an element within it changes what is drawn on top AND
+        // what a click selects. Keeping them as one list means they can never disagree.
+        // ═══════════════════════════════════════════════════════════════════
+        function layerMove(el, dir) {
+            if (!el) return;
+            const i = images.indexOf(el);
+            if (i < 0) return;
+            const j = i + dir;
+            if (j < 0 || j >= images.length) return;
+            images.splice(i, 1);
+            images.splice(j, 0, el);
+            el.layered = true;                     // opt out of the default line rule
+            saveState();
+            draw();
+        }
+
+        function layerToTop(el) {
+            if (!el) return;
+            const i = images.indexOf(el);
+            if (i < 0 || i === images.length - 1) return;
+            images.splice(i, 1);
+            images.push(el);
+            el.layered = true;
+            saveState(); draw();
+        }
+
+        function layerToBottom(el) {
+            if (!el) return;
+            const i = images.indexOf(el);
+            if (i <= 0) return;
+            images.splice(i, 1);
+            images.unshift(el);
+            el.layered = true;
+            saveState(); draw();
+        }
+
+        // The two arrows beside a selected element. Screen-space, so they stay a
+        // constant size at any zoom.
+        var _layerHit = [];
+        function drawLayerArrows() {
+            _layerHit = [];
+            const el = selectedImage;
+            if (!el) return;
+            if (typeof cartReadOnly === 'function' && cartReadOnly(el)) return;
+            const rect = canvas.getBoundingClientRect();
+            const sx = el.x * camera.zoom + camera.x;
+            const sy = el.y * camera.zoom + camera.y;
+            const hw = (el.width / 2) * camera.zoom;
+            const hh = (el.height / 2) * camera.zoom;
+
+            const bx = sx - hw - 26;               // just off the left edge
+            const idx = images.indexOf(el);
+            const top = idx === images.length - 1, bottom = idx === 0;
+
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            [[-1, sy - 13, '▲', top], [1, sy + 13, '▼', bottom]].forEach(([dir, y, glyph, atEnd]) => {
+                ctx.beginPath();
+                ctx.arc(bx, y, 10, 0, Math.PI * 2);
+                ctx.fillStyle = atEnd ? 'rgba(20,26,32,.55)' : 'rgba(20,26,32,.88)';
+                ctx.fill();
+                ctx.strokeStyle = atEnd ? 'rgba(120,144,156,.35)' : 'rgba(120,144,156,.8)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = atEnd ? '#546e7a' : '#ECEFF1';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(glyph, bx, y);
+                if (!atEnd) _layerHit.push({ x: bx, y: y, r: 12, dir: dir === -1 ? 1 : -1, el: el });
+            });
+            // where it sits in the stack
+            ctx.fillStyle = 'rgba(120,144,156,.85)';
+            ctx.font = '9px Arial';
+            ctx.fillText((idx + 1) + '/' + images.length, bx, sy + 34);
+            ctx.restore();
+        }
+
+        function layerArrowAt(sx, sy) {
+            for (let i = 0; i < _layerHit.length; i++) {
+                const a = _layerHit[i];
+                if (Math.hypot(sx - a.x, sy - a.y) <= a.r) return a;
+            }
+            return null;
+        }
+
         function saveState() {
             if (!historyStack.length) seedHistory();
             if (typeof invalidateFlagCache === 'function') invalidateFlagCache();
@@ -6247,6 +6335,7 @@
 
             const state = {
                 images: images.map(img => ({
+                    layered: img.layered || false,
                     id: img.id,
                     name: img.name,
                     fullName: img.fullName,
@@ -6367,6 +6456,7 @@
                         isDot: imgData.isDot || false,
                         kind: imgData.kind || (imgData.isDot ? 'dot' : 'image'),
                         color: imgData.color, thickness: imgData.thickness, dashStyle: imgData.dashStyle, perfectCircle: imgData.perfectCircle, triStyle: imgData.triStyle, meshLink: imgData.meshLink, _meshMeta: imgData._meshMeta, text: imgData.text, font: imgData.font, fontSize: imgData.fontSize,
+                        layered: imgData.layered || false,
                         hidden: imgData.hidden || false,
                         hiddenLevel: imgData.hiddenLevel || 0,
                         pinned: imgData.pinned || false,
@@ -6414,7 +6504,8 @@
                             rotation: imgData.rotation,
                             isDot: false,
                             kind: 'image',
-                            hidden: imgData.hidden || false,
+                            layered: imgData.layered || false,
+                        hidden: imgData.hidden || false,
                             hiddenLevel: imgData.hiddenLevel || 0,
                             sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, padRefs: imgData.padRefs, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
                         });
@@ -6814,6 +6905,18 @@
                 if (magOn) {
                     e.preventDefault();
                     pinMagnifier();
+                    return;
+                }
+            }
+
+            // ⇕ layer arrows beside the selected element
+            if (e.button === 0 && selectedImage && typeof layerArrowAt === 'function') {
+                const _lr = canvas.getBoundingClientRect();
+                const _hit = layerArrowAt(e.clientX - _lr.left, e.clientY - _lr.top);
+                if (_hit) {
+                    e.preventDefault();
+                    layerMove(_hit.el, _hit.dir);
+                    if (typeof usageRecord === 'function') usageRecord(_hit.dir > 0 ? 'Layer up' : 'Layer down', 'canvas');
                     return;
                 }
             }
@@ -7762,6 +7865,10 @@
                 updateImageList();
                 updateDataString();
                 draw();
+            } else if ((e.key === ']' || e.key === '[') && selectedImage) {
+                e.preventDefault();
+                if (e.shiftKey) { if (e.key === ']') layerToTop(selectedImage); else layerToBottom(selectedImage); }
+                else layerMove(selectedImage, e.key === ']' ? 1 : -1);
             } else if (e.key === 'Enter' && selectedImage && !cartReadOnly(selectedImage) && !nameModalHoverMode &&
                        nameModal.style.display !== 'block') {
                 // Enter opens the highlighted element's dialogue
@@ -8433,9 +8540,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
             // Datum lines first so vectors sit on top. This was a slice()+sort() every
             // frame; a stable sort on a two-value key is just a partition, so do it in
             // one O(n) pass with no comparator calls. Identical ordering, less work.
+            // Datum lines default to the back so vectors sit on top of them — but only
+            // for elements the operator has not deliberately layered. Once someone
+            // raises or lowers something, their choice wins.
             const _order = [];
-            for (let i = 0; i < images.length; i++) if (elKind(images[i]) === 'line') _order.push(images[i]);
-            for (let i = 0; i < images.length; i++) if (elKind(images[i]) !== 'line') _order.push(images[i]);
+            for (let i = 0; i < images.length; i++) if (elKind(images[i]) === 'line' && !images[i].layered) _order.push(images[i]);
+            for (let i = 0; i < images.length; i++) if (!(elKind(images[i]) === 'line' && !images[i].layered)) _order.push(images[i]);
             _order.forEach(image => {
                 // Viewport cull: nothing off-screen costs draw or collision work
                 if (!inView(image, 80)) return;
@@ -9901,6 +10011,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
             // the lens samples the finished frame, so it must be the last thing drawn
             drawResizeHandle();
+            drawLayerArrows();
             drawMagnifier();
             drawGestureField();
         }
@@ -10008,6 +10119,30 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 frameCap: (typeof frameCap !== 'undefined') ? frameCap : 0,
                 recoveryMode: (typeof recoveryMode !== 'undefined') ? recoveryMode : 'edit',
                 maxHistory: (typeof MAX_HISTORY !== 'undefined') ? MAX_HISTORY : 50,
+                // Every rendering toggle. These were never persisted: the session block
+                // was written around panels, so a carefully arranged view reset itself
+                // to defaults on every load.
+                viewFlags: (function () {
+                    const g = (n, d) => (typeof window[n] !== 'undefined' ? window[n] : d);
+                    return {
+                        proximityGlow: !!proximityGlow, proximityBorder: !!proximityBorder,
+                        hiddenRadar: !!hiddenRadar, elementRadar: !!elementRadar,
+                        rulerRadar: !!rulerRadar, rulerMouseRadar: !!rulerMouseRadar,
+                        hoverPreviewEnabled: !!hoverPreviewEnabled, intersectFX: !!intersectFX,
+                        showMemInfo: !!showMemInfo, showPath: !!showPath, showFilename: !!showFilename,
+                        showNotations: !!showNotations, showAgent: !!showAgent, showMemAlloc: !!showMemAlloc,
+                        rulerDims: !!rulerDims, elemDimElem: !!elemDimElem, elemDimRuler: !!elemDimRuler,
+                        dimEdge: !!dimEdge, centerDims: !!centerDims,
+                        showGrid: !!showGrid, vtrScale: !!vtrScale,
+                        hiddenOutlineMode: (typeof hiddenOutlineMode !== 'undefined') ? hiddenOutlineMode : 0,
+                        compassMode: (typeof compassMode !== 'undefined') ? compassMode : 0,
+                        meshInfoMode: (typeof meshInfoMode !== 'undefined') ? meshInfoMode : 0,
+                        rotSnapIdx: (typeof rotSnapIdx !== 'undefined') ? rotSnapIdx : 0,
+                        flagGap: (typeof flagGap !== 'undefined') ? flagGap : 0,
+                        priorityShow: (typeof priorityShow !== 'undefined') ? Object.assign({}, priorityShow) : null
+                    };
+                })(),
+                glowRadius: (typeof GLOW_RADIUS !== 'undefined') ? GLOW_RADIUS : 320,
                 rulerHiddenOpacity: (typeof rulerHiddenOpacity !== 'undefined') ? rulerHiddenOpacity : 0.35,
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 magPins: (typeof magPins !== 'undefined') ? magPins : [],
@@ -10767,7 +10902,62 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (engineData.maxHistory) { MAX_HISTORY = engineData.maxHistory; const hc = document.getElementById('histCap'); if (hc) hc.value = String(MAX_HISTORY); }
                     if (Array.isArray(engineData.guides) && typeof guides !== 'undefined') {
                         setTimeout(() => {
-                            if (typeof engineData.rulerHiddenOpacity === 'number') {
+                            if (engineData.viewFlags) {
+                        const V = engineData.viewFlags;
+                        // Each is toggled through ITS OWN function, so the button label
+                        // and colour update too — flipping the variable alone would
+                        // leave the toolbar lying about the state.
+                        const flip = (want, cur, fn) => {
+                            try { if (!!want !== !!cur && typeof fn === 'function') fn(); } catch (e) {}
+                        };
+                        flip(V.proximityGlow, proximityGlow, toggleProximityGlow);
+                        flip(V.proximityBorder, proximityBorder, toggleProximityBorder);
+                        flip(V.hiddenRadar, hiddenRadar, toggleHiddenRadar);
+                        flip(V.elementRadar, elementRadar, toggleElementRadar);
+                        flip(V.rulerRadar, rulerRadar, toggleRulerRadar);
+                        flip(V.rulerMouseRadar, rulerMouseRadar, toggleRulerMouse);
+                        flip(V.hoverPreviewEnabled, hoverPreviewEnabled, toggleHoverPreview);
+                        flip(V.intersectFX, intersectFX, toggleIntersectFX);
+                        flip(V.showMemInfo, showMemInfo, toggleMemInfo);
+                        flip(V.showPath, showPath, togglePath);
+                        flip(V.showFilename, showFilename, toggleFilename);
+                        flip(V.showNotations, showNotations, toggleNotations);
+                        flip(V.showAgent, showAgent, toggleAgent);
+                        flip(V.showMemAlloc, showMemAlloc, toggleMemAlloc);
+                        flip(V.rulerDims, rulerDims, toggleRulerDims);
+                        flip(V.elemDimElem, elemDimElem, toggleElemDimElem);
+                        flip(V.elemDimRuler, elemDimRuler, toggleElemDimRuler);
+                        flip(V.dimEdge, dimEdge, toggleDimEdge);
+                        flip(V.centerDims, centerDims, toggleCenterDims);
+                        flip(V.showGrid, showGrid, toggleGrid);
+                        flip(V.vtrScale, vtrScale, toggleVtrScale);
+                        // cycling controls: step them round to the stored position
+                        const cyc = (want, curName, fn, max) => {
+                            try {
+                                for (let i = 0; i < max && window[curName] !== want; i++) fn();
+                            } catch (e) {}
+                        };
+                        if (typeof V.hiddenOutlineMode === 'number') cyc(V.hiddenOutlineMode, 'hiddenOutlineMode', cycleHiddenOutline, 4);
+                        if (typeof V.compassMode === 'number') cyc(V.compassMode, 'compassMode', cycleCompass, 4);
+                        if (typeof V.meshInfoMode === 'number') cyc(V.meshInfoMode, 'meshInfoMode', cycleMeshInfo, 4);
+                        if (typeof V.rotSnapIdx === 'number') cyc(V.rotSnapIdx, 'rotSnapIdx', cycleRotSnap, 8);
+                        if (typeof V.flagGap === 'number' && typeof flagGap !== 'undefined') {
+                            flagGap = V.flagGap;
+                            const fv = document.getElementById('flagGapVal');
+                            if (fv) fv.textContent = String(flagGap);
+                        }
+                        if (V.priorityShow && typeof priorityShow !== 'undefined') {
+                            ['low', 'medium', 'high'].forEach(k => {
+                                if (!!V.priorityShow[k] !== !!priorityShow[k]) { try { togglePriority(k); } catch (e) {} }
+                            });
+                        }
+                    }
+                    if (typeof engineData.glowRadius === 'number' && typeof setGlowRadius === 'function') {
+                        setGlowRadius(engineData.glowRadius);
+                        const gs = document.getElementById('glowRadiusSlider');
+                        if (gs) gs.value = String(engineData.glowRadius);
+                    }
+                    if (typeof engineData.rulerHiddenOpacity === 'number') {
                                 rulerHiddenOpacity = engineData.rulerHiddenOpacity;
                                 const sl = document.getElementById('rulerHiddenOpacity');
                                 if (sl) sl.value = Math.round(rulerHiddenOpacity * 100);
@@ -10846,7 +11036,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 kind: imgData.kind || (imgData.isDot ? 'dot' : 'image'),
                                 color: imgData.color, thickness: imgData.thickness, dashStyle: imgData.dashStyle, perfectCircle: imgData.perfectCircle, triStyle: imgData.triStyle, meshLink: imgData.meshLink,
                                 _meshMeta: imgData._meshMeta, text: imgData.text, font: imgData.font, fontSize: imgData.fontSize,
-                                hidden: imgData.hidden || false,
+                                layered: imgData.layered || false,
+                        hidden: imgData.hidden || false,
                                 hiddenLevel: imgData.hiddenLevel || 0,
                                 // ⛓ fusion + metadata — these used to be dropped on load
                                 pinned: imgData.pinned || false,
@@ -10906,7 +11097,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                     name: imgData.name || '',
                                     fullName: imgData.fullName || '',
                                     isDot: false,
-                                    hidden: imgData.hidden || false,
+                                    layered: imgData.layered || false,
+                        hidden: imgData.hidden || false,
                                     hiddenLevel: imgData.hiddenLevel || 0,
                                     sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType, memSize: imgData.memSize, filePath: imgData.filePath, numDesignation: imgData.numDesignation, adhocGroup: imgData.adhocGroup, padRefs: imgData.padRefs, birthStamp: imgData.birthStamp, numUserSet: imgData.numUserSet, notations: imgData.notations, agent: imgData.agent, priority: imgData.priority, outline: imgData.outline, allowed: imgData.allowed, contents: imgData.contents, cartColor: imgData.cartColor, readOnly: imgData.readOnly, cartLocked: imgData.cartLocked, editLocked: imgData.editLocked, lastEdited: imgData.lastEdited, fusionVector: imgData.fusionVector, fusionPitch: imgData.fusionPitch, parts: imgData.parts, partConnections: imgData.partConnections, assetName: imgData.assetName, thumb: imgData.thumb, isMesh: imgData.isMesh, welded: imgData.welded, weldedFrom: imgData.weldedFrom, baseWidth: imgData.baseWidth, fusionId: imgData.fusionId, vFusionId: imgData.vFusionId, socket: imgData.socket, socketLinks: imgData.socketLinks, socketId: imgData.socketId, meshCols: imgData.meshCols, meshRows: imgData.meshRows, meshGap: imgData.meshGap, meshSockets: imgData.meshSockets, meshDatumLines: imgData.meshDatumLines
                                 };
@@ -10968,9 +11160,9 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function showGrabHint(txt, x, y) {
             const el = document.getElementById('grabHint');
             el.textContent = txt;
-            el.style.left = (x + 16) + 'px';
-            el.style.top = (y + 18) + 'px';
             el.style.display = 'block';
+            // one authority for placement, so the mode label and this can never overlap
+            layoutCursorOverlays(x, y);
         }
         function hideGrabHint() { document.getElementById('grabHint').style.display = 'none'; }
 
@@ -10978,6 +11170,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function layoutCursorOverlays(cx, cy) {
             const gap = 6;
             const order = [
+                document.getElementById('modeLabel'),
                 document.getElementById('grabHint'),
                 document.getElementById('elementRadarBox'),
                 document.getElementById('hiddenRadar'),
@@ -10987,11 +11180,11 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
             let total = 0;
             order.forEach(el => total += el.offsetHeight + gap);
-            let y = cy + 18;
+            let y = cy - 6;
             if (y + total > window.innerHeight - 8) y = Math.max(8, window.innerHeight - 8 - total);
 
             order.forEach(el => {
-                const x = Math.max(8, Math.min(cx + 16, window.innerWidth - el.offsetWidth - 8));
+                const x = Math.max(8, Math.min(cx + 34, window.innerWidth - el.offsetWidth - 8));
                 el.style.transform = 'none';
                 el.style.left = x + 'px';
                 el.style.top = y + 'px';
