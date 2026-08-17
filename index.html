@@ -4173,14 +4173,21 @@
             q('calPopBtn').onclick = () => {
                 calPopped = !calPopped;
                 if (calPopped) {
+                    setParked('calPanel', false);
                     const r = p.getBoundingClientRect();
                     p.style.position = 'fixed'; p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
                     p.style.transform = 'none'; p.style.marginTop = '0'; p.style.zIndex = '99300';
                     q('calPopBtn').textContent = '⇲ Dock';
+                } else if (typeof zenMode !== 'undefined' && zenMode) {
+                    setParked('calPanel', true);
+                    q('calPopBtn').textContent = '⇱ Pop Out';
                 } else {
+                    setParked('calPanel', false);
                     calPinned = false;
                     q('calPinBtn').textContent = '📌 Pin';
                     q('calPinBtn').style.background = 'rgba(79,195,247,.14)'; q('calPinBtn').style.color = '#4FC3F7';
+                    const home = document.getElementById('controls');
+                    if (home && p.parentNode !== home) home.appendChild(p);
                     if (typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
                     p.style.zIndex = '1585';
                     q('calPopBtn').textContent = '⇱ Pop Out';
@@ -4487,13 +4494,23 @@
         }
 
         var _zenParked = [];
+        // Panels the operator placed by hand while the toolbar was hidden. Docking in
+        // Zen means "park it here", which is neither popped nor in the bar — so bringing
+        // the toolbar back must leave it alone. One shared set rather than a flag per
+        // panel, so every dockable behaves the same way.
+        var parkedPanels = new Set();
+        function isParked(id) { return parkedPanels.has(id); }
+        function setParked(id, on) { if (on) parkedPanels.add(id); else parkedPanels.delete(id); }
         function zenFloatPanels(on) {
             // A panel dragged out still belongs to the toolbar in the DOM, so hiding
             // the toolbar hides it. Float by DOM parentage, not by where it appears.
 
-            const ids = ['padPanel', 'calcPanel', 'calPanel', 'notesReader', 'assetDrawer',
-                         'parserPanel', 'primerDock', 'dataPanel', 'healthTab', 'pulseTab', 'assetPanel'];
+            const ids = ['padPanel', 'calcPanel', 'calPanel', 'chkPanel', 'notesReader', 'assetDrawer',
+                         'parserPanel', 'primerDock', 'dataPanel', 'healthTab', 'pulseTab', 'assetPanel', 'helpPanel'];
             if (on) {
+                // The popped flag is the operator's choice and is left exactly as it is.
+                // Floating a panel so it survives the hidden toolbar is a separate
+                // matter from whether they asked for it to be undocked.
                 _zenParked = [];
                 ids.forEach(id => {
                     const el = document.getElementById(id);
@@ -4502,7 +4519,10 @@
                     if (!vis) return;
                     if (el.parentNode === document.body) return;   // already floating
                     const r = el.getBoundingClientRect();
-                    if (!r.width) return;
+                    // A zero measurement is not a reason to abandon a panel inside a
+                    // toolbar about to be hidden — it would simply vanish. Fall back to
+                    // a sane position instead of skipping it.
+                    const okW = r.width > 0;
                     _zenParked.push({
                         id: id, parent: el.parentNode, next: el.nextSibling,
                         css: { position: el.style.position, left: el.style.left, top: el.style.top,
@@ -4511,8 +4531,8 @@
                     });
                     document.body.appendChild(el);
                     el.style.position = 'fixed';
-                    el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) + 'px';
-                    el.style.top = Math.max(8, Math.min(r.top, window.innerHeight - 60)) + 'px';
+                    el.style.left = (okW ? Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) : 120) + 'px';
+                    el.style.top = (okW ? Math.max(8, Math.min(r.top, window.innerHeight - 60)) : 90) + 'px';
                     el.style.right = 'auto';
                     el.style.transform = 'none';
                     el.style.marginTop = '0';
@@ -4522,10 +4542,33 @@
                 _zenParked.forEach(p => {
                     const el = document.getElementById(p.id);
                     if (!el) return;
+                    // A panel the operator POPPED OUT while in Zen stays where they put
+                    // it. Putting every panel back unconditionally was dragging a
+                    // deliberately undocked pad straight back into the toolbar.
+                    const popped = {
+                        padPanel:   (typeof padPopped  !== 'undefined') && padPopped,
+                        calcPanel:  (typeof calcPopped !== 'undefined') && calcPopped,
+                        calPanel:   (typeof calPopped  !== 'undefined') && calPopped,
+                        chkPanel:   (typeof chkPopped  !== 'undefined') && chkPopped,
+                        assetDrawer:(typeof drawerFree !== 'undefined') && drawerFree
+                    };
+                    const stillOut = isParked(p.id) || !!popped[p.id];
+                    if (stillOut) {
+                        el.style.position = 'fixed';   // keep it floating exactly as it is
+                        return;
+                    }
                     try { p.parent.insertBefore(el, p.next); } catch (e) { }
                     Object.keys(p.css).forEach(k => { el.style[k] = p.css[k]; });
                 });
                 _zenParked = [];
+                // whatever they set while in Zen is what they meant; just sync the label
+                {
+                    const pb = document.getElementById('padPopBtn');
+                    if (pb && typeof padPopped !== 'undefined') {
+                        pb.textContent = padPopped ? '⇲ Dock' : '⇱ Pop Out';
+                        pb.title = '';
+                    }
+                }
                 if (typeof reanchorAllPanels === 'function') reanchorAllPanels();
                 // a hand-placed drawer keeps the spot the operator chose
                 if (drawerFree && !drawerPinned) {
@@ -13201,6 +13244,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             q('calcPopBtn').onclick = () => {
                 calcPopped = !calcPopped;
                 if (calcPopped) {
+                    setParked('calcPanel', false);
                     const r = p.getBoundingClientRect();
                     p.style.position = 'fixed';
                     p.style.left = r.left + 'px';
@@ -13209,10 +13253,17 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     p.style.marginTop = '0';
                     p.style.zIndex = '99000';
                     q('calcPopBtn').textContent = '⇲ Dock';
+                } else if (typeof zenMode !== 'undefined' && zenMode) {
+                    // no toolbar to dock to: park it exactly where they put it
+                    setParked('calcPanel', true);
+                    q('calcPopBtn').textContent = '⇱ Pop Out';
                 } else {
+                    setParked('calcPanel', false);
                     calcPinned = false;
                     p.classList.remove('faded');
                     q('calcPinBtn').textContent = '📌 Pin';
+                    const home = document.getElementById('controls');
+                    if (home && p.parentNode !== home) home.appendChild(p);
                     if (typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
                     q('calcPopBtn').textContent = '⇱ Pop Out';
                 }
@@ -13580,9 +13631,14 @@ ctx.fillText(conn.number.toString(), midX, midY);
             q('chkPopBtn').onclick = () => {
                 chkPopped = !chkPopped;
                 if (chkPopped) {
+                    setParked('chkPanel', false);
                     p.style.zIndex = '99900';
                     q('chkPopBtn').textContent = '⇲ Dock';
+                } else if (typeof zenMode !== 'undefined' && zenMode) {
+                    setParked('chkPanel', true);
+                    q('chkPopBtn').textContent = '⇱ Pop Out';
                 } else {
+                    setParked('chkPanel', false);
                     chkPinned = false;
                     q('chkPinBtn').textContent = '📌 Pin';
                     q('chkPinBtn').style.background = 'rgba(255,204,128,.14)'; q('chkPinBtn').style.color = '#FFCC80';
@@ -14137,14 +14193,39 @@ ctx.fillText(conn.number.toString(), midX, midY);
             };
 
             padEl('padPopBtn').onclick = () => {
+                // With the toolbar hidden there is nothing to dock TO, so the pad is
+                // always floating in Zen and the button has nothing to toggle.
+                padEl('padPopBtn').title = '';
                 padPopped = !padPopped;
+
                 if (padPopped) {
+                    setParked('padPanel', false);
+                    // lift it out of the bar so it can be moved anywhere
                     const r = p.getBoundingClientRect();
+                    if (p.parentNode !== document.body) document.body.appendChild(p);
                     p.style.position = 'fixed';
-                    p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
-                    p.style.transform = 'none'; p.style.marginTop = '0'; p.style.zIndex = '99400';
+                    p.style.left = r.left + 'px';
+                    p.style.top = r.top + 'px';
+                    p.style.right = 'auto';
+                    p.style.transform = 'none';
+                    p.style.marginTop = '0';
+                    p.style.zIndex = '99400';
                     padEl('padPopBtn').textContent = '⇲ Dock';
+                } else if (typeof zenMode !== 'undefined' && zenMode) {
+                    // The toolbar is hidden, so "docked" means parked where the operator
+                    // put it. Mark it PARKED so that bringing the toolbar back does not
+                    // haul it into the bar — they placed it deliberately.
+                    setParked('padPanel', true);
+                    p.style.zIndex = '99200';
+                    padEl('padPopBtn').textContent = '⇱ Pop Out';
                 } else {
+                    // put it back in the toolbar BEFORE re-anchoring, or position:absolute
+                    // is measured against the page and it lands in the top-left corner
+                    setParked('padPanel', false);   // genuinely returning to the toolbar
+                    const home = document.getElementById('controls');
+                    if (home && p.parentNode !== home) home.appendChild(p);
+                    p.style.left = ''; p.style.top = ''; p.style.right = '';
+                    p.style.width = ''; p.style.height = '';
                     if (typeof reanchorPanel === 'function') reanchorPanel(p, { left: '50%', transform: 'translateX(-50%)' });
                     p.style.zIndex = '1580';
                     padEl('padPopBtn').textContent = '⇱ Pop Out';
@@ -16594,8 +16675,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const centre = [
                     ['notesReader', typeof notesReaderOpen !== 'undefined' && notesReaderOpen, false],
                     ['calcPanel',  typeof calcOpen !== 'undefined' && calcOpen,  typeof calcPopped !== 'undefined' && calcPopped],
-                    ['padPanel',   typeof padOpen !== 'undefined' && padOpen,    typeof padPopped !== 'undefined' && padPopped],
-                    ['calPanel',   typeof calOpen !== 'undefined' && calOpen,    typeof calPopped !== 'undefined' && calPopped]
+                    ['padPanel',   typeof padOpen !== 'undefined' && padOpen,
+                        (typeof padPopped !== 'undefined' && padPopped) || isParked('padPanel') ||
+                        (typeof zenMode !== 'undefined' && zenMode)],
+                    ['calPanel',   typeof calOpen !== 'undefined' && calOpen,
+                        (typeof calPopped !== 'undefined' && calPopped) || isParked('calPanel')],
+                    ['calcPanel',  typeof calcOpen !== 'undefined' && calcOpen,
+                        (typeof calcPopped !== 'undefined' && calcPopped) || isParked('calcPanel')]
                 ];
                 centre.forEach(([id, isOpen, popped]) => {
                     const el = document.getElementById(id);
