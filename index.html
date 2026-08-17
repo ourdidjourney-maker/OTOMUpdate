@@ -763,6 +763,7 @@
         </select>
         <span id="lcStatus" style="font-size:10px; color:#00838F;"></span>
         <button onclick="ctlManager()" title="Choose which toolbar controls you want. Hidden ones stay reachable in the radial menu." style="background:#455A64; font-size:11px; padding:6px 9px;">⊘ Controls</button>
+        <button id="layerBtn" onclick="toggleLayerArrows()" title="Show or hide the layer arrows beside a selected element. Layering still works with [ and ]." style="background:#5E35B1; font-size:11px; padding:6px 9px;">⇕ Layers</button>
         <button id="gestureOnBtn" onclick="toggleGestures()" title="Turn mouse gestures on or off. With them off, Shift is only ever used for resizing and constraining." style="background:#00838F; font-size:11px; padding:6px 9px;">✍ Gestures: ON</button>
         <button onclick="ugManager()" title="Your own gestures — record a stroke and choose what it does" style="background:#455A64; font-size:11px; padding:6px 9px;">✎ Gestures</button>
         <button id="pathBtn" onclick="togglePathTracker()" title="Mouse Path — a live schematic of where the hand has been" style="background:#455A64; font-size:11px; padding:6px 9px;">⟿ Path</button>
@@ -1652,6 +1653,7 @@
                 { ico: '✎', label: 'Gestures', accent: '#00838F', run: () => ugManager() },
                 { ico: '✍', label: 'MG On/Off', accent: '#00838F', run: () => toggleGestures() },
                 { ico: '⊘', label: 'Controls', accent: '#455A64', run: () => ctlManager() },
+                { ico: '⇕', label: 'Layers',   accent: '#5E35B1', run: () => toggleLayerArrows() },
                 { ico: '⧗', label: 'Live Canvas', accent: '#00838F', run: () => lcReview() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
                 { ico: '📊', label: 'Perf',    accent: '#37474F', run: () => togglePerf() },
@@ -6279,8 +6281,21 @@
         // The two arrows beside a selected element. Screen-space, so they stay a
         // constant size at any zoom.
         var _layerHit = [];
+        var layerArrowsOn = true;
+        function toggleLayerArrows() {
+            layerArrowsOn = !layerArrowsOn;
+            const b = document.getElementById('layerBtn');
+            if (b) {
+                b.textContent = layerArrowsOn ? '⇕ Layers' : '⇕ Layers: OFF';
+                b.style.background = layerArrowsOn ? '#5E35B1' : '#455A64';
+            }
+            saveState();
+            draw();
+        }
+
         function drawLayerArrows() {
             _layerHit = [];
+            if (!layerArrowsOn) return;
             const el = selectedImage;
             if (!el) return;
             if (typeof cartReadOnly === 'function' && cartReadOnly(el)) return;
@@ -10148,6 +10163,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 magPins: (typeof magPins !== 'undefined') ? magPins : [],
                 userGestures: (typeof userGestures !== 'undefined') ? userGestures : [],
                 gestureOn: (typeof gestureOn !== 'undefined') ? gestureOn : true,
+                layerArrowsOn: (typeof layerArrowsOn !== 'undefined') ? layerArrowsOn : true,
                 hiddenControls: (typeof hiddenControls !== 'undefined') ? hiddenControls : [],
                 drawerThumbs: (typeof drawerThumbs !== 'undefined') ? drawerThumbs : true,
                 liveCanvas: (typeof lcMinutes !== 'undefined') ? lcMinutes : 0,
@@ -10869,6 +10885,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (typeof magPins !== 'undefined') { magPins = Array.isArray(engineData.magPins) ? engineData.magPins : []; updateMagPinCount(); }
                     if (typeof userGestures !== 'undefined') userGestures = Array.isArray(engineData.userGestures) ? engineData.userGestures : [];
                     if (typeof engineData.gestureOn === 'boolean' && typeof gestureOn !== 'undefined' && engineData.gestureOn !== gestureOn) toggleGestures();
+                    if (typeof engineData.layerArrowsOn === 'boolean' && typeof layerArrowsOn !== 'undefined' && engineData.layerArrowsOn !== layerArrowsOn) toggleLayerArrows();
                     if (typeof hiddenControls !== 'undefined') { hiddenControls = Array.isArray(engineData.hiddenControls) ? engineData.hiddenControls : []; ctlApplyHidden(); }
                     if (typeof engineData.drawerThumbs === 'boolean' && typeof drawerThumbs !== 'undefined' && engineData.drawerThumbs !== drawerThumbs) toggleDrawerThumbs();
                     if (typeof engineData.liveCanvas === 'number' && typeof setLiveCanvas === 'function') setLiveCanvas(engineData.liveCanvas);
@@ -14580,6 +14597,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <h3>Shift is shared, so gestures wait their turn</h3>
 <p>Shift also resizes, constrains a shape to 45°, adds to a selection and pins the lens. A gesture only arms when none of those are in play: the mouse button is up, nothing is being dragged or resized, no drawing mode is active, the lens is off, and the cursor is over bare canvas. Press a button mid-stroke and the gesture cancels — a click means you meant to manipulate, not draw.</p>
 
+<h3>Turning gestures off entirely</h3>
+<p><b>✍ Gestures: ON/OFF</b> on the toolbar disables the whole system. With it off, Shift is only ever used for resizing and constraining — useful if you do a lot of precise resizing and want no ambiguity at all.</p>
+
 <h3>✎ Your own gestures</h3>
 <p>The eight above are only the defaults. Press <b>✎ Gestures</b> → <b>Record a new gesture</b>, draw whatever shape you like, and choose from <b>every command in the engine</b> what it should do.</p>
 <ul>
@@ -14623,6 +14643,34 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <h3>⌘ Zen</h3>
 <p><b>Tab</b> hides the toolbar entirely. Any open panel floats free rather than disappearing with it, and the radial still reaches all 129 commands. With gestures on, you can work with no interface on screen at all.</p>` },
 
+        { id:'layer', t:'Layering & Stacking', h:`
+<h3>What sits on top</h3>
+<p>An uploaded image will cover the vectors and lines beneath it, because a newer element is drawn later. <b>⇕ Layering</b> lets you decide the order instead.</p>
+<p>Click any element and two small arrows appear just off its left edge, with its position in the stack beneath them:</p>
+` + hFig('The layer arrows. They dim when an element is already at the top or bottom of the stack.',
+`<svg viewBox="0 0 420 170" style="width:100%; max-width:420px; display:block; margin:0 auto;">
+  <rect x="150" y="45" width="120" height="80" fill="#1b2530" stroke="#2196F3" stroke-width="2"/>
+  <text x="210" y="90" fill="#78909C" font-size="11" text-anchor="middle">selected element</text>
+  <circle cx="124" cy="72" r="10" fill="rgba(20,26,32,.88)" stroke="rgba(120,144,156,.8)"/>
+  <text x="124" y="76" fill="#ECEFF1" font-size="10" font-weight="bold" text-anchor="middle">▲</text>
+  <circle cx="124" cy="98" r="10" fill="rgba(20,26,32,.88)" stroke="rgba(120,144,156,.8)"/>
+  <text x="124" y="102" fill="#ECEFF1" font-size="10" font-weight="bold" text-anchor="middle">▼</text>
+  <text x="124" y="122" fill="rgba(120,144,156,.85)" font-size="9" text-anchor="middle">3/12</text>
+  <text x="124" y="36" fill="#546e7a" font-size="10" text-anchor="middle">raise</text>
+  <text x="124" y="142" fill="#546e7a" font-size="10" text-anchor="middle">lower</text>
+</svg>`) + `
+<ul>
+<li><b>▲</b> raise one layer · <b>▼</b> lower one layer</li>
+<li><b>]</b> and <b>[</b> do the same from the keyboard</li>
+<li><b>Shift+]</b> brings it to the very front · <b>Shift+[</b> sends it to the very back</li>
+<li><b>⇕ Layers</b> on the toolbar hides the arrows when you do not want them on screen. The keyboard shortcuts still work.</li>
+</ul>
+
+<h3>Why clicking still selects the right thing</h3>
+<p>Layer order is not a separate property — it is the element's <b>position in the engine's own list</b>. Drawing reads that list forwards and clicking reads it backwards, so raising something makes it draw on top <i>and</i> win the click, together. They cannot disagree.</p>
+<p>Datum lines still fall behind everything by default, so vectors sit on top of them. But that is only a default: the moment you deliberately raise or lower something, your choice takes over.</p>
+<p style="color:#78909C;">Layering is saved with the engine and survives undo, snapshots and recovery.</p>` },
+
         { id:'watch', t:'Watching the Engine', h:`
 <h3>◉ Pulse — the engine's vital signs</h3>
 <p>Four dots that blink on <b>real measured work</b>:</p>
@@ -14651,6 +14699,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <li><b>♥ Health</b> — a one-line verdict: stable, strained, or critical.</li>
 <li><b>📊 Perf</b> — the full monitor: FPS, heap, scene graph, memory breakdown, DOM, timing, environment.</li>
 <li><b>🗂 Assets</b> — the Asset Manager. Every element, panel and widget with its exact byte cost, rolled into one total.</li>
+<li><b>The Asset Manager follows your selection.</b> Click an element on the canvas and its row is tinted, marked <b>SELECTED</b>, and scrolled into view. A lasso marks every member.</li>
+<li><b>Each grouped asset is its own section.</b> Three models of five parts read as three sections of five, not one of fifteen — and any of them can be collapsed on its own.</li>
 <li><b>Undo depth</b> — the dropdown beside Undo sets how many steps are kept, from 10 to 250. Each step holds a full snapshot of the scene, so this is the largest single memory dial in the engine; lowering it releases the memory immediately and tells you how much it freed.</li>
 </ul>
 ` + hFig('An Asset Manager row. Hover the ⓘ for the full data card; the footer totals the engine and everything in it.',
@@ -14702,6 +14752,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 ) + `
 <p>The readout beside the control tells you where you stand: <b style="color:#2E7D32;">⏻ 12s ago · on change</b> when you are covered, and <b style="color:#EF6C00;">· unsaved</b> in orange when there are edits not yet in a point.</p>
 <p style="color:#78909C;">A browser will not allow a download to start while a tab is closing, so the recovery point is <b>stored</b> rather than downloaded — which is safer anyway, since a stored point cannot be missed.</p>
+<h3>Your view comes back too</h3>
+<p>A snapshot does not only carry the canvas. Every rendering toggle is stored with it — Proximity Glow and its radius, all the radars, Hover Info, the metadata flags, dimensioning, the compass, the grid, rotation snap, flag spacing and your priority filters.</p>
+<p>Set your view up exactly as you like it, save, and it returns that way. Each toggle is restored through its own control, so the buttons show the right state rather than merely behaving correctly.</p>
+
 <h3>Restoring</h3>
 <p><b>⤺ Load Snapshot</b> rebuilds the session and shows a full inventory of what came back, grouped by canvas, state, library, and windows. <b>Hover any row</b> for detail. It waits for you — press <b>Continue</b> or <b>Esc</b> when you are ready.</p>
 <p style="color:#78909C;">If your browser is set to ask where to save each file, downloads will prompt. Turn that off in your browser's download settings and snapshots land silently.</p>` },
