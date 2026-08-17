@@ -760,6 +760,7 @@
         </select>
         <span id="lcStatus" style="font-size:10px; color:#00838F;"></span>
         <button onclick="ctlManager()" title="Choose which toolbar controls you want. Hidden ones stay reachable in the radial menu." style="background:#455A64; font-size:11px; padding:6px 9px;">⊘ Controls</button>
+        <button id="gestureOnBtn" onclick="toggleGestures()" title="Turn mouse gestures on or off. With them off, Shift is only ever used for resizing and constraining." style="background:#00838F; font-size:11px; padding:6px 9px;">✍ Gestures: ON</button>
         <button onclick="ugManager()" title="Your own gestures — record a stroke and choose what it does" style="background:#455A64; font-size:11px; padding:6px 9px;">✎ Gestures</button>
         <button id="pathBtn" onclick="togglePathTracker()" title="Mouse Path — a live schematic of where the hand has been" style="background:#455A64; font-size:11px; padding:6px 9px;">⟿ Path</button>
         <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
@@ -1652,6 +1653,7 @@
                 { ico: '▮', label: 'Usage',    accent: '#EF6C00', run: () => toggleUsage() },
                 { ico: '⟿', label: 'Path',     accent: '#00838F', run: () => togglePathTracker() },
                 { ico: '✎', label: 'Gestures', accent: '#00838F', run: () => ugManager() },
+                { ico: '✍', label: 'MG On/Off', accent: '#00838F', run: () => toggleGestures() },
                 { ico: '⊘', label: 'Controls', accent: '#455A64', run: () => ctlManager() },
                 { ico: '⧗', label: 'Live Canvas', accent: '#00838F', run: () => lcReview() },
                 { ico: '♥', label: 'Health',   accent: '#2E7D32', run: () => toggleHealth() },
@@ -3787,8 +3789,18 @@
             const r = canvas.getBoundingClientRect();
             const w = screenToCanvas(m.x, m.y);
             if (getImageAtPoint(w.x, w.y)) return;            // never over an element
-            // and never over a selected element's handles, which Shift also serves
-            if (selectedImage && isPointInResizeHandle(w.x, w.y, selectedImage)) return;
+            // Never near a selected element's handles. A generous margin here, because
+            // failing to resize is far more annoying than failing to draw a gesture —
+            // the gesture can simply be started somewhere else on the canvas.
+            if (selectedImage) {
+                const cs = Math.cos(selectedImage.rotation), sn = Math.sin(selectedImage.rotation);
+                const hx = selectedImage.x + (selectedImage.width / 2) * cs - (selectedImage.height / 2) * sn;
+                const hy = selectedImage.y + (selectedImage.width / 2) * sn + (selectedImage.height / 2) * cs;
+                if (Math.hypot(w.x - hx, w.y - hy) < 55 / camera.zoom) return;
+                if (typeof isPointInRotateHandle === 'function' &&
+                    isPointInRotateHandle(w.x, w.y, selectedImage)) return;
+            }
+            if (selectedGroup && selectedGroup.length) return;   // a live selection owns Shift
             gestureStart(m.x - r.left, m.y - r.top, { x: w.x, y: w.y });
         });
 
@@ -4441,13 +4453,10 @@
             ctx.strokeStyle = 'rgba(120,160,180,.30)'; ctx.lineWidth = 1.4; ctx.stroke();
             ctx.font = 'bold 11px Arial';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            const lbl = isPinned ? '📌 ' + zoomV.toFixed(1) + '×'
-                                 : zoomV.toFixed(1) + '×  ·  Shift+click to pin';
-            const w = ctx.measureText(lbl).width;
-            ctx.fillStyle = 'rgba(10,14,18,.8)';
-            ctx.fillRect(cx - w / 2 - 9, cy + R - 20, w + 18, 16);
-            ctx.fillStyle = '#4FC3F7';
-            ctx.fillText(lbl, cx, cy + R - 12);
+            // The magnification readout and the pin marker sat inside the glass and
+            // covered whatever was beneath them — worst when zoomed out, which is
+            // exactly when the lens is most needed. Removed; the rim colour still
+            // distinguishes a pinned lens from the live one.
             ctx.restore();
         }
 
@@ -5010,6 +5019,16 @@
         //   Shift + stroke UP     → open the Notations Reader
         // ═══════════════════════════════════════════════════════════════════
         var gestureOn = true;                 // master toggle
+        function toggleGestures() {
+            gestureOn = !gestureOn;
+            if (!gestureOn && typeof gestureAbort === 'function') gestureAbort();
+            const b = document.getElementById('gestureOnBtn');
+            if (b) {
+                b.textContent = gestureOn ? '✍ Gestures: ON' : '✍ Gestures: OFF';
+                b.style.background = gestureOn ? '#00838F' : '#455A64';
+            }
+            saveState();
+        }
         var _gsActive = false, _gsPts = [], _gsBox = null, _gsWorld = null, _mouseDown = false, _shiftHeld = false;
 
         function gestureStart(sx, sy, world) {
@@ -6508,7 +6527,9 @@
             const dx = x - handleX;
             const dy = y - handleY;
             const distanceSquared = dx * dx + dy * dy;
-            const r = 15 / camera.zoom;
+            // 15px was a small target even before Shift was shared with gestures.
+            // 30 makes it comfortable without overlapping the rotate handle.
+            const r = 30 / camera.zoom;
             return distanceSquared < r * r;
         }
 
@@ -6524,13 +6545,13 @@
             const hy = im.y + (im.width / 2) * sin + (im.height / 2) * cos;
 
             const live = !!_shiftHeld;
-            const r = 7 / z;
+            const r = 9 / z;
             ctx.save();
             ctx.setLineDash([]);
             // the grab zone, so its true size is visible while Shift is held
             if (live) {
                 ctx.beginPath();
-                ctx.arc(hx, hy, 15 / z, 0, Math.PI * 2);
+                ctx.arc(hx, hy, 30 / z, 0, Math.PI * 2);
                 ctx.fillStyle = 'rgba(76,175,80,.14)';
                 ctx.fill();
                 ctx.strokeStyle = 'rgba(76,175,80,.55)';
@@ -6569,7 +6590,9 @@
             const dx = x - cornerX;
             const dy = y - cornerY;
             const distanceSquared = dx * dx + dy * dy;
-            const r = 15 / camera.zoom;
+            // 15px was a small target even before Shift was shared with gestures.
+            // 30 makes it comfortable without overlapping the rotate handle.
+            const r = 30 / camera.zoom;
             return distanceSquared < r * r;
         }
 
@@ -9989,6 +10012,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 watermarks: (typeof watermarks !== 'undefined' && watermarks) ? watermarks : [],
                 magPins: (typeof magPins !== 'undefined') ? magPins : [],
                 userGestures: (typeof userGestures !== 'undefined') ? userGestures : [],
+                gestureOn: (typeof gestureOn !== 'undefined') ? gestureOn : true,
                 hiddenControls: (typeof hiddenControls !== 'undefined') ? hiddenControls : [],
                 drawerThumbs: (typeof drawerThumbs !== 'undefined') ? drawerThumbs : true,
                 liveCanvas: (typeof lcMinutes !== 'undefined') ? lcMinutes : 0,
@@ -10709,6 +10733,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     watermarks = Array.isArray(engineData.watermarks) ? engineData.watermarks : [];
                     if (typeof magPins !== 'undefined') { magPins = Array.isArray(engineData.magPins) ? engineData.magPins : []; updateMagPinCount(); }
                     if (typeof userGestures !== 'undefined') userGestures = Array.isArray(engineData.userGestures) ? engineData.userGestures : [];
+                    if (typeof engineData.gestureOn === 'boolean' && typeof gestureOn !== 'undefined' && engineData.gestureOn !== gestureOn) toggleGestures();
                     if (typeof hiddenControls !== 'undefined') { hiddenControls = Array.isArray(engineData.hiddenControls) ? engineData.hiddenControls : []; ctlApplyHidden(); }
                     if (typeof engineData.drawerThumbs === 'boolean' && typeof drawerThumbs !== 'undefined' && engineData.drawerThumbs !== drawerThumbs) toggleDrawerThumbs();
                     if (typeof engineData.liveCanvas === 'number' && typeof setLiveCanvas === 'function') setLiveCanvas(engineData.liveCanvas);
@@ -12471,7 +12496,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 const p = document.getElementById('assetPanel');
                 if (document.hidden) return;
                 if (!p || p.style.display === 'none') return;
-                const s = (typeof usageLog !== 'undefined' && usageLog ? 'USE' + usageLog.size : '') + '|' + (typeof magPins !== 'undefined' ? 'LENS' + magPins.length : '') + '|' + (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
+                const s = 'SEL' + (selectedImage ? selectedImage.id : '') + ':' + selectedGroup.length + '|' + (typeof usageLog !== 'undefined' && usageLog ? 'USE' + usageLog.size : '') + '|' + (typeof magPins !== 'undefined' ? 'LENS' + magPins.length : '') + '|' + (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
                     '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
@@ -15262,21 +15287,42 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             };
             const hideTip = () => { tip.style.display = 'none'; };
 
-            const row = (iconHTML, label, subtitle, tipTitle, pairs, onClick, labelColor) => {
+            const row = (iconHTML, label, subtitle, tipTitle, pairs, onClick, labelColor, forEl) => {
                 const r = document.createElement('div');
-                r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 8px;margin:3px 0;border-radius:8px;background:#fafafa;border:1px solid #f0f0f0;cursor:' + (onClick ? 'pointer' : 'default') + ';transition:background .12s,border-color .12s,box-shadow .12s;';
+                // Is this the element currently selected on the canvas? A lasso selects
+                // several, so group members are marked too.
+                const sel = !!forEl && (forEl === selectedImage ||
+                            (selectedGroup && selectedGroup.indexOf(forEl) >= 0));
+                const bg = sel ? '#ede7f6' : '#fafafa';
+                const bd = sel ? '#7E57C2' : '#f0f0f0';
+                r.dataset.selBg = bg; r.dataset.selBd = bd;
+                if (sel) r.dataset.amSelected = '1';
+                r.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 8px;margin:3px 0;border-radius:8px;background:' +
+                    bg + ';border:1px solid ' + bd + ';' + (sel ? 'border-left:3px solid #5E35B1;' : '') +
+                    'cursor:' + (onClick ? 'pointer' : 'default') + ';transition:background .12s,border-color .12s,box-shadow .12s;';
                 r.innerHTML = iconHTML +
                     '<span style="display:flex;flex-direction:column;min-width:0;flex:1;">' +
                     '<span style="font-weight:600;color:' + (labelColor || '#222') + ';font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(label) + '</span>' +
                     (subtitle ? '<span style="font-size:11px;color:#999;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(subtitle) + '</span>' : '') +
                     '</span>' +
+                    (sel ? '<span style="color:#5E35B1;font-size:10px;font-weight:700;letter-spacing:1px;flex:0 0 auto;">SELECTED</span>' : '') +
                     (pairs && pairs.length ? '<span style="color:#b39ddb;font-size:13px;flex:0 0 auto;">ⓘ</span>' : '');
                 r.addEventListener('mouseenter', (e) => { r.style.background = '#f3edfb'; r.style.borderColor = '#d1c4e9'; r.style.boxShadow = '0 2px 8px rgba(103,58,183,0.12)'; if (pairs) showTip(tipTitle, iconHTML, pairs, e.clientX, e.clientY); });
                 r.addEventListener('mousemove', (e) => { if (pairs && tip.style.display !== 'none') positionTip(e.clientX, e.clientY); });
-                r.addEventListener('mouseleave', () => { r.style.background = '#fafafa'; r.style.borderColor = '#f0f0f0'; r.style.boxShadow = 'none'; hideTip(); });
+                r.addEventListener('mouseleave', () => { r.style.background = r.dataset.selBg; r.style.borderColor = r.dataset.selBd; r.style.boxShadow = 'none'; hideTip(); });
                 if (onClick) r.addEventListener('click', () => { hideTip(); onClick(); });
                 (curBody || c).appendChild(r);
             };
+
+            // after the list is built, bring the selected row into view
+            setTimeout(() => {
+                const p = document.getElementById('assetPanel');
+                if (!p || p.style.display === 'none') return;
+                const sel = p.querySelector('[data-am-selected]');
+                if (sel && sel.scrollIntoView) {
+                    try { sel.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+                }
+            }, 0);
 
             const dataPairs = (im) => {
                 const P = [];
@@ -15675,7 +15721,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 imgs.forEach(im => {
                     const ic = (im.img && im.img.src) ? thumb(im.img.src) : chip('🖼', '#e3f2fd');
                     const sub = [im.fileType, formatBytes(elementBytes(im))].filter(Boolean).join(' · ');
-                    row(ic, im.name || im.fileName || 'Unnamed Image', sub + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || im.fileName || 'Image', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority]);
+                    row(ic, im.name || im.fileName || 'Unnamed Image', sub + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || im.fileName || 'Image', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im);
                 });
             }
             // ⛓ Fusion-enabled vectors get their own section
@@ -15694,11 +15740,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 plainVecs.forEach(im => row(chip('⚫', '#eeeeee'),
                     im.name || (isFusionVector(im) ? 'Unnamed Vector' : 'Unnamed Primer'),
                     formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Vector', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority]));
+                    im.name || 'Vector', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im));
             }
-            if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => row(chip('➖', '#e1f5fe'), im.name || 'Datum Line', formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Datum Line', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority])); }
-            if (txts.length) { section('Text', txts.length); txts.forEach(im => row(chip('🅣', '#f3e5f5'), im.text || 'Text', (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.text || 'Text', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority])); }
-            if (rects.length) { section('Squares', rects.length); rects.forEach(im => row(chip('▭', '#fff8e1'), im.name || 'Square', Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Square', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority])); }
+            if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => row(chip('➖', '#e1f5fe'), im.name || 'Datum Line', formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Datum Line', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
+            if (txts.length) { section('Text', txts.length); txts.forEach(im => row(chip('🅣', '#f3e5f5'), im.text || 'Text', (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.text || 'Text', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
+            if (rects.length) { section('Squares', rects.length); rects.forEach(im => row(chip('▭', '#fff8e1'), im.name || 'Square', Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Square', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
             if (circles.length) { section('Circles', circles.length); circles.forEach(im => {
                 const perfect = im.perfectCircle || Math.abs(im.width - im.height) < 0.5;
                 const shape = perfect ? ('⬤ perfect · r' + Math.round(im.width / 2)) : ('ellipse ' + Math.round(im.width) + '×' + Math.round(im.height));
@@ -15707,7 +15753,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 P.push(['Outline style', im.dashStyle === 'dotted' ? 'Dotted' : im.dashStyle === 'dashed' ? 'Dashed' : 'Solid']);
                 row(chip('◯', '#f3e5f5'), im.name || 'Circle',
                     shape + ' · ' + (im.dashStyle === 'dotted' ? 'dotted' : im.dashStyle === 'dashed' ? 'dashed' : 'solid') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Circle', P, () => selectEl(im), PRIORITY_COLORS[im.priority]);
+                    im.name || 'Circle', P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
             }); }
             if (triangles.length) { section('Triangles', triangles.length); triangles.forEach(im => {
                 const filled = im.triStyle === 'filled';
@@ -15715,9 +15761,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 P.unshift(['Style', filled ? 'Filled' : 'Outline']);
                 row(chip('△', '#efebe9'), im.name || 'Triangle',
                     Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + (filled ? 'filled' : 'outline') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Triangle', P, () => selectEl(im), PRIORITY_COLORS[im.priority]);
+                    im.name || 'Triangle', P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
             }); }
-            if (arws.length) { section('Arrows', arws.length); arws.forEach(im => row(chip('➤', '#fff3e0'), im.name || 'Arrow', Math.round(im.width) + 'px · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Arrow', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority])); }
+            if (arws.length) { section('Arrows', arws.length); arws.forEach(im => row(chip('➤', '#fff3e0'), im.name || 'Arrow', Math.round(im.width) + 'px · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Arrow', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
             // Canvas notations are real elements — list them with their own metadata
             if (typeof canvasNotes !== 'undefined' && canvasNotes.length) {
                 section('Canvas Notations', canvasNotes.length);
