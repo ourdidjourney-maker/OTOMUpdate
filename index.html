@@ -995,6 +995,8 @@
             <span id="padSaved" style="font:10px Arial; color:#7d7264; letter-spacing:.5px;"></span>
             <button id="padFindBtn" title="Find in page" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⌕</button>
             <button id="padExportBtn" title="Export this page" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⇩</button>
+            <button id="padImportBtn" title="Import a saved scratch pad page (.html)" style="margin:0; padding:3px 8px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⇧</button>
+            <input id="padImportInput" type="file" accept=".html" style="display:none;">
             <button id="padPopBtn" title="Undock into a floating window" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">⇱ Pop Out</button>
             <button id="padCollapseBtn" title="Collapse / expand" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">▼</button>
             <button onclick="togglePad()" style="margin:0; padding:3px 8px; font-size:12px; background:rgba(215,201,176,.12); color:#d7c9b0; border-radius:5px;">✕</button>
@@ -14248,6 +14250,29 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 a.href = url; a.download = 'scratchpad_' + pg.name.replace(/[^\w\-]+/g, '_') + '.html';
                 document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+            };
+
+            padEl('padImportBtn').onclick = () => padEl('padImportInput').click();
+            padEl('padImportInput').onchange = (ev) => {
+                const file = ev.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const raw = e.target.result;
+                    // Extract just the body content — strip the wrapper the exporter added
+                    const bodyMatch = raw.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+                    let html = bodyMatch ? bodyMatch[1] : raw;
+                    // Remove the h1 title the exporter prepended
+                    html = html.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>/i, '').trim();
+                    padPages[padActive].html = html;
+                    padLoadPage();
+                    padStats();
+                    const tag = padEl('padSaved');
+                    if (tag) { tag.textContent = '⇧ imported ' + file.name; setTimeout(() => { tag.textContent = ''; }, 3000); }
+                };
+                reader.readAsText(file);
+                // Reset so the same file can be re-imported if needed
+                ev.target.value = '';
             };
 
             padEl('padCollapseBtn').onclick = () => {
