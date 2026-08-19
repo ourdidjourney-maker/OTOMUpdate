@@ -12479,7 +12479,16 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function setView(l, t, r, b, pad) { VIEW = { l: l - pad, t: t - pad, r: r + pad, b: b + pad }; }
         function inView(im, extra) {
             const e = extra || 0;
-            const hw = (im.width || 0) / 2 + e, hh = (im.height || 0) / 2 + e;
+            let hw, hh;
+            if (im.rotation) {
+                const ca = Math.abs(Math.cos(im.rotation)), sa = Math.abs(Math.sin(im.rotation));
+                const hw0 = (im.width  || 0) / 2, hh0 = (im.height || 0) / 2;
+                hw = ca * hw0 + sa * hh0 + e;
+                hh = sa * hw0 + ca * hh0 + e;
+            } else {
+                hw = (im.width  || 0) / 2 + e;
+                hh = (im.height || 0) / 2 + e;
+            }
             return !(im.x + hw < VIEW.l || im.x - hw > VIEW.r || im.y + hh < VIEW.t || im.y - hh > VIEW.b);
         }
         function segInView(x1, y1, x2, y2) {
