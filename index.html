@@ -10341,10 +10341,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                             const el = mp.el; if (!el) return null;
                             if (mp.isBrowser) {
                                 const bu = el.querySelector('.brUrl');
-                                return { isBrowser: true, url: bu ? bu.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false, collapsed: !!mp.collapsed };
+                                return { isBrowser: true, url: bu ? bu.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false, collapsed: !!mp.collapsed, anchor: mp.anchor || null, free: mp.free || null };
                             }
                             const urlInp = el.querySelector('.mpUrl');
-                            return { url: urlInp ? urlInp.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false };
+                            return { url: urlInp ? urlInp.value : '', left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, opacity: el.style.opacity, pinned: mp.pinned || false, anchor: mp.anchor || null, free: mp.free || null };
                         }).filter(Boolean),
                         // panels added after this block was first written — without these
                         // a restored session came back missing them entirely
@@ -10608,6 +10608,35 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         } else {
                             const urlInp = el.querySelector('.mpUrl');
                             if (urlInp && m.url) { urlInp.value = m.url; const go = el.querySelector('.mpLoad'); if (go) go.click(); }
+                        }
+                        // restore pinned state — previously only geometry was applied,
+                        // leaving pinned players stuck at stale screen coordinates
+                        if (m.pinned) {
+                            mp.pinned = true;
+                            if (m.anchor) mp.anchor = m.anchor;
+                            if (m.free) mp.free = m.free;
+                            // if anchor wasn't saved (older snapshot), compute it now
+                            if (!mp.anchor || !mp.anchor.w) {
+                                const rect = canvas.getBoundingClientRect();
+                                const pw = parseFloat(m.width) || 480;
+                                const ph = parseFloat(m.height) || 360;
+                                const pl = parseFloat(m.left) || 0;
+                                const pt = parseFloat(m.top) || 0;
+                                mp.anchor = {
+                                    x: (pl - rect.left - camera.x) / camera.zoom,
+                                    y: (pt - rect.top  - camera.y) / camera.zoom,
+                                    w: pw / camera.zoom,
+                                    h: ph / camera.zoom
+                                };
+                                mp.free = { w: pw, h: ph };
+                            }
+                            el.style.resize = 'none';
+                            const pinBtn = el.querySelector('.mpPin');
+                            if (pinBtn) { pinBtn.textContent = '📌 Unpin'; pinBtn.style.background = '#FFB300'; pinBtn.style.color = '#000'; }
+                            const mpBar = el.querySelector('.mpBar');
+                            if (mpBar) mpBar.style.display = 'none';
+                            ensurePinTracker();
+                            setTimeout(() => { if (mp.pinned) el.classList.add('faded'); }, 600);
                         }
                     });
                 }
