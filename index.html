@@ -1614,6 +1614,7 @@
             ]},
 
             { ico: '🏷', label: 'Flags', accent: '#455A64', sub: [
+                { ico: '🔤', label: 'Names',    accent: '#00897B', run: () => toggleNames() },
                 { ico: '💾', label: 'Mem Info', accent: '#455A64', run: () => toggleMemInfo() },
                 { ico: '🧭', label: 'Path',    accent: '#546E7A', run: () => togglePath() },
                 { ico: '📄', label: 'Filename', accent: '#607D8B', run: () => toggleFilename() },
@@ -2796,6 +2797,9 @@
             if (imageToName) {
                 imageToName.name = nameInput.value.trim();
                 imageToName.fullName = fullNameInput.value.trim();
+                // keep assetName in sync — the AM reads assetName first, so a rename
+                // that only touches .name would leave the AM showing the old label
+                if ('assetName' in imageToName) imageToName.assetName = imageToName.name;
                 imageToName.sourcePath = document.getElementById('pathInput').value.trim();
                 imageToName.notations = document.getElementById('notationInput').value.trim();
                 imageToName.agent = document.getElementById('agentInput').value.trim();
@@ -15569,6 +15573,23 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
 
         let curBody = null;
+        // Returns a display label that appends (1),(2),… when the same name appears
+        // more than once in the provided array of elements.
+        function disambigNames(arr, getName) {
+            const counts = {}, seen = {};
+            arr.forEach(el => {
+                const k = (getName(el) || '').trim().toLowerCase();
+                counts[k] = (counts[k] || 0) + 1;
+            });
+            return function(el) {
+                const raw = (getName(el) || '').trim();
+                const k = raw.toLowerCase();
+                if (counts[k] <= 1) return raw;
+                seen[k] = (seen[k] || 0) + 1;
+                return seen[k] === 1 ? raw : raw + ' (' + (seen[k] - 1) + ')';
+            };
+        }
+
         function renderAssetBrowser() {
             curBody = null;
             const c = document.getElementById('assetPanelContent');
@@ -15724,7 +15745,19 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const groups = images.filter(i => elKind(i) === 'group' && !i.isMesh);
             const cartridges = images.filter(i => elKind(i) === 'cartridge');
 
-            // Total memory footprint of the whole canvas
+            // Per-section name disambiguators — append (1),(2),… only within each section
+            const dImg   = disambigNames(imgs,        im => im.name || im.fileName || 'Unnamed Image');
+            const dFVec  = disambigNames(images.filter(i => elKind(i) === 'dot' && isFusionVector(i) && i.fusable), im => im.name || 'Fusion Vector');
+            const dVec   = disambigNames(images.filter(i => elKind(i) === 'dot' && !(isFusionVector(i) && i.fusable)), im => im.name || (isFusionVector(im) ? 'Unnamed Vector' : 'Unnamed Primer'));
+            const dLn    = disambigNames(lns,         im => im.name || 'Datum Line');
+            const dTxt   = disambigNames(txts,        im => im.text || 'Text');
+            const dRect  = disambigNames(rects,       im => im.name || 'Square');
+            const dCirc  = disambigNames(circles,     im => im.name || 'Circle');
+            const dTri   = disambigNames(triangles,   im => im.name || 'Triangle');
+            const dArw   = disambigNames(arws,        im => im.name || 'Arrow');
+            const dGrp   = disambigNames(groups,      im => im.assetName || im.name || 'Grouped Asset');
+
+
             let totalBytes = 0;
             images.forEach(im => totalBytes += elementBytes(im));
             connections.forEach(cn => totalBytes += objBytes(cn));
@@ -15943,7 +15976,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 // single set of fifteen, and none could be collapsed on its own.
                 groups.forEach((gp, gi) => {
                     const parts = gp.parts || [];
-                    section('▦ ' + (gp.assetName || gp.name || ('Grouped Asset ' + (gi + 1))), parts.length);            const socketVecs = dots.filter(d => isSocket(d));
+                    const grpLabel = dGrp(gp);
+                    section('▦ ' + grpLabel, parts.length);            const socketVecs = dots.filter(d => isSocket(d));
             if (socketVecs.length) {
                 section('Sockets', socketVecs.length);
                 socketVecs.forEach(im => {
@@ -16064,7 +16098,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 imgs.forEach(im => {
                     const ic = (im.img && im.img.src) ? thumb(im.img.src) : chip('🖼', '#e3f2fd');
                     const sub = [im.fileType, formatBytes(elementBytes(im))].filter(Boolean).join(' · ');
-                    row(ic, im.name || im.fileName || 'Unnamed Image', sub + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || im.fileName || 'Image', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im);
+                    const label = dImg(im);
+                    row(ic, label, sub + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im);
                 });
             }
             // ⛓ Fusion-enabled vectors get their own section
@@ -16072,41 +16107,43 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const plainVecs  = dots.filter(d => !(isFusionVector(d) && d.fusable));
             if (fusionVecs.length) {
                 section('Fusion Vectors', fusionVecs.length);
-                fusionVecs.forEach(im => row(chip('⛓', '#e0f2f1'), im.name || 'Fusion Vector',
+                fusionVecs.forEach(im => { const label = dFVec(im); row(chip('⛓', '#e0f2f1'), label,
                     '⛓ fusable · ' + formatBytes(elementBytes(im)) +
                     (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Fusion Vector', dataPairs(im), () => selectEl(im),
-                    PRIORITY_COLORS[im.priority] || '#00897B'));
+                    label, dataPairs(im), () => selectEl(im),
+                    PRIORITY_COLORS[im.priority] || '#00897B'); });
             }
             if (plainVecs.length) {
                 section('Vectors / Primers', plainVecs.length);
-                plainVecs.forEach(im => row(chip('⚫', '#eeeeee'),
-                    im.name || (isFusionVector(im) ? 'Unnamed Vector' : 'Unnamed Primer'),
+                plainVecs.forEach(im => { const label = dVec(im); row(chip('⚫', '#eeeeee'),
+                    label,
                     formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Vector', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im));
+                    label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); });
             }
-            if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => row(chip('➖', '#e1f5fe'), im.name || 'Datum Line', formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Datum Line', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
-            if (txts.length) { section('Text', txts.length); txts.forEach(im => row(chip('🅣', '#f3e5f5'), im.text || 'Text', (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.text || 'Text', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
-            if (rects.length) { section('Squares', rects.length); rects.forEach(im => row(chip('▭', '#fff8e1'), im.name || 'Square', Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Square', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
+            if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => { const label = dLn(im); row(chip('➖', '#e1f5fe'), label, formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
+            if (txts.length) { section('Text', txts.length); txts.forEach(im => { const label = dTxt(im); row(chip('🅣', '#f3e5f5'), label, (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
+            if (rects.length) { section('Squares', rects.length); rects.forEach(im => { const label = dRect(im); row(chip('▭', '#fff8e1'), label, Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
             if (circles.length) { section('Circles', circles.length); circles.forEach(im => {
                 const perfect = im.perfectCircle || Math.abs(im.width - im.height) < 0.5;
                 const shape = perfect ? ('⬤ perfect · r' + Math.round(im.width / 2)) : ('ellipse ' + Math.round(im.width) + '×' + Math.round(im.height));
                 const P = dataPairs(im);
                 P.unshift(['Shape', perfect ? 'Perfect circle (radius ' + Math.round(im.width / 2) + ')' : 'Ellipse ' + Math.round(im.width) + ' × ' + Math.round(im.height)]);
                 P.push(['Outline style', im.dashStyle === 'dotted' ? 'Dotted' : im.dashStyle === 'dashed' ? 'Dashed' : 'Solid']);
-                row(chip('◯', '#f3e5f5'), im.name || 'Circle',
+                const label = dCirc(im);
+                row(chip('◯', '#f3e5f5'), label,
                     shape + ' · ' + (im.dashStyle === 'dotted' ? 'dotted' : im.dashStyle === 'dashed' ? 'dashed' : 'solid') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Circle', P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
+                    label, P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
             }); }
             if (triangles.length) { section('Triangles', triangles.length); triangles.forEach(im => {
                 const filled = im.triStyle === 'filled';
                 const P = dataPairs(im);
                 P.unshift(['Style', filled ? 'Filled' : 'Outline']);
-                row(chip('△', '#efebe9'), im.name || 'Triangle',
+                const label = dTri(im);
+                row(chip('△', '#efebe9'), label,
                     Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + (filled ? 'filled' : 'outline') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    im.name || 'Triangle', P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
+                    label, P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
             }); }
-            if (arws.length) { section('Arrows', arws.length); arws.forEach(im => row(chip('➤', '#fff3e0'), im.name || 'Arrow', Math.round(im.width) + 'px · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), im.name || 'Arrow', dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im)); }
+            if (arws.length) { section('Arrows', arws.length); arws.forEach(im => { const label = dArw(im); row(chip('➤', '#fff3e0'), label, Math.round(im.width) + 'px · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
             // Canvas notations are real elements — list them with their own metadata
             if (typeof canvasNotes !== 'undefined' && canvasNotes.length) {
                 section('Canvas Notations', canvasNotes.length);
