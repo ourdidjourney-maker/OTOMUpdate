@@ -4493,8 +4493,19 @@
             el.style.left = (el.id === 'pulseTab' || el.id === 'healthTab')
                 ? Math.max(8, (window.innerWidth - _w) / 2) + 'px'
                 : Math.max(8, Math.min(r.left || 120, window.innerWidth - _w - 8)) + 'px';
-            // 38px was tighter than the pills are tall, so they overlapped
-            el.style.top = (el.id === 'pulseTab' ? 14 : el.id === 'healthTab' ? 62 : 110) + 'px';
+            // Position pill panels dynamically so they never overlap regardless of content height
+            if (el.id === 'pulseTab') {
+                el.style.top = '14px';
+            } else if (el.id === 'healthTab') {
+                const pulse = document.getElementById('pulseTab');
+                const pulseH = (pulse && pulse.style.display !== 'none')
+                    ? (pulse.getBoundingClientRect().height || 36)
+                    : 0;
+                const pulseTop = (pulse && pulse.style.display !== 'none') ? 14 : 0;
+                el.style.top = (pulseTop + pulseH + 10) + 'px';
+            } else {
+                el.style.top = '110px';
+            }
             el.style.right = 'auto'; el.style.transform = 'none';
             el.style.marginTop = '0'; el.style.zIndex = '99200';
         }
@@ -4512,7 +4523,7 @@
             // the toolbar hides it. Float by DOM parentage, not by where it appears.
 
             const ids = ['padPanel', 'calcPanel', 'calPanel', 'chkPanel', 'notesReader', 'assetDrawer',
-                         'parserPanel', 'primerDock', 'dataPanel', 'healthTab', 'pulseTab', 'assetPanel', 'helpPanel'];
+                         'parserPanel', 'primerDock', 'dataPanel', 'pulseTab', 'healthTab', 'assetPanel', 'helpPanel'];
             if (on) {
                 // The popped flag is the operator's choice and is left exactly as it is.
                 // Floating a panel so it survives the hidden toolbar is a separate
@@ -4537,8 +4548,25 @@
                     });
                     document.body.appendChild(el);
                     el.style.position = 'fixed';
-                    el.style.left = (okW ? Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) : 120) + 'px';
-                    el.style.top = (okW ? Math.max(8, Math.min(r.top, window.innerHeight - 60)) : 90) + 'px';
+                    // Pills (pulseTab / healthTab) get staggered tops — measure pulse
+                    // actual height so health never overlaps regardless of content.
+                    if (id === 'pulseTab' || id === 'healthTab') {
+                        const _w = r.width || 200;
+                        el.style.left = Math.max(8, (window.innerWidth - _w) / 2) + 'px';
+                        if (id === 'pulseTab') {
+                            el.style.top = '14px';
+                        } else {
+                            const pulse = document.getElementById('pulseTab');
+                            const pulseH = (pulse && pulse.style.display !== 'none')
+                                ? (pulse.getBoundingClientRect().height || 36)
+                                : 0;
+                            const pulseTop = (pulse && pulse.style.display !== 'none') ? 14 : 0;
+                            el.style.top = (pulseTop + pulseH + 10) + 'px';
+                        }
+                    } else {
+                        el.style.left = (okW ? Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) : 120) + 'px';
+                        el.style.top  = (okW ? Math.max(8, Math.min(r.top, window.innerHeight - 60)) : 90) + 'px';
+                    }
                     el.style.right = 'auto';
                     el.style.transform = 'none';
                     el.style.marginTop = '0';
