@@ -717,6 +717,7 @@
         <button title="Hidden element borders fade in as the cursor nears their edge" id="borderBtn" onclick="toggleProximityBorder()" style="background: #455A64;">Proximity Border: OFF</button>
         <button title="Show an element's data card when you hover over it" id="hoverBtn" onclick="toggleHoverPreview()" style="background: #3F51B5;">Hover Info: ON</button>
         <button id="notesBtn" onclick="toggleNotes()" style="background: #0288D1;" title="Middle-click the canvas to drop a thought bubble">💭 Canvas Notations: ON</button>
+        <button title="Show or hide element name flags on the canvas" id="namesBtn" onclick="toggleNames()" style="background: #00897B; font-size: 11px; padding: 6px 8px;">Names: ON</button>
         <span class="gsep" data-grp="METADATA"></span>
 <button title="Tag each element with its type and memory footprint" id="memInfoBtn" onclick="toggleMemInfo()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Mem Info: OFF</button>
         <button title="Tag each element with its source path" id="pathBtn" onclick="togglePath()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Show Path: OFF</button>
@@ -1938,6 +1939,7 @@
         let centerMode = false;    // click canvas to place the center anchor
         let centerPoint = null;    // { x, y } user-placed measurement anchor
         let centerDims = false;    // measure everything to the center anchor
+        let showNames = true;      // show element name flags on canvas
         let showMemInfo = false;   // show file size + type on uploaded images
         let showPath = false;      // show file name/path on uploaded images
         let showFilename = false;  // show the raw uploaded filename
@@ -7141,20 +7143,7 @@
                         parts: (image.parts || []).map(p2 => ({
                             ox: p2.ox, oy: p2.oy, width: p2.width, height: p2.height,
                             thickness: p2.thickness, fontSize: p2.fontSize
-                        })),
-                        // lasso/multi-selection: snapshot every member so they all scale together
-                        group: (selectedGroup.length > 1 && selectedGroup.indexOf(image) >= 0)
-                            ? selectedGroup.map(g => ({
-                                el: g,
-                                x: g.x, y: g.y,
-                                width: g.width, height: g.height,
-                                fontSize: g.fontSize || 28,
-                                parts: (g.parts || []).map(p2 => ({
-                                    ox: p2.ox, oy: p2.oy, width: p2.width, height: p2.height,
-                                    thickness: p2.thickness, fontSize: p2.fontSize
-                                }))
-                            }))
-                            : null
+                        }))
                     };
                     container.classList.add('resizing');
                     draw();
@@ -7361,43 +7350,27 @@
                 const d1 = Math.hypot(pos.x - ccx, pos.y - ccy);
                 const scale = d0 > 0.001 ? Math.max(0.05, d1 / d0) : 1;
 
-                // Helper: apply scale to one element using its snapshotted origin data
-                function applyScale(el, orig, sc) {
-                    el.width = orig.width * sc;
-                    el.height = orig.height * sc;
-                    // Groups / meshes: scale every child so the lattice really grows
-                    if (elKind(el) === 'group' && el.parts && orig.parts) {
-                        el.parts.forEach((p2, i) => {
-                            const o = orig.parts[i]; if (!o) return;
-                            p2.ox = o.ox * sc; p2.oy = o.oy * sc;
-                            p2.width = o.width * sc; p2.height = o.height * sc;
-                            if (o.thickness) p2.thickness = Math.max(0.5, o.thickness * sc);
-                            if (o.fontSize) p2.fontSize = Math.max(4, o.fontSize * sc);
-                        });
-                    }
-                    // Text: scale the actual font size, then re-measure the box
-                    if (elKind(el) === 'text') {
-                        el.fontSize = Math.max(6, orig.fontSize * sc);
-                        el.height = el.fontSize;
-                        el.width = measureTextWidth(el.text, el.fontSize, el.font || 'Arial');
-                    }
+                const aspectRatio = resizeStart.width / resizeStart.height;
+                selectedImage.width = resizeStart.width * scale;
+                selectedImage.height = resizeStart.height * scale;
+
+                // Groups / meshes: scale every child so the lattice really grows
+                if (elKind(selectedImage) === 'group' && selectedImage.parts && resizeStart.parts) {
+                    selectedImage.parts.forEach((p2, i) => {
+                        const o = resizeStart.parts[i]; if (!o) return;
+                        p2.ox = o.ox * scale; p2.oy = o.oy * scale;
+                        p2.width = o.width * scale; p2.height = o.height * scale;
+                        if (o.thickness) p2.thickness = Math.max(0.5, o.thickness * scale);
+                        if (o.fontSize) p2.fontSize = Math.max(4, o.fontSize * scale);
+                    });
                 }
 
-                // Scale the anchor element (selectedImage)
-                applyScale(selectedImage, resizeStart, scale);
-
-                // Scale every other member of a lasso/multi-selection by the same factor
-                if (resizeStart.group) {
-                    resizeStart.group.forEach(snap => {
-                        if (snap.el === selectedImage) return;
-                        applyScale(snap.el, snap, scale);
-                        // reposition relative to the anchor's centre so the group
-                        // stays proportionally spread as it grows/shrinks
-                        const dx = snap.x - resizeStart.x;
-                        const dy = snap.y - resizeStart.y;
-                        snap.el.x = ccx + dx * scale;
-                        snap.el.y = ccy + dy * scale;
-                    });
+                // Text: scale the actual font size, then re-measure the box
+                if (elKind(selectedImage) === 'text') {
+                    if (resizeStart.fontSize === undefined) resizeStart.fontSize = selectedImage.fontSize || 28;
+                    selectedImage.fontSize = Math.max(6, resizeStart.fontSize * scale);
+                    selectedImage.height = selectedImage.fontSize;
+                    selectedImage.width = measureTextWidth(selectedImage.text, selectedImage.fontSize, selectedImage.font || 'Arial');
                 }
 
                 scheduleDraw();
@@ -8830,7 +8803,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     if (showAgent && image.agent) memTag('⚖ La= ' + image.agent, '#00838F');
                 }
 
-                if (image.name && !image.fromFormula) {
+                if (showNames && image.name && !image.fromFormula) {
                     ctx.font = `${14 / camera.zoom}px Arial`;
                     const textWidth = ctx.measureText(image.name).width;
                     const textHeight = 14 / camera.zoom;
@@ -10216,6 +10189,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         hiddenRadar: !!hiddenRadar, elementRadar: !!elementRadar,
                         rulerRadar: !!rulerRadar, rulerMouseRadar: !!rulerMouseRadar,
                         hoverPreviewEnabled: !!hoverPreviewEnabled, intersectFX: !!intersectFX,
+                        showNames: !!showNames,
                         showMemInfo: !!showMemInfo, showPath: !!showPath, showFilename: !!showFilename,
                         showNotations: !!showNotations, showAgent: !!showAgent, showMemAlloc: !!showMemAlloc,
                         rulerDims: !!rulerDims, elemDimElem: !!elemDimElem, elemDimRuler: !!elemDimRuler,
@@ -11007,6 +10981,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         flip(V.rulerMouseRadar, rulerMouseRadar, toggleRulerMouse);
                         flip(V.hoverPreviewEnabled, hoverPreviewEnabled, toggleHoverPreview);
                         flip(V.intersectFX, intersectFX, toggleIntersectFX);
+                        flip(V.showNames, showNames, toggleNames);
                         flip(V.showMemInfo, showMemInfo, toggleMemInfo);
                         flip(V.showPath, showPath, togglePath);
                         flip(V.showFilename, showFilename, toggleFilename);
@@ -11426,31 +11401,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     ctx.rotate(p.rotation || 0);
                     const pk = p.kind || (p.isDot ? 'dot' : 'image');
                     try {
-                        if (pk === 'dot') {
-                            ctx.fillStyle = TH.dot;
-                            ctx.beginPath(); ctx.arc(0, 0, p.width / 2, 0, Math.PI * 2); ctx.fill();
-                            // ⛓ fusion port — matches standalone dot renderer
-                            if (p.fusable) {
-                                const z5 = camera.zoom;
-                                ctx.strokeStyle = '#00BFA5';
-                                ctx.lineWidth = 2 / z5;
-                                ctx.setLineDash([4 / z5, 3 / z5]);
-                                ctx.beginPath(); ctx.arc(0, 0, p.width / 2 + 7 / z5, 0, Math.PI * 2); ctx.stroke();
-                                ctx.setLineDash([]);
-                                ctx.fillStyle = '#00BFA5';
-                                ctx.beginPath(); ctx.arc(0, 0, p.width / 6, 0, Math.PI * 2); ctx.fill();
-                            }
-                            // ◎ socket ring
-                            if (p.socket) {
-                                const z5 = camera.zoom;
-                                const st = p.socketLinks && p.socketLinks.length > 0;
-                                ctx.strokeStyle = st ? '#37474F' : '#78909C';
-                                ctx.lineWidth = 2 / z5;
-                                ctx.setLineDash(st ? [] : [5 / z5, 4 / z5]);
-                                ctx.beginPath(); ctx.arc(0, 0, p.width / 2 + 9 / z5, 0, Math.PI * 2); ctx.stroke();
-                                ctx.setLineDash([]);
-                            }
-                        }
+                        if (pk === 'dot') { ctx.fillStyle = TH.dot; ctx.beginPath(); ctx.arc(0, 0, p.width / 2, 0, Math.PI * 2); ctx.fill(); }
                         else if (pk === 'line') { ctx.strokeStyle = inkColor(p.color); ctx.lineWidth = Math.max(0.5, p.thickness || 3); ctx.beginPath(); ctx.moveTo(-p.width / 2, 0); ctx.lineTo(p.width / 2, 0); ctx.stroke(); }
                         else if (pk === 'rect') { ctx.strokeStyle = inkColor(p.color); ctx.lineWidth = Math.max(0.5, p.thickness || 3); ctx.strokeRect(-p.width / 2, -p.height / 2, p.width, p.height); }
                         else if (pk === 'circle') { ctx.strokeStyle = inkColor(p.color) || '#000'; ctx.lineWidth = Math.max(0.5, p.thickness || 3); if (p.dashStyle === 'dotted') ctx.setLineDash([Math.max(0.5,(p.thickness||3)*0.6), 4/camera.zoom]); else if (p.dashStyle === 'dashed') ctx.setLineDash([7/camera.zoom, 5/camera.zoom]); else ctx.setLineDash([]); ctx.beginPath(); ctx.ellipse(0, 0, p.width / 2, p.height / 2, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
@@ -12530,7 +12481,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                      ((im.rotation || 0) * 100 | 0) + ',' + (im.hidden ? 1 : 0) + ';';
             }
             // which flag systems are on changes what competes for space
-            s += '|' + (showMemInfo ? 1 : 0) + (showPath ? 1 : 0) + (showFilename ? 1 : 0) +
+            s += '|' + (showNames ? 1 : 0) + (showMemInfo ? 1 : 0) + (showPath ? 1 : 0) + (showFilename ? 1 : 0) +
                  (showNotations ? 1 : 0) + (showAgent ? 1 : 0) + (showMemAlloc ? 1 : 0) +
                  (compassMode) + (compassArrow ? 1 : 0) + (vtrScale ? 1 : 0) + (meshInfoMode) +
                  (priorityShow.low ? 1 : 0) + (priorityShow.medium ? 1 : 0) + (priorityShow.high ? 1 : 0);
@@ -12576,6 +12527,14 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 ty += stepY;
             }
             return ty;
+        }
+
+        function toggleNames() {
+            showNames = !showNames;
+            const b = document.getElementById('namesBtn');
+            b.textContent = showNames ? 'Names: ON' : 'Names: OFF';
+            b.style.background = showNames ? '#00897B' : '#455A64';
+            draw();
         }
 
         function toggleMemInfo() {
