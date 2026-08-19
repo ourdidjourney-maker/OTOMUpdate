@@ -1393,6 +1393,11 @@
                 ⛓ Fusion — this vector can bond to other fusion vectors
             </label>
             <div style="margin-top:5px; font-size:11px; color:#00796B; line-height:1.45;">Fusion-enabled vectors act as sticky sockets: they snap and bond across grouped assets, the same way mesh lattices do.</div>
+            <label style="display:flex; align-items:center; gap:9px; margin-top:9px; font-size:12px; font-weight:600; color:#00695C;">
+                Vector color:
+                <input type="color" id="vectorColorPicker" value="#000000" style="width:36px; height:26px; padding:1px 2px; border:1px solid #4DB6AC; border-radius:5px; cursor:pointer; background:none;">
+                <button id="vectorColorReset" style="margin:0; padding:2px 8px; font-size:11px; background:rgba(0,105,92,.12); color:#00695C; border:1px solid #4DB6AC; border-radius:5px; cursor:pointer;">Reset to default</button>
+            </label>
         </div>
         <!-- ◎ Socket — the universal connector -->
         <div id="vectorSocketBlock" style="display:none; margin:0 0 12px; padding:10px 12px; background:#eceff1; border:1px solid #90A4AE; border-radius:7px;">
@@ -2610,6 +2615,10 @@
                 if (chk) chk.checked = !!image.fusable;
                 const sk = document.getElementById('vectorSocket');
                 if (sk) sk.checked = !!image.socket;
+                const cp = document.getElementById('vectorColorPicker');
+                if (cp) cp.value = image.color || '#000000';
+                const rb = document.getElementById('vectorColorReset');
+                if (rb) rb.onclick = () => { const c = document.getElementById('vectorColorPicker'); if (c) c.value = '#000000'; };
             }
             // Mesh stats box — kept in sync here so BOTH hover and click update it,
             // otherwise the last mesh's data stays stuck when hovering a non-mesh.
@@ -2837,6 +2846,8 @@
                     imageToName.fusable = !!(fchk && fchk.checked);
                     imageToName.fusionVector = imageToName.fusable;
                     imageToName.fusionPitch = VEC_FUSE_RANGE;
+                    const cp = document.getElementById('vectorColorPicker');
+                    if (cp) imageToName.color = cp.value;
                 }
                 if (isFusionVector(imageToName)) {
                     const sk = document.getElementById('vectorSocket');
@@ -11382,7 +11393,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 return;
             }
             if (k === 'dot') {
-                ctx.fillStyle = TH.dot;
+                ctx.fillStyle = im.color || TH.dot;
                 ctx.beginPath(); ctx.arc(0, 0, im.width / 2, 0, Math.PI * 2); ctx.fill();
                 // ⛓ fusion port — a vector flagged as a bonding point
                 if (im.fusable) {
@@ -11466,7 +11477,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     try {
                         if (pk === 'dot') {
                             const r = (p.width || 40) / 2;
-                            ctx.fillStyle = TH.dot;
+                            ctx.fillStyle = p.color || TH.dot;
                             ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
                             // ⛓ fusion port indicator — mirrors the standalone dot renderer
                             if (p.fusable) {
@@ -16218,14 +16229,14 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     '⛓ fusable · ' + formatBytes(elementBytes(im)) +
                     (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
                     label, dataPairs(im), () => selectEl(im),
-                    PRIORITY_COLORS[im.priority] || '#00897B'); });
+                    im.color || '#00897B'); });
             }
             if (plainVecs.length) {
                 section('Vectors / Primers', plainVecs.length);
                 plainVecs.forEach(im => { const label = dVec(im); row(chip('⚫', '#eeeeee'),
                     label,
                     formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); });
+                    label, dataPairs(im), () => selectEl(im), im.color || PRIORITY_COLORS[im.priority], im); });
             }
             if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => { const label = dLn(im); row(chip('➖', '#e1f5fe'), label, formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
             if (txts.length) { section('Text', txts.length); txts.forEach(im => { const label = dTxt(im); row(chip('🅣', '#f3e5f5'), label, (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
