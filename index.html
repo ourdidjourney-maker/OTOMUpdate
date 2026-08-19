@@ -2889,11 +2889,13 @@
         });
 
         fullNameInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
                 saveName();
             } else if (e.key === 'Escape') {
                 closeNameModal();
             }
+            // plain Enter and Shift+Enter both insert a newline — browser default, no interception needed
         });
 
         numberInput.addEventListener('keydown', (e) => {
