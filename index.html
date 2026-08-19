@@ -4317,7 +4317,7 @@
             for (let i = magPins.length - 1; i >= 0; i--) {
                 const p = magPins[i];
                 const cx = p.wx * camera.zoom + camera.x, cy = p.wy * camera.zoom + camera.y;
-                const R = p.radius * camera.zoom;
+                const R = p.radius;
                 if (Math.hypot(sx - cx, sy - cy) <= R) return p;
             }
             return null;
@@ -4346,7 +4346,7 @@
             magPins.forEach(p => {
                 const cx = Math.round(p.wx * camera.zoom + camera.x);
                 const cy = Math.round(p.wy * camera.zoom + camera.y);
-                const R = Math.round(p.radius * camera.zoom);
+                const R = Math.round(p.radius);
                 if (R < 8) return;
                 if (cx < -R || cy < -R || cx > canvas.width + R || cy > canvas.height + R) return;
                 magRender(cx, cy, R, p.zoom, p.bulge, true);
