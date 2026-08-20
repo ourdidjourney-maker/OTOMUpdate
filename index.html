@@ -19496,7 +19496,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     // five properties every frame; the health tab and perf monitor tick
                     // continuously. That is housekeeping, not application work, and
                     // counting it pins the light on permanently and hides the real signal.
-                    const selfIds = ['pulseTab', 'clockPanel', 'healthTab', 'perfPanel'];
+                    const selfIds = ['pulseTab', 'clockPanel', 'healthTab', 'perfPanel', 'logPanel'];
                     const selfEls = selfIds.map(id => document.getElementById(id)).filter(Boolean);
                     _pulseDomObs = new MutationObserver(muts => {
                         for (let i = 0; i < muts.length; i++) {
@@ -19548,7 +19548,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const dt = PERF.lastDrawMs || 0;
                 if (dt > 0.35) {
                     const load = Math.min(1, dt / (PERF.budget || 16.7));
-                    _pulseCpuHold = 2;   // brief hold so a single heavy frame is visible
+                    _pulseCpuHold = Math.max(15, Math.round(load * 45)); // 250ms min, up to 750ms on heavy frames
                     _pulseCpuCol = load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950';
                     _pulseCpuMag = load;
                 }
@@ -20682,12 +20682,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             })();
 
             // ── hooks ────────────────────────────────────────────────
-            const _oSave = saveState;
-            window.saveState = function() {
-                _oSave.apply(this,arguments);
-                const el = selectedImage;
-                logEvent('element','State saved', el?(el.name||elKind(el)||'element'):'');
-            };
+            // saveState wrapping — combined wrapper below handles both logging and element delta detection
+
+
 
             const _oSaveName = saveName;
             window.saveName = function() {
@@ -20946,22 +20943,21 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 logEvent('system', 'Mouse path cleared');
             };
 
-            // Element delete (fired from keyboard Delete key in mouseup/keydown)
-            // Hook saveState + track deletions via image count delta
+            // Element delete/create detection — merged into the first saveState wrapper
+            // to avoid double-wrapping (which inflated timing measurements).
             (function() {
-                let _prevCount = 0;
-                const _oSS2 = window.saveState;
+                const _oSS_combined = window.saveState;
                 window.saveState = function() {
                     const before = typeof images !== 'undefined' ? images.length : 0;
-                    _oSS2.apply(this, arguments);
+                    _oSS_combined.apply(this, arguments);
                     const after = typeof images !== 'undefined' ? images.length : 0;
                     if (after < before) {
                         const n = before - after;
-                        logEvent('element', n + ' element' + (n>1?'s':'') + ' deleted');
+                        logEvent('element', n + ' element' + (n > 1 ? 's' : '') + ' deleted');
                     } else if (after > before) {
                         const el = selectedImage;
                         const kind = el ? (elKind(el) || 'element') : 'element';
-                        logEvent('element', (after-before) + ' ' + kind + (after-before>1?'s':'') + ' created');
+                        logEvent('element', (after - before) + ' ' + kind + (after - before > 1 ? 's' : '') + ' created');
                     }
                 };
             })();
