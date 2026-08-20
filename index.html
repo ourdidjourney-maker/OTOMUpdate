@@ -606,6 +606,29 @@
             <button onclick="toggleTicker()" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(38,198,218,.14); color:#26C6DA; border-radius:5px;">✕</button>
         </div>
     </div>
+    <!-- ── EVENT LOG PANEL ── free-floating, position:fixed, survives all UI mode changes ── -->
+    <div id="logPanel" style="display:none; position:fixed; top:130px; left:80px; width:520px; height:420px; min-width:320px; min-height:200px; box-sizing:border-box; border:1px solid #283593; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#0d0f2b,#080a1a); box-shadow:0 18px 46px rgba(0,0,0,.65); z-index:99600; flex-direction:column; font-family:'Courier New',Courier,monospace; resize:both;">
+        <div id="logHeader" style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(26,35,126,.6);border-bottom:1px solid #283593;cursor:move;user-select:none;flex-shrink:0;">
+            <span style="font:bold 12px Arial;color:#7986CB;letter-spacing:1px;">📋 EVENT LOG</span>
+            <span id="logCount" style="font:10px Arial;color:#5C6BC0;margin-left:2px;"></span>
+            <span style="flex:1"></span>
+            <label style="display:flex;align-items:center;gap:4px;font:11px Arial;color:#7986CB;cursor:pointer;">
+                <input type="checkbox" id="logEnabled" checked style="width:13px;height:13px;cursor:pointer;accent-color:#7986CB;"> Record
+            </label>
+            <button id="logClearBtn" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(120,130,210,.15);color:#7986CB;border:1px solid #3949AB;border-radius:5px;cursor:pointer;">Clear</button>
+            <button id="logExportBtn" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(120,130,210,.15);color:#7986CB;border:1px solid #3949AB;border-radius:5px;cursor:pointer;">⇩ Export</button>
+            <button id="logFilterBtn" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(120,130,210,.15);color:#7986CB;border:1px solid #3949AB;border-radius:5px;cursor:pointer;">Filter: All</button>
+            <button onclick="toggleEventLog()" style="margin:0;padding:2px 8px;font-size:12px;background:rgba(255,80,80,.12);color:#EF9A9A;border-radius:5px;cursor:pointer;">✕</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(13,15,43,.8);border-bottom:1px solid #1a237e;flex-shrink:0;">
+            <input id="logSearch" type="text" placeholder="Search log…" spellcheck="false" style="flex:1;background:rgba(255,255,255,.05);border:1px solid #283593;border-radius:5px;padding:3px 8px;font:11px 'Courier New',monospace;color:#9FA8DA;outline:none;">
+            <span id="logSearchCount" style="font:10px Arial;color:#5C6BC0;white-space:nowrap;"></span>
+        </div>
+        <div id="logEntries" style="flex:1;overflow-y:auto;padding:6px 0;scrollbar-width:thin;scrollbar-color:#283593 transparent;"></div>
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 10px;background:rgba(13,15,43,.9);border-top:1px solid #1a237e;flex-shrink:0;font:10px Arial;color:#5C6BC0;">
+            <span id="logSession"></span><span style="flex:1"></span><span id="logMemNote" style="color:#EF9A9A;"></span>
+        </div>
+    </div>
     <div id="chkPanel" style="display:none; position:fixed; top:120px; left:60px; width:392px; box-sizing:border-box; border:1px solid #3E2723; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#1a1310,#120c0a); box-shadow:0 18px 46px rgba(0,0,0,.55); z-index:99500; flex-direction:column; font-family:Arial,sans-serif;">
             <div id="chkHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#4E342E,#3A241F); color:#D7CCC8; user-select:none; border-bottom:1px solid #3E2723;">
                 <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#FFCC80;">CHECKERS</span>
@@ -740,6 +763,7 @@
         <button title="Open the Scratch Pad — notes, images, links, checklists" id="padBtn" onclick="togglePad()" style="background: #455A64;">✎ Scratch Pad</button>
         <button title="Open the clock, stopwatch, alarm and timestamp panel" id="clockBtn" onclick="toggleClock()" style="background: #263238;">🕘 Clock</button>
         <button title="Calendar: due dates, meetings, and events you can attach to elements" id="calBtn" onclick="toggleCalendar()" style="background: #0277BD;">📅 Calendar</button>
+        <button title="Event Log — full session activity record" id="logBtn" onclick="toggleEventLog()" style="background: #1A237E;">📋 Event Log</button>
         <span class="gsep" data-grp="SYSTEM"></span>
         <button id="darkBtn" onclick="toggleDarkMode()" style="background: #263238;" title="Dark mode for the whole interface and canvas">🌙 Dark</button>
         <button title="Open the performance monitor: FPS, memory and scene breakdown" id="perfBtn" onclick="togglePerf()" style="background: #263238;">📊 Perf</button>
@@ -4320,14 +4344,16 @@
             let lx = -1, ly = -1, lz = -1, lcx = -1, lcy = -1;
             (function tick() {
                 if (!magOn) { _magLoop = false; return; }
-                // A full repaint per frame is only needed when something actually
-                // changed. The lens follows the cursor, so redraw when the cursor moves
-                // or the camera does — not while the hand is still.
+                // Route through scheduleDraw — it has a drawScheduled guard that
+                // prevents two concurrent draw() calls from racing on the same ctx.
+                // Calling draw() directly here caused wavy/tearing artefacts when
+                // zooming fast because the mag loop and the main draw loop both wrote
+                // setTransform to the canvas in the same frame.
                 const m = _lastCanvasMouse;
                 const mx = m ? m.x : -1, my = m ? m.y : -1;
                 if (mx !== lx || my !== ly || camera.zoom !== lz || camera.x !== lcx || camera.y !== lcy) {
                     lx = mx; ly = my; lz = camera.zoom; lcx = camera.x; lcy = camera.y;
-                    draw();
+                    scheduleDraw();
                 }
                 requestAnimationFrame(tick);
             })();
@@ -20523,8 +20549,424 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             }
             const scan = () => document.querySelectorAll('#controls [title], #controls [data-tip]').forEach(attach);
             scan();
-            setTimeout(scan, 600);   // catch anything wired up after load
         })();
+
+        // ════════════════════════════════════════════════════════════
+        // EVENT LOG — rolling session black-box recorder
+        // ════════════════════════════════════════════════════════════
+        (function eventLogEngine() {
+            const MAX = 2000;
+            const COLS = { element:'#7986CB', asset:'#4DB6AC', mode:'#FFB74D',
+                           snapshot:'#81C784', engine:'#F48FB1', undo:'#CE93D8',
+                           system:'#90A4AE', error:'#EF9A9A' };
+            let _log = [], _enabled = true, _logOpen = false,
+                _filter = 'all', _t0 = Date.now(), _ops = 0;
+
+            window.logEvent = function(cat, msg, sub) {
+                if (!_enabled) return;
+                _ops++;
+                if (_log.length >= MAX) _log.shift();
+                _log.push({ ts: Date.now(), cat: cat||'system', msg: msg||'', sub: sub||'' });
+                if (_logOpen) _render();
+                _updateMeta();
+            };
+
+            function _fmt(ts) {
+                return new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+            }
+
+            function _updateMeta() {
+                const c = document.getElementById('logCount');
+                if (c) c.textContent = '(' + _log.length + '/' + MAX + ')';
+                const s = document.getElementById('logSession');
+                if (s) {
+                    const sec = Math.round((Date.now()-_t0)/1000);
+                    s.textContent = 'Session ' + Math.floor(sec/60) + ':' +
+                        String(sec%60).padStart(2,'0') + '  ·  ' + _ops + ' ops';
+                }
+                const m = document.getElementById('logMemNote');
+                if (m) m.textContent = _log.length >= MAX ? '⚠ rolling — oldest entries dropped' : '';
+            }
+
+            function _render() {
+                const box = document.getElementById('logEntries'); if (!box) return;
+                const sq = (document.getElementById('logSearch')||{}).value||'';
+                const rows = _log.filter(e => {
+                    if (_filter==='element' && e.cat!=='element') return false;
+                    if (_filter==='error'   && e.cat!=='error')   return false;
+                    if (sq && !(e.msg+' '+e.sub).toLowerCase().includes(sq.toLowerCase())) return false;
+                    return true;
+                });
+                const sc = document.getElementById('logSearchCount');
+                if (sc) sc.textContent = sq ? rows.length+' match'+(rows.length!==1?'es':'') : '';
+                const atBot = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+                box.innerHTML = rows.map(e => {
+                    const col = COLS[e.cat]||'#90A4AE';
+                    return '<div style="display:flex;gap:6px;padding:2px 10px;border-bottom:1px solid rgba(40,53,147,.2);align-items:baseline;font-size:11px;line-height:1.65;">' +
+                        '<span style="color:#3949AB;white-space:nowrap;flex-shrink:0;">'+_fmt(e.ts)+'</span>' +
+                        '<span style="background:'+col+'22;color:'+col+';border-radius:3px;padding:0 4px;font:bold 9px Arial;white-space:nowrap;flex-shrink:0;letter-spacing:.5px;">'+e.cat.toUpperCase()+'</span>' +
+                        '<span style="color:#C5CAE9;flex:1;word-break:break-word;">'+e.msg+'</span>' +
+                        (e.sub?'<span style="color:#5C6BC0;white-space:nowrap;font-size:10px;">'+e.sub+'</span>':'') +
+                        '</div>';
+                }).join('');
+                if (atBot) box.scrollTop = box.scrollHeight;
+                _updateMeta();
+            }
+
+            window.toggleEventLog = function() {
+                _logOpen = !_logOpen;
+                const p = document.getElementById('logPanel');
+                const b = document.getElementById('logBtn');
+                if (!p) return;
+                if (_logOpen) {
+                    p.style.display = 'flex';
+                    if (!p.dataset.placed) {
+                        const cb = document.getElementById('controls');
+                        const top = cb ? cb.getBoundingClientRect().bottom + 14 : 130;
+                        p.style.top  = top + 'px';
+                        p.style.left = Math.max(20,(window.innerWidth-520)/2) + 'px';
+                        p.dataset.placed = '1';
+                    }
+                    _render();
+                } else {
+                    p.style.display = 'none';
+                }
+                if (b) b.style.background = _logOpen ? '#283593' : '#1A237E';
+            };
+
+            // ── panel init ───────────────────────────────────────────
+            (function() {
+                const p = document.getElementById('logPanel'); if (!p) return;
+
+                // drag
+                const hdr = document.getElementById('logHeader');
+                if (hdr) {
+                    let dx=0, dy=0;
+                    hdr.addEventListener('mousedown', ev => {
+                        if (ev.target.tagName==='BUTTON'||ev.target.tagName==='INPUT') return;
+                        const r = p.getBoundingClientRect(); dx=ev.clientX-r.left; dy=ev.clientY-r.top;
+                        const mm = mv => { p.style.left=(mv.clientX-dx)+'px'; p.style.top=(mv.clientY-dy)+'px'; };
+                        const mu = () => { window.removeEventListener('mousemove',mm); window.removeEventListener('mouseup',mu); };
+                        window.addEventListener('mousemove',mm); window.addEventListener('mouseup',mu);
+                    });
+                }
+
+                const chk = document.getElementById('logEnabled');
+                if (chk) chk.onchange = () => { _enabled=chk.checked; logEvent('system',_enabled?'Recording resumed':'Recording paused'); };
+
+                const clr = document.getElementById('logClearBtn');
+                if (clr) clr.onclick = () => { _log=[]; _ops=0; _t0=Date.now(); _render(); };
+
+                const exp = document.getElementById('logExportBtn');
+                if (exp) exp.onclick = () => {
+                    const txt = _log.map(e=>_fmt(e.ts)+'  ['+e.cat.toUpperCase()+']  '+e.msg+(e.sub?'  ('+e.sub+')':'')).join('\n');
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob([txt],{type:'text/plain'}));
+                    a.download = 'OTOM_log_'+new Date().toISOString().slice(0,19).replace(/[:.]/g,'-')+'.txt';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                };
+
+                const flt = document.getElementById('logFilterBtn');
+                if (flt) flt.onclick = () => {
+                    const m=['all','element','error'];
+                    _filter = m[(m.indexOf(_filter)+1)%m.length];
+                    flt.textContent = 'Filter: '+_filter.charAt(0).toUpperCase()+_filter.slice(1);
+                    _render();
+                };
+
+                const srch = document.getElementById('logSearch');
+                if (srch) srch.addEventListener('input', _render);
+
+                setInterval(() => { if (_logOpen) _updateMeta(); }, 10000);
+                logEvent('system','OTOM session started');
+            })();
+
+            // ── hooks ────────────────────────────────────────────────
+            const _oSave = saveState;
+            window.saveState = function() {
+                _oSave.apply(this,arguments);
+                const el = selectedImage;
+                logEvent('element','State saved', el?(el.name||elKind(el)||'element'):'');
+            };
+
+            const _oSaveName = saveName;
+            window.saveName = function() {
+                const before = imageToName?(imageToName.name||''):'';
+                _oSaveName.apply(this,arguments);
+                const after = imageToName?(imageToName.name||''):'';
+                if (before!==after) logEvent('element','Renamed','"'+before+'" → "'+after+'"');
+                else logEvent('element','Element data saved', after||'');
+            };
+
+            const _oUndo = undo;
+            window.undo = function() { _oUndo.apply(this,arguments); logEvent('undo','Undo'); };
+            const _oRedo = redo;
+            window.redo = function() { _oRedo.apply(this,arguments); logEvent('undo','Redo'); };
+
+            const _oSnap = takeSnapshot;
+            window.takeSnapshot = function(auto) {
+                _oSnap.apply(this,arguments);
+                logEvent('snapshot', auto?'Auto-snapshot':'Snapshot taken');
+            };
+
+            const _oSaveEng = saveEngine;
+            window.saveEngine = function() { _oSaveEng.apply(this,arguments); logEvent('engine','Engine saved'); };
+
+            const _oGroup = groupToAsset;
+            window.groupToAsset = function() { _oGroup.apply(this,arguments); logEvent('asset','Grouped asset created'); };
+
+            const _oPlace = placeAsset;
+            window.placeAsset = function(i) {
+                _oPlace.apply(this,arguments);
+                const a = typeof savedAssets!=='undefined'?savedAssets[i]:null;
+                logEvent('asset','Asset placed', a?(a.name||'unnamed'):'');
+            };
+
+            const _oUngroup = ungroupAsset;
+            window.ungroupAsset = function(gp) {
+                _oUngroup.apply(this,arguments);
+                logEvent('asset','Asset deconstructed', gp?(gp.assetName||gp.name||''):'');
+            };
+
+            const _oLasso = toggleLasso;
+            window.toggleLasso = function() {
+                _oLasso.apply(this,arguments);
+                logEvent('mode', lassoMode?'Lasso ON':'Lasso OFF');
+            };
+
+            const _oConnect = toggleConnectMode;
+            window.toggleConnectMode = function() {
+                _oConnect.apply(this,arguments);
+                logEvent('mode', connectMode?'Connect ON':'Connect OFF');
+            };
+
+            const _oFlags = toggleFlagsMode;
+            window.toggleFlagsMode = function() {
+                _oFlags.apply(this,arguments);
+                logEvent('mode', flagsMode?'Flags ON':'Flags OFF');
+            };
+
+        })();
+
+            // ── EXTENDED HOOKS ───────────────────────────────────────
+
+            // Recovery: write point
+            const _oRecWrite = recWrite;
+            window.recWrite = function(reason) {
+                _oRecWrite.apply(this, arguments);
+                logEvent('snapshot', 'Recovery point written', reason || 'auto');
+            };
+
+            // Recovery: clear/purge
+            const _oRecClear = recClear;
+            window.recClear = function() {
+                _oRecClear.apply(this, arguments);
+                logEvent('snapshot', 'Recovery point purged');
+            };
+
+            // Recovery: restore
+            const _oRecRestore = recRestore;
+            window.recRestore = function(json) {
+                logEvent('snapshot', 'Recovery restore initiated');
+                _oRecRestore.apply(this, arguments);
+            };
+
+            // Recovery mode change
+            const _oSetRecMode = setRecoveryMode;
+            window.setRecoveryMode = function(m) {
+                _oSetRecMode.apply(this, arguments);
+                logEvent('system', 'Recovery mode changed', m);
+            };
+
+            // Engine load (snapshot or full load)
+            const _oHandleLoad = handleEngineFileLoad;
+            window.handleEngineFileLoad = function(e) {
+                _oHandleLoad.apply(this, arguments);
+                const f = e && e.target && e.target.files && e.target.files[0];
+                logEvent('engine', 'Engine loaded', f ? f.name : '');
+            };
+
+            // Reset engine
+            const _oDoReset = doResetEngine;
+            window.doResetEngine = function() {
+                logEvent('engine', 'Engine RESET');
+                _oDoReset.apply(this, arguments);
+            };
+
+            // Asset Manager: load asset library from file
+            (function() {
+                const inp = document.getElementById('assetLoadInput');
+                if (!inp) return;
+                inp.addEventListener('change', function(e) {
+                    const f = e.target.files && e.target.files[0];
+                    if (f) logEvent('asset', 'Asset library loaded', f.name);
+                }, true);  // capture — fires before the existing handler
+            })();
+
+            // Asset library: export
+            const _oSaveAssets = saveAssetsFile;
+            window.saveAssetsFile = function() {
+                _oSaveAssets.apply(this, arguments);
+                logEvent('asset', 'Asset library exported',
+                    typeof savedAssets !== 'undefined' ? savedAssets.length + ' assets' : '');
+            };
+
+            // Asset Drawer: open/close
+            const _oToggleDrawer = toggleAssetDrawer;
+            window.toggleAssetDrawer = function() {
+                _oToggleDrawer.apply(this, arguments);
+                logEvent('system', typeof assetDrawerOpen !== 'undefined' && assetDrawerOpen
+                    ? 'Asset Drawer opened' : 'Asset Drawer closed');
+            };
+
+            // Asset Browser: open
+            const _oOpenAB = openAssetBrowser;
+            window.openAssetBrowser = function() {
+                _oOpenAB.apply(this, arguments);
+                logEvent('system', 'Asset Browser opened');
+            };
+
+            // Reconstruct / Regroup asset
+            const _oReconst = reconstructAsset;
+            window.reconstructAsset = function() {
+                _oReconst.apply(this, arguments);
+                logEvent('asset', 'Asset reconstructed');
+            };
+
+            const _oRegroup = regroupToAsset;
+            window.regroupToAsset = function() {
+                _oRegroup.apply(this, arguments);
+                logEvent('asset', 'Asset regrouped/saved');
+            };
+
+            // Weld socket
+            const _oWeld = weldSocket;
+            window.weldSocket = function() {
+                _oWeld.apply(this, arguments);
+                logEvent('element', 'Socket welded');
+            };
+
+            // Watermark
+            const _oWatermark = watermarkSelection;
+            window.watermarkSelection = function() {
+                _oWatermark.apply(this, arguments);
+                logEvent('element', 'Selection watermarked — permanent');
+            };
+
+            // Intersect FX toggle
+            const _oIntersectFX = toggleIntersectFX;
+            window.toggleIntersectFX = function() {
+                _oIntersectFX.apply(this, arguments);
+                logEvent('mode', typeof intersectFX !== 'undefined' && intersectFX
+                    ? 'Intersect FX ON' : 'Intersect FX OFF');
+            };
+
+            // Simultaneous mode toggle
+            const _oSimult = toggleSimultaneousMode;
+            window.toggleSimultaneousMode = function() {
+                _oSimult.apply(this, arguments);
+                logEvent('mode', typeof simultaneousMode !== 'undefined' && simultaneousMode
+                    ? 'Simultaneous mode ON' : 'Simultaneous mode OFF');
+            };
+
+            // Collect data mode
+            const _oCollect = toggleCollectMode;
+            window.toggleCollectMode = function() {
+                _oCollect.apply(this, arguments);
+                logEvent('mode', typeof collectMode !== 'undefined' && collectMode
+                    ? 'Collect Data ON' : 'Collect Data OFF');
+            };
+
+            // Vector bond (fusion snap)
+            const _oSnapBondVec = snapAndBondVec;
+            window.snapAndBondVec = function(moved, hit) {
+                _oSnapBondVec.apply(this, arguments);
+                logEvent('element', 'Fusion vectors bonded',
+                    (moved ? (moved.name || 'vec') : '') +
+                    (hit   ? ' → ' + (hit.name || 'vec') : ''));
+            };
+
+            // Socket snap
+            const _oSnapBond = snapAndBond;
+            window.snapAndBond = function(moved, hit) {
+                _oSnapBond.apply(this, arguments);
+                logEvent('element', 'Element snapped to socket',
+                    moved ? (moved.name || elKind(moved) || 'element') : '');
+            };
+
+            // Cartridge: eject
+            const _oEject = ejectCartridge;
+            window.ejectCartridge = function() {
+                _oEject.apply(this, arguments);
+                logEvent('engine', 'Cartridge ejected');
+            };
+
+            // Cartridge: export
+            const _oExportCart = exportCartridge;
+            window.exportCartridge = function(cart) {
+                _oExportCart.apply(this, arguments);
+                logEvent('engine', 'Cartridge exported', cart ? (cart.name || '') : '');
+            };
+
+            // Delete background
+            const _oDelBG = deleteBackground;
+            window.deleteBackground = function() {
+                _oDelBG.apply(this, arguments);
+                logEvent('element', 'Background image deleted');
+            };
+
+            // Clear guides/rulers
+            const _oClearGuides = clearGuides;
+            window.clearGuides = function() {
+                _oClearGuides.apply(this, arguments);
+                logEvent('system', 'Ruler guides cleared');
+            };
+
+            // Mag lens pins cleared
+            const _oClearMagPins = clearMagPins;
+            window.clearMagPins = function() {
+                _oClearMagPins.apply(this, arguments);
+                logEvent('system', 'Pinned lenses cleared');
+            };
+
+            // Mouse path: snapshot, export, clear
+            const _oPathSnap = pathSnapshot;
+            window.pathSnapshot = function() {
+                _oPathSnap.apply(this, arguments);
+                logEvent('system', 'Mouse path snapshot taken');
+            };
+            const _oPathExport = pathExport;
+            window.pathExport = function() {
+                _oPathExport.apply(this, arguments);
+                logEvent('system', 'Mouse path exported');
+            };
+            const _oPathClear = pathClear;
+            window.pathClear = function() {
+                _oPathClear.apply(this, arguments);
+                logEvent('system', 'Mouse path cleared');
+            };
+
+            // Element delete (fired from keyboard Delete key in mouseup/keydown)
+            // Hook saveState + track deletions via image count delta
+            (function() {
+                let _prevCount = 0;
+                const _oSS2 = window.saveState;
+                window.saveState = function() {
+                    const before = typeof images !== 'undefined' ? images.length : 0;
+                    _oSS2.apply(this, arguments);
+                    const after = typeof images !== 'undefined' ? images.length : 0;
+                    if (after < before) {
+                        const n = before - after;
+                        logEvent('element', n + ' element' + (n>1?'s':'') + ' deleted');
+                    } else if (after > before) {
+                        const el = selectedImage;
+                        const kind = el ? (elKind(el) || 'element') : 'element';
+                        logEvent('element', (after-before) + ' ' + kind + (after-before>1?'s':'') + ' created');
+                    }
+                };
+            })();
+
+        // ════════════════════════════════════════════════════════════
     </script>
 </body>
 </html>
