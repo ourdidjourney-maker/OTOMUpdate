@@ -2402,7 +2402,7 @@
                 return;
             }
 
-            const numbered = connections.filter(c => !c.portLink);
+            const numbered = connections;
             const distinct = [...new Set(numbered.map(c => c.number))].sort((a, b) => a - b);
             const rankMap = new Map();
             distinct.forEach((num, i) => rankMap.set(num, i + 1));
@@ -3585,8 +3585,7 @@
                     ['Distinct steps', steps],
                     ['Simultaneous', sim],
                     ['Curved', connections.filter(c => c.curved).length],
-                    ['Hidden', connections.filter(c => c.hidden).length],
-                    ['Port links', connections.filter(c => c.portLink).length]
+                    ['Hidden', connections.filter(c => c.hidden).length]
                 ]));
                 out.push(tkItem('SCENE', 'execution steps', steps, [
                     ['Steps', steps],
@@ -7118,7 +7117,6 @@
 
             if (!connectMode && !simultaneousMode && e.button === 0) {
                 for (const conn of connections) {
-                    if (conn.portLink) continue;
                     const fromImg = images.find(img => img.id === conn.from);
                     const toImg = images.find(img => img.id === conn.to);
                     if (fromImg && toImg) {
@@ -7581,7 +7579,6 @@
                     const _get = id => { if (!_m) _m = new Map(images.map(i => [i.id, i])); return _m.get(id); };
                     const rr2 = (16 / camera.zoom) * (16 / camera.zoom);
                     for (const conn of connections) {
-                        if (conn.portLink) continue;
                         let midX, midY;
                         if (conn.circleX !== undefined && conn.circleX !== null) {
                             midX = conn.circleX; midY = conn.circleY;
@@ -8294,7 +8291,8 @@
             // imageMap is only used for connection endpoint lookups — skip building
             // this Map entirely on frames where there are no connections (common while
             // drawing/panning), which avoids a full allocation every frame.
-            const imageMap = connections.length ? new Map(images.map(img => [img.id, img])) : null;
+            const _needsMap = connections.length || images.some(im => im.kind === 'port' && im._loadedCartId);
+            const imageMap = _needsMap ? new Map(images.map(img => [img.id, img])) : null;
             resetFlagRects();
             flagCacheSync();
 
@@ -8487,19 +8485,6 @@
                 const toImg = imageMap.get(conn.to);
                 if (fromImg && toImg) {
                     if (!segInView(fromImg.x, fromImg.y, toImg.x, toImg.y)) return;
-                    // Port link: a plain straight line, no step number, no bend, no arrow.
-                    if (conn.portLink) {
-                        ctx.save();
-                        ctx.strokeStyle = TH.line || '#607D8B';
-                        ctx.lineWidth = 2 / camera.zoom;
-                        ctx.setLineDash([]);
-                        ctx.beginPath();
-                        ctx.moveTo(fromImg.x, fromImg.y);
-                        ctx.lineTo(toImg.x, toImg.y);
-                        ctx.stroke();
-                        ctx.restore();
-                        return;
-                    }
                     // Hidden logic line: faded grey dashed ghost, skip normal drawing
                     if (conn.hidden) {
                         const hmx = (conn.circleX ?? (fromImg.x + toImg.x) / 2);
@@ -8582,9 +8567,6 @@
                     ctx.restore();
 
                     const angle = Math.atan2(toImg.y - midY, toImg.x - midX);
-
-            // Port links are plain connectors — no step number, no arrow badge
-            if (conn.portLink) { return; }
 
             // Draw number in a circle at the calculated/stored position
                    const circleRadius = 16 / camera.zoom;
@@ -8670,6 +8652,23 @@ ctx.fillText(conn.number.toString(), midX, midY);
                        lineIntersectsLine(x1, y1, x2, y2, rx, ry + rh, rx + rw, ry + rh) ||
                        lineIntersectsLine(x1, y1, x2, y2, rx, ry, rx, ry + rh);
             };
+
+            // Draw port-to-cartridge lines directly from port._loadedCartId — these are
+            // internal plumbing, never stored in the connections array.
+            if (imageMap) images.forEach(im => {
+                if (im.kind !== 'port' || !im._loadedCartId) return;
+                const cart = imageMap.get(im._loadedCartId);
+                if (!cart || !segInView(im.x, im.y, cart.x, cart.y)) return;
+                ctx.save();
+                ctx.strokeStyle = TH.line || '#607D8B';
+                ctx.lineWidth = 2 / camera.zoom;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(im.x, im.y);
+                ctx.lineTo(cart.x, cart.y);
+                ctx.stroke();
+                ctx.restore();
+            });
 
             // --- label placement acceleration -------------------------------
             // Labels used to re-test every element AND every logic line, for each of
@@ -10871,8 +10870,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 steps.push({ label: 'Logic lines', n: nConn, ico: '⛓', grp: 'CANVAS', meta: [
                     ['Lines', nConn], ['Distinct steps', stepsN],
                     ['Simultaneous', sim], ['Curved', cn.filter(c => c.curved).length],
-                    ['Hidden', cn.filter(c => c.hidden).length],
-                    ['Port links', cn.filter(c => c.portLink).length]
+                    ['Hidden', cn.filter(c => c.hidden).length]
                 ]});
             }
             if (nGuides) {
@@ -11241,7 +11239,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     const totalImages = engineData.images.length;
 
                     if (totalImages === 0) {
-                        connections = engineData.connections || [];
+                        connections = (engineData.connections || []).filter(c => !c.portLink);
                         updateImageCount();
                         updateConnectionCount();
                         draw();
@@ -11304,7 +11302,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
                             loadedCount++;
                             if (loadedCount === totalImages) {
-                                connections = engineData.connections || [];
+                                connections = (engineData.connections || []).filter(c => !c.portLink);
                                 updateImageCount();
                                 updateConnectionCount();
                                 updateImageList();
@@ -11336,7 +11334,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
                                 loadedCount++;
                                 if (loadedCount === totalImages) {
-                                    connections = engineData.connections || [];
+                                    connections = (engineData.connections || []).filter(c => !c.portLink);
                                     updateImageCount();
                                     updateConnectionCount();
                                     updateImageList();
@@ -11350,7 +11348,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 console.error('Failed to load image:', imgData.id);
                                 loadedCount++;
                                 if (loadedCount === totalImages) {
-                                    connections = engineData.connections || [];
+                                    connections = (engineData.connections || []).filter(c => !c.portLink);
                                     updateImageCount();
                                     updateConnectionCount();
                                     updateImageList();
@@ -12153,7 +12151,6 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 port._loadedCartId = loadedCart.id;
                 images.push(loadedCart);
                 if (typeof assignDesignations === 'function') assignDesignations();
-                connections.push({ from: port.id, to: loadedCart.id, number: 0, simultaneous: false, circleX: null, circleY: null, curved: false, portLink: true });
                 selectedImage = port;
                 saveState();
                 updateImageCount(); updateImageList(); draw();
@@ -16424,7 +16421,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const nm = (x) => x ? (x.name || x.text || x.fileName || (x.isDot ? 'Primer' : elKind(x) === 'rect' ? 'Square' : elKind(x) === 'line' ? 'Datum Line' : elKind(x) === 'arrow' ? 'Arrow' : 'Block')) : '?';
                 const iconFor = (x) => !x ? '•' : (elKind(x) === 'image' ? '🖼' : elKind(x) === 'dot' ? '⚫' : elKind(x) === 'line' ? '➖' : elKind(x) === 'rect' ? '▭' : elKind(x) === 'text' ? '🅣' : '•');
 
-                // Build adjacency (directed) and find roots
+                // Build adjacency (directed) and find roots — port links excluded
                 const byId = new Map(images.map(i => [i.id, i]));
                 const out = new Map(), indeg = new Map();
                 images.forEach(i => { out.set(i.id, []); indeg.set(i.id, 0); });
