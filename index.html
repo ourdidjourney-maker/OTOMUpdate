@@ -613,7 +613,7 @@
             <span id="logCount" style="font:10px Arial;color:#5C6BC0;margin-left:2px;"></span>
             <span style="flex:1"></span>
             <label style="display:flex;align-items:center;gap:4px;font:11px Arial;color:#7986CB;cursor:pointer;">
-                <input type="checkbox" id="logEnabled" checked style="width:13px;height:13px;cursor:pointer;accent-color:#7986CB;"> Record
+                <input type="checkbox" id="logEnabled" style="width:13px;height:13px;cursor:pointer;accent-color:#7986CB;"> Record
             </label>
             <button id="logClearBtn" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(120,130,210,.15);color:#7986CB;border:1px solid #3949AB;border-radius:5px;cursor:pointer;">Clear</button>
             <button id="logExportBtn" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(120,130,210,.15);color:#7986CB;border:1px solid #3949AB;border-radius:5px;cursor:pointer;">⇩ Export</button>
@@ -8022,7 +8022,7 @@
                 if (vfid.size) images.forEach(el => { if (el.vFusionId && vfid.has(el.vFusionId)) kill.add(el); });
                 if (mfid.size) images.forEach(el => { if (el.fusionId && mfid.has(el.fusionId)) kill.add(el); });
 
-                if (anyReadOnly([...kill])) { blockReadOnly('deleted'); return; }
+                // cartLocked protects data editing only — canvas removal is always permitted.
                 const ids = new Set([...kill].map(el => el.id));
                 connections = connections.filter(c => !ids.has(c.from) && !ids.has(c.to));
                 images = images.filter(img => !kill.has(img));
@@ -12070,7 +12070,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }).join('');
             }
 
-            const close = () => { m.style.display = 'none'; const pb = document.getElementById('cartCfgPort'); if (pb) { pb.style.display = 'none'; pb.onclick = null; } const lb = document.getElementById('cartCfgLoad'); if (lb) { lb.textContent = 'Load Cartridge'; lb.style.background = '#00838F'; } closeX.onclick = cancel.onclick = create.onclick = m.onclick = null; };
+            const close = () => { m.style.display = 'none'; const pb = document.getElementById('cartCfgPort'); if (pb) { pb.style.display = 'none'; pb.onclick = null; } const lb = document.getElementById('cartCfgLoad'); if (lb) { lb.textContent = 'Load Cartridge'; lb.style.background = '#00838F'; } const roLbl = document.getElementById('cartCfgReadOnly'); if (roLbl && roLbl.parentNode) roLbl.parentNode.style.visibility = ''; closeX.onclick = cancel.onclick = create.onclick = m.onclick = null; };
             closeX.onclick = cancel.onclick = close;
             const loadBtn = document.getElementById('cartCfgLoad');
             if (loadBtn) loadBtn.onclick = () => {
@@ -12090,6 +12090,10 @@ ctx.fillText(conn.number.toString(), midX, midY);
                             renderCartLoaded();
                             const portBtn = document.getElementById('cartCfgPort');
                             if (portBtn) portBtn.style.display = '';
+                            // Hide the read-only checkbox when loading via port — the file's
+                            // own readOnly flag is used automatically; the checkbox is for creation only.
+                            const roLabel = document.getElementById('cartCfgReadOnly');
+                            if (roLabel && roLabel.parentNode) roLabel.parentNode.style.visibility = 'hidden';
                         } catch (err) {
                             if (typeof showConfirm === 'function') showConfirm({ title: 'Load Failed', body: err.message, okText: 'OK', danger: true, hideCancel: true });
                         }
@@ -12103,14 +12107,16 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (!_cartLoadedPkg) return;
                 const pkg = _cartLoadedPkg;
                 const allowed = Object.keys(_cartCfgChecked).filter(k => _cartCfgChecked[k]);
-                const roChk = document.getElementById('cartCfgReadOnly');
+                // Port load: always use the file's own readOnly flag — ignore the checkbox.
+                // The checkbox is for creating cartridges, not loading them via port.
+                const fileReadOnly = !!(pkg.cartridge && pkg.cartridge.readOnly);
                 const port = {
                     id: Date.now() + Math.random(), kind: 'port', isDot: false, img: null,
                     x: _cartPendingPos.x, y: _cartPendingPos.y, width: 74, height: 74, rotation: 0,
                     name: 'Port', fullName: '', notations: '', agent: '', priority: '', outline: '',
                     cartColor: nextCartridgeColor(),
                     allowed: allowed,
-                    readOnly: !!(roChk && roChk.checked),
+                    readOnly: fileReadOnly,
                     contents: []
                 };
                 images.push(port);
@@ -19517,6 +19523,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 pulseLoop();
             }
             if (!pulseOn && _pulseDomObs) { _pulseDomObs.disconnect(); _pulseDomObs = null; _pulseDomCount = 0; }
+            if (!pulseOn) { _pulseEls = null; }
             pt.style.display = pulseOn ? 'block' : 'none';
             // opened while the toolbar is hidden? float it or it is invisible
             if (pulseOn && typeof zenMode !== 'undefined' && zenMode) setTimeout(() => zenFloatOne(pt), 0);
@@ -19534,84 +19541,86 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             d.style.boxShadow = 'none';
         }
 
+        // Cached refs — looked up once when pulse starts, not every rAF frame
+        var _pulseEls = null;
+        var _pulseNodeCount = 0, _pulseNodeCountT = 0;
+        function _ensurePulseEls() {
+            if (_pulseEls) return;
+            _pulseEls = {
+                cpu:  document.getElementById('pulseCpu'),
+                mem:  document.getElementById('pulseMem'),
+                gpu:  document.getElementById('pulseGpu'),
+                dom:  document.getElementById('pulseDom'),
+                rate: document.getElementById('pulseRate')
+            };
+        }
+        function _pulseFire(el, colour, strength) {
+            if (!el) return;
+            el.style.background = colour;
+            el.style.boxShadow = '0 0 ' + (8 + strength * 10) + 'px ' + colour + ', 0 0 3px ' + colour;
+        }
+        function _pulseRest(el) {
+            if (!el) return;
+            el.style.background = '#1b2a33';
+            el.style.boxShadow = 'none';
+        }
+
         function pulseLoop() {
             if (!pulseOn) { if (_pulseRAF) cancelAnimationFrame(_pulseRAF); _pulseRAF = null; return; }
+            _ensurePulseEls();
+            const E = _pulseEls;
 
-            // CPU — time spent inside draw() SINCE THE LAST PULSE FRAME.
-            // PERF.lastDrawMs is sticky: it only changes when draw() runs, so on an idle
-            // canvas it held its final value and the dot stayed lit indefinitely,
-            // reporting an old frame as if it were current. Now the dot only fires when
-            // a draw has actually happened since the previous check.
+            // CPU
             const drewThisFrame = PERF.draws !== _pulseCpuDraws;
             _pulseCpuDraws = PERF.draws;
             if (drewThisFrame) {
                 const dt = PERF.lastDrawMs || 0;
-                if (dt > 0.35) {
-                    const load = Math.min(1, dt / (PERF.budget || 16.7));
-                    _pulseCpuHold = Math.max(15, Math.round(load * 45)); // 250ms min, up to 750ms on heavy frames
-                    _pulseCpuCol = load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950';
-                    _pulseCpuMag = load;
-                }
+                const load = Math.min(1, dt / (PERF.budget || 16.7));
+                _pulseCpuHold = Math.max(15, Math.round(load * 45));
+                _pulseCpuCol = load > 0.8 ? '#f85149' : load > 0.45 ? '#d29922' : '#3fb950';
+                _pulseCpuMag = Math.max(0.15, load); // minimum glow so it's always visible
             }
-            if (_pulseCpuHold > 0) { _pulseCpuHold--; pulseFire('pulseCpu', _pulseCpuCol, _pulseCpuMag); }
-            else pulseRest('pulseCpu');
+            if (_pulseCpuHold > 0) { _pulseCpuHold--; _pulseFire(E.cpu, _pulseCpuCol, _pulseCpuMag); }
+            else _pulseRest(E.cpu);
 
-            // MEM — heap moved since the last sample
+            // MEM
             const M = performance.memory;
             if (M) {
                 const now = M.usedJSHeapSize;
                 const delta = Math.abs(now - _pulseHeap);
-                // _pulseHeap MUST advance every frame. It used to update only when the
-                // light fired, so between fires the delta was measured against an ever
-                // older reading — the gap grew, the baseline grew with it, and the
-                // threshold ran away from the signal. The dot went nearly silent.
                 _pulseHeap = now;
-                // Idle drift (timers, clock strings, panel updates) is the baseline;
-                // fire only on genuine spikes above it.
                 _pulseHeapBase = _pulseHeapBase * 0.94 + delta * 0.06;
                 const floor = Math.max(65536, _pulseHeapBase * 3);
-                if (delta > floor) {
-                    // Hold the blink for a few frames. Heap allocation happens on ONE
-                    // frame, so lighting for a single 16ms frame is below the eye's
-                    // flicker threshold — that is why it looked imperceptible.
-                    _pulseMemHold = 7;
-                    _pulseMemMag = Math.min(1, delta / Math.max(1048576, floor * 8));
-                }
-                if (_pulseMemHold > 0) {
-                    _pulseMemHold--;
-                    pulseFire('pulseMem', _pulseMemMag > 0.6 ? '#FF9100' : '#E040FB', 1);
-                } else pulseRest('pulseMem');
-            } else pulseRest('pulseMem');
+                if (delta > floor) { _pulseMemHold = 7; _pulseMemMag = Math.min(1, delta / Math.max(1048576, floor * 8)); }
+                if (_pulseMemHold > 0) { _pulseMemHold--; _pulseFire(E.mem, _pulseMemMag > 0.6 ? '#FF9100' : '#E040FB', 1); }
+                else _pulseRest(E.mem);
+            } else _pulseRest(E.mem);
 
-            // GPU — canvas raster work: did a real draw land this frame?
+            // GPU
             if (PERF.draws !== _pulseDraws) {
-                const burst = Math.min(1, (PERF.draws - _pulseDraws) / 3);
-                pulseFire('pulseGpu', '#29b6f6', burst);
+                _pulseFire(E.gpu, '#29b6f6', Math.min(1, (PERF.draws - _pulseDraws) / 3));
                 _pulseDraws = PERF.draws;
-            } else pulseRest('pulseGpu');
+            } else _pulseRest(E.gpu);
 
-            // DOM — mutations observed since the last frame. Held like MEM, because
-            // mutation bursts land on a single frame and would otherwise be invisible.
+            // DOM
             if (_pulseDomCount > 0) {
-                _pulseDomHold = 6;
-                _pulseDomMag = Math.min(1, _pulseDomCount / 120);
+                _pulseDomHold = 6; _pulseDomMag = Math.min(1, _pulseDomCount / 120);
                 if (_pulseDomCount > _pulseDomPeak) _pulseDomPeak = _pulseDomCount;
                 _pulseDomCount = 0;
             }
-            if (_pulseDomHold > 0) {
-                _pulseDomHold--;
-                // teal = light churn · amber = heavy · red = thrash
-                pulseFire('pulseDom', _pulseDomMag > 0.7 ? '#f85149' : _pulseDomMag > 0.3 ? '#d29922' : '#00E5C0', 1);
-            } else pulseRest('pulseDom');
+            if (_pulseDomHold > 0) { _pulseDomHold--;
+                _pulseFire(E.dom, _pulseDomMag > 0.7 ? '#f85149' : _pulseDomMag > 0.3 ? '#d29922' : '#00E5C0', 1);
+            } else _pulseRest(E.dom);
 
-            const r = document.getElementById('pulseRate');
-            if (r) {
+            // Rate readout — node count throttled to 2s (full DOM walk is expensive at 60fps)
+            if (E.rate) {
+                const pnow = performance.now();
+                if (pnow - _pulseNodeCountT > 2000) { _pulseNodeCount = document.getElementsByTagName('*').length; _pulseNodeCountT = pnow; }
                 const cap = (typeof frameCap !== 'undefined' && frameCap) ? ' ⏲' + frameCap : '';
                 const used = (PERF.lastDrawMs || 0) / (PERF.budget || 16.7) * 100;
-                r.textContent = (PERF.drawFps || 0) + ' repaints/s @' + (PERF.refresh || 60) + 'Hz' + cap + ' · ' +
+                E.rate.textContent = (PERF.drawFps || 0) + ' repaints/s @' + (PERF.refresh || 60) + 'Hz' + cap + ' · ' +
                     (PERF.lastDrawMs || 0).toFixed(1) + '/' + (PERF.budget || 16.7).toFixed(1) + 'ms (' +
-                    used.toFixed(0) + '%) · ' +
-                document.getElementsByTagName('*').length + ' nodes';
+                    used.toFixed(0) + '%) · ' + _pulseNodeCount + ' nodes';
             }
 
             _pulseRAF = requestAnimationFrame(pulseLoop);
@@ -20559,7 +20568,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const COLS = { element:'#7986CB', asset:'#4DB6AC', mode:'#FFB74D',
                            snapshot:'#81C784', engine:'#F48FB1', undo:'#CE93D8',
                            system:'#90A4AE', error:'#EF9A9A' };
-            let _log = [], _enabled = true, _logOpen = false,
+            let _log = [], _enabled = false, _logOpen = false,
                 _filter = 'all', _t0 = Date.now(), _ops = 0;
 
             window.logEvent = function(cat, msg, sub) {
@@ -20652,7 +20661,16 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 }
 
                 const chk = document.getElementById('logEnabled');
-                if (chk) chk.onchange = () => { _enabled=chk.checked; logEvent('system',_enabled?'Recording resumed':'Recording paused'); };
+                if (chk) chk.onchange = () => {
+                    _enabled = chk.checked;
+                    if (_enabled) {
+                        _t0 = _t0 || Date.now(); // start session timer on first enable
+                        logEvent('system', 'Recording enabled — session started');
+                    } else {
+                        logEvent('system', 'Recording paused');
+                        _enabled = false; // ensure off after the paused message
+                    }
+                };
 
                 const clr = document.getElementById('logClearBtn');
                 if (clr) clr.onclick = () => { _log=[]; _ops=0; _t0=Date.now(); _render(); };
@@ -20678,7 +20696,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 if (srch) srch.addEventListener('input', _render);
 
                 setInterval(() => { if (_logOpen) _updateMeta(); }, 10000);
-                logEvent('system','OTOM session started');
+                // Session start is logged when the user first enables recording, not on page load
             })();
 
             // ── hooks ────────────────────────────────────────────────
