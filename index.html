@@ -3746,12 +3746,42 @@
             const track = document.getElementById('tickerTrack');
             if (!track) return;
             const html = tickerContent();
-            // Rebuilding replaces the whole track and forces a re-measure, which is the
-            // stall. Defer it to an idle moment so it never lands mid-frame.
             const write = () => {
-                // duplicated once so a -50% translate loops with no visible seam
+                // Capture how far through the current loop we are before blowing away innerHTML.
+                // CSS animation restarts from 0 when innerHTML changes; we compensate with a
+                // negative animation-delay so the new content picks up where the old one left off.
+                let progressFrac = 0;
+                if (track._halfW && track._halfW > 0) {
+                    // getComputedStyle gives the *current* matrix even mid-animation
+                    const mat = window.getComputedStyle(track).transform;
+                    if (mat && mat !== 'none') {
+                        const m = mat.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,([^,]+),/);
+                        if (m) {
+                            const currentX = parseFloat(m[1]); // negative px offset
+                            progressFrac = Math.abs(currentX) / track._halfW;
+                            progressFrac = Math.min(1, Math.max(0, progressFrac));
+                        }
+                    }
+                }
+
                 track.innerHTML = html + html;
-                tickerApplySpeed();
+
+                // Measure after reflow so scrollWidth is accurate
+                requestAnimationFrame(() => {
+                    track._halfW = track.scrollWidth / 2;
+                    track._sig   = track.innerHTML.length;
+                    const sp = document.getElementById('tickerSpeed');
+                    const pxPerSec = sp ? (parseInt(sp.value, 10) || 70) : 70;
+                    const secs = Math.max(6, track._halfW / pxPerSec);
+                    // Negative delay rewinds the animation to the saved position
+                    track.style.animationDuration  = secs + 's';
+                    track.style.animationDelay     = '-' + (progressFrac * secs).toFixed(3) + 's';
+                    track.style.animationName      = 'none'; // force restart with new delay
+                    requestAnimationFrame(() => {
+                        track.style.animationName  = '';     // let the class rule take over
+                        track.classList.add('rolling');
+                    });
+                });
             };
             if (window.requestIdleCallback) requestIdleCallback(write, { timeout: 400 });
             else setTimeout(write, 0);
@@ -3838,16 +3868,33 @@
             const sp = document.getElementById('tickerSpeed');
             if (!track || !sp) return;
             const pxPerSec = parseInt(sp.value, 10) || 70;
-            // scrollWidth forces a synchronous layout; it only changes when the content
-            // does, so measure once per rebuild rather than on every slider move
-            if (!track._halfW || track._sig !== track.innerHTML.length) {
-                track._halfW = track.scrollWidth / 2;
-                track._sig = track.innerHTML.length;
+            // Capture progress before changing duration so position is preserved
+            let progressFrac = 0;
+            if (track._halfW && track._halfW > 0) {
+                const mat = window.getComputedStyle(track).transform;
+                if (mat && mat !== 'none') {
+                    const m = mat.match(/matrix\([^,]+,[^,]+,[^,]+,[^,]+,([^,]+),/);
+                    if (m) {
+                        progressFrac = Math.min(1, Math.max(0, Math.abs(parseFloat(m[1])) / track._halfW));
+                    }
+                }
             }
-            const half = track._halfW;
-            const secs = Math.max(6, half / pxPerSec);
-            track.style.animationDuration = secs + 's';
-            track.classList.add('rolling');
+            // Measure scrollWidth after reflow if not yet cached
+            const apply = () => {
+                if (!track._halfW || track._sig !== track.innerHTML.length) {
+                    track._halfW = track.scrollWidth / 2;
+                    track._sig   = track.innerHTML.length;
+                }
+                const secs = Math.max(6, track._halfW / pxPerSec);
+                track.style.animationDuration = secs + 's';
+                track.style.animationDelay    = '-' + (progressFrac * secs).toFixed(3) + 's';
+                track.style.animationName     = 'none';
+                requestAnimationFrame(() => {
+                    track.style.animationName = '';
+                    track.classList.add('rolling');
+                });
+            };
+            requestAnimationFrame(apply);
         }
 
         function toggleTicker() {
@@ -8763,6 +8810,25 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     ctx.beginPath();
                     ctx.arc(bx, by - br * 0.35, br * 0.36, 0, Math.PI * 2);
                     ctx.fillStyle = image.pinned ? '#5D4037' : '#607D8B'; ctx.fill();
+                } else if (image.pinned) {
+                    // Pinned but not selected — always show the yellow box and pin badge
+                    ctx.strokeStyle = '#FFB300';
+                    ctx.lineWidth = 2 / camera.zoom;
+                    ctx.strokeRect(-image.width / 2, -image.height / 2, image.width, image.height);
+                    const bx = -image.width / 2 - 14 / camera.zoom, by = -image.height / 2 - 14 / camera.zoom;
+                    const br = 10 / camera.zoom;
+                    ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2);
+                    ctx.fillStyle = '#FFB300'; ctx.fill();
+                    ctx.strokeStyle = '#E65100';
+                    ctx.lineWidth = 1.5 / camera.zoom; ctx.stroke();
+                    ctx.strokeStyle = '#5D4037';
+                    ctx.lineWidth = 1.6 / camera.zoom;
+                    ctx.beginPath();
+                    ctx.moveTo(bx, by + br * 0.55); ctx.lineTo(bx, by - br * 0.1);
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(bx, by - br * 0.35, br * 0.36, 0, Math.PI * 2);
+                    ctx.fillStyle = '#5D4037'; ctx.fill();
                 }
 
                 if (image === selectedImage && !connectMode) {
