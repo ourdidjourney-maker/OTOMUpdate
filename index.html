@@ -14663,8 +14663,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
         { id:'draw', t:'Drawing Elements', h:`
 <h3>The primitives</h3>
 ` +
-hDef('vector','Vector','Double-click bare canvas. The fundamental node — a register in the language.') +
-hDef('line','Datum Line','Inert geometry, not a logic step. Press-drag-release; hold Shift for a 45° constraint.') +
+hDef('vector','Vector','Double-click bare canvas. The fundamental node — a register in the language. <b>Double-click a vector</b> to open its dialogue, where you can set its name, data string, notations, and — new — a <b>colour picker</b>. The chosen colour renders on the canvas and in the Asset Manager label. Defaults to black.') +
+hDef('line','Datum Line','Inert geometry, not a logic step. Press-drag-release; hold Shift for a 45° constraint. <b>Click again to continue the line</b> — each release plants an anchor dot; the next segment starts from it. Click in the same spot or press Escape to end the chain.') +
 hDef('rect','Square','Hollow — only the border is clickable, so you can still grab whatever sits inside it.') +
 hDef('circle','Circle','Solid, dashed or dotted. Hollow like the square. Hold Shift for a perfect circle.') +
 hDef('triangle','Triangle','Outline or filled. An outline triangle is hollow; a filled one is not.') +
@@ -14804,23 +14804,25 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
   '<span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:13px;height:13px;border-radius:50%;background:#F44336;"></span><span style="color:#F44336;font-weight:700;">High</span></span>'
 ) + `
 <h3>Flags</h3>
-<p>Metadata toggles (Mem Info, Path, Filename, Notations, Legit Agent, Mem Alloc, priority flags) draw labels on the canvas. Flags never overlap — the engine solves their placement for you. <b>⚑ Flags</b> mode lets you drag any flag exactly where you want it, and the <b>Arrows ▲▼</b> control changes the gap between stacked flags.</p>` },
+<p>Metadata toggles (Mem Info, Path, Filename, Notations, Legit Agent, Mem Alloc, priority flags) draw labels on the canvas. Flags never overlap — the engine solves their placement for you. <b>⚑ Flags</b> mode lets you drag any flag exactly where you want it, and the <b>Arrows ▲▼</b> control changes the gap between stacked flags.</p>
+<p><b>Names: ON/OFF</b> — the master toggle for element name flags. When off, no name labels are drawn on the canvas regardless of other flag settings. Sits before the METADATA group in the toolbar; also accessible in the radial Flags submenu.</p>` },
 
         { id:'tools', t:'The Tool Panels', h:`
 <h3>All of them dock, pin, dim and collapse</h3>
 <ul>
 <li><b>🧮 Calc</b> — a full engineering calculator. Trig, logs, factorials (including fractional, via the gamma function), nCr/nPr, variadics. <b>NOTE</b> field annotates a calculation, and <b>Send to Formula</b> files it in the Notes Reader.</li>
-<li><b>✎ Scratch Pad</b> — a typewriter page. Paste images straight from the clipboard, drop files, links become live, checklists you can tick, multiple pages. <b>⚫</b> attaches selected text to a selected element; <b>=</b> solves maths in place; <b>📷</b> drops a picture of the canvas into your notes.</li>
+<li><b>✎ Scratch Pad</b> — a typewriter page. Paste images straight from the clipboard, drop files, links become live, checklists you can tick, multiple pages. <b>⚫</b> attaches selected text to a selected element; <b>=</b> solves maths in place; <b>📷</b> drops a picture of the canvas into your notes. <b>⇩ Export</b> saves the current page as a standalone HTML file; <b>⇧ Import</b> loads it back in.</li>
 <li><b>🌐 Browser</b> — pages load inside the panel. Sites that refuse embedding open with <b>Pop Out</b>.</li>
 <li><b>▶ Media</b> — YouTube or local video. Each click spawns another player.</li>
 <li><b>⛃ Checkers</b> — a real minimax AI with alpha-beta pruning. Three depths.</li>
 <li><b>🕘 Clock</b> — clock, stopwatch, timestamps, and an alarm that blinks the whole UI.</li>
 <li><b>📅 Calendar</b> — due dates, meetings and milestones. Events attach to canvas elements, which then wear the date and turn red when it passes.</li>
 <li><b>⊘ Controls</b> — choose which toolbar buttons exist for you. <b>⧗ Live Canvas</b> offers to remove the ones you never touch.</li>
-<li><b>✎ Gestures</b> — record your own strokes and bind them to any command in the engine.</li>
+<li><b>✍ Gestures</b> — record your own strokes and bind them to any command in the engine.</li>
 <li><b>⟿ Path</b> — a live schematic of your hand's route, with every action stamped on it.</li>
 <li><b>⏻ Recovery</b> — the crash net. Writes a restorable point of the whole session; offered back automatically if OTOM closes without a save.</li>
 <li><b>📖 Notes Reader</b> — every notation in the engine in one list, with priority flags and a formula library you can drag onto the canvas.</li>
+<li><b>📋 Event Log</b> — a black-box recorder of everything that happens in the session. Button clicks, element creation, selection, moves, resizes, canvas pans, zooms, mode changes, asset operations, snapshots, undo/redo — all timestamped and categorised. Search and filter by category. Export as .txt. Toggle recording on or off with the <b>Record</b> checkbox; when off, nothing is written and there is zero performance cost. The log is visible in the <b>Asset Manager</b> when the panel is open, showing live entry count and recording state.</li>
 </ul>
 <h3>Pinning</h3>
 <p><b>📌 Pin</b> anchors a panel to <b>canvas space</b> — it moves and scales when you pan and zoom, as if it were part of your work. Pinned media and browser panels fade their chrome until you hover them.</p>` },
@@ -14854,7 +14856,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
         { id:'self', t:'Watching Yourself', h:`
 <h3>The engine keeps a record of how you work</h3>
-<p>Open <b>▮ Usage</b> and everything you touch is tallied — every button, every menu choice, every canvas gesture — ranked by how often you reach for it.</p>
+<p>Open <b>▮ Usage: OFF</b> and click to turn recording on. Everything you touch is then tallied — every button, every menu choice, every canvas gesture — ranked by how often you reach for it. The button shows <b>▮ Usage: ON</b> in orange while active. When off, nothing is tracked and there is zero overhead.</p>
 ` + hFig('The tally, ranked. Amber is the toolbar, blue is the radial menu.',
 `<div style="max-width:250px; margin:0 auto; background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:10px; overflow:hidden; font-family:Arial;">
   <div style="display:flex; align-items:center; gap:6px; padding:7px 10px; background:linear-gradient(180deg,#1b2530,#141c24);">
@@ -15045,7 +15047,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 <ul>
 <li><b>♥ Health</b> — a one-line verdict: stable, strained, or critical.</li>
 <li><b>📊 Perf</b> — the full monitor: FPS, heap, scene graph, memory breakdown, DOM, timing, environment.</li>
-<li><b>🗂 Assets</b> — the Asset Manager. Every element, panel and widget with its exact byte cost, rolled into one total.</li>
+<li><b>🗂 Asset Manager</b> — every element, panel and widget with its exact byte cost, rolled into one total. When the <b>Event Log</b> panel is open, it also appears here showing live entry count and recording state.</li>
 <li><b>The Asset Manager follows your selection.</b> Click an element on the canvas and its row is tinted, marked <b>SELECTED</b>, and scrolled into view. A lasso marks every member.</li>
 <li><b>Each grouped asset is its own section.</b> Three models of five parts read as three sections of five, not one of fifteen — and any of them can be collapsed on its own.</li>
 <li><b>Undo depth</b> — the dropdown beside Undo sets how many steps are kept, from 10 to 250. Each step holds a full snapshot of the scene, so this is the largest single memory dial in the engine; lowering it releases the memory immediately and tells you how much it freed.</li>
