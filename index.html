@@ -792,7 +792,7 @@
         <button id="gestureOnBtn" onclick="toggleGestures()" title="Turn mouse gestures on or off. With them off, Shift is only ever used for resizing and constraining." style="background:#00838F; font-size:11px; padding:6px 9px;">✍ Gestures: ON</button>
         <button onclick="ugManager()" title="Your own gestures — record a stroke and choose what it does" style="background:#455A64; font-size:11px; padding:6px 9px;">✎ Gestures</button>
         <button id="pathBtn" onclick="togglePathTracker()" title="Mouse Path — a live schematic of where the hand has been" style="background:#455A64; font-size:11px; padding:6px 9px;">⟿ Path</button>
-        <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage</button>
+        <button id="usageBtn" onclick="toggleUsage()" title="Usage: what you actually reach for, and how often" style="background:#455A64; font-size:11px; padding:6px 9px;">▮ Usage: OFF</button>
         <button id="autoOpenBtn" onclick="toggleAutoOpen()" title="Auto Open: hover any element and its data dialogue opens, ready to edit" style="background:#455A64; font-size:11px; padding:6px 9px;">⇕ Auto Open</button>
         <button id="blockPanelBtn" onclick="toggleBlockPanel()" title="Show or hide the Block Elements panel" style="background:#5E35B1; font-size:11px; padding:6px 9px;">📋 Blocks</button>
         <button onclick="toggleZen()" title="Hide the toolbar (Tab). Everything is in the radial: Left Alt + click" style="background:#263238; font-size:11px; padding:6px 9px;">⌘ Zen</button>
@@ -5072,7 +5072,10 @@
             const p = document.getElementById('usePanel');
             if (p) p.style.display = usageOn ? 'flex' : 'none';
             const b = document.getElementById('usageBtn');
-            if (b) b.style.background = usageOn ? '#EF6C00' : '#455A64';
+            if (b) {
+                b.style.background = usageOn ? '#EF6C00' : '#455A64';
+                b.textContent = usageOn ? '▮ Usage: ON' : '▮ Usage: OFF';
+            }
             if (usageOn) { renderUsage(true); clearInterval(_odoTick); _odoTick = setInterval(() => { if (usageOn && !document.hidden) renderUsage(); }, 1500); }
             else { clearInterval(_odoTick); _odoTick = null; }
         }
@@ -16926,6 +16929,29 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const e = document.createElement('div'); e.style.cssText = 'color:#aaa;padding:28px 16px;text-align:center;font-size:13px;'; e.innerHTML = '🗂<br><br>Nothing on the canvas yet.'; c.appendChild(e);
             }
 
+            // 📋 Event Log panel
+            if (typeof _logOpen !== 'undefined' || document.getElementById('logPanel')) {
+                const lp = document.getElementById('logPanel');
+                const logVisible = lp && lp.style.display !== 'none';
+                const logCount = typeof _log !== 'undefined' ? _log.length : 0;
+                const logEnabled = document.getElementById('logEnabled');
+                const recording = logEnabled ? logEnabled.checked : false;
+                const logBytes = logCount * 120; // rough estimate per entry
+                totalBytes += logBytes;
+                section('Event Log', logCount + ' entries');
+                const P = [
+                    ['Recording', recording ? 'ON' : 'OFF'],
+                    ['Entries', logCount],
+                    ['Panel open', logVisible ? 'yes' : 'no'],
+                    ['Memory (est.)', formatBytes(logBytes)]
+                ];
+                row(chip('📋', '#e8eaf6'), 'Event Log',
+                    (recording ? 'recording · ' : 'paused · ') + logCount + ' entries · ' + formatBytes(logBytes),
+                    'Event Log', P,
+                    () => { if (typeof toggleEventLog === 'function') toggleEventLog(); },
+                    '#3949AB');
+            }
+
             // Read-only footer: OTOM app size, all assets, and the combined total
             const appBytes = _docBytes();
             const line = (label, val, accent) => '<div style="display:flex;justify-content:space-between;margin:2px 0;' + (accent ? 'border-top:1px solid #e0d7f0;margin-top:4px;padding-top:4px;' : '') + '"><span style="color:' + (accent ? '#4527a0' : '#888') + ';font-weight:' + (accent ? '700' : '400') + ';">' + label + '</span><span style="font-weight:700;color:' + (accent ? '#4527a0' : '#222') + ';">' + formatBytes(val) + '</span></div>';
@@ -20994,21 +21020,157 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             // Element delete/create detection — merged into the first saveState wrapper
             // to avoid double-wrapping (which inflated timing measurements).
             (function() {
+                // Map elKind() raw values to OTOM's own terminology
+                function _kindLabel(el) {
+                    if (!el) return 'element';
+                    const k = elKind(el);
+                    if (k === 'dot')       return el.fusable ? 'Fusion Vector' : (el.isVector ? 'Vector' : 'Primer');
+                    if (k === 'line')      return 'Datum Line';
+                    if (k === 'rect')      return 'Square';
+                    if (k === 'circle')    return 'Circle';
+                    if (k === 'triangle')  return 'Triangle';
+                    if (k === 'arrow')     return 'Arrow';
+                    if (k === 'text')      return 'Text';
+                    if (k === 'group')     return el.isMesh ? 'Mesh' : 'Grouped Asset';
+                    if (k === 'cartridge') return 'Data Cartridge';
+                    if (k === 'port')      return 'Port';
+                    if (k === 'image')     return 'Block Element';
+                    return k || 'element';
+                }
+
                 const _oSS_combined = window.saveState;
                 window.saveState = function() {
                     const before = typeof images !== 'undefined' ? images.length : 0;
+                    // snapshot IDs before so we can identify what was added or removed
+                    const beforeIds = typeof images !== 'undefined' ? new Set(images.map(i => i.id)) : new Set();
                     _oSS_combined.apply(this, arguments);
                     const after = typeof images !== 'undefined' ? images.length : 0;
                     if (after < before) {
-                        const n = before - after;
+                        // find what was removed
+                        const removed = typeof images !== 'undefined'
+                            ? [] // images already updated — check beforeIds vs current
+                            : [];
+                        // beforeIds has the old set; current images is the new set
+                        const currentIds = new Set(images.map(i => i.id));
+                        const gone = [...beforeIds].filter(id => !currentIds.has(id));
+                        const n = gone.length || (before - after);
                         logEvent('element', n + ' element' + (n > 1 ? 's' : '') + ' deleted');
                     } else if (after > before) {
-                        const el = selectedImage;
-                        const kind = el ? (elKind(el) || 'element') : 'element';
-                        logEvent('element', (after - before) + ' ' + kind + (after - before > 1 ? 's' : '') + ' created');
+                        // the newly added elements are those whose IDs weren't in beforeIds
+                        const added = images.filter(i => !beforeIds.has(i.id));
+                        if (added.length === 1) {
+                            const el = added[0];
+                            const label = _kindLabel(el);
+                            const name = el.name ? ' "' + el.name + '"' : '';
+                            logEvent('element', label + ' created' + name);
+                        } else if (added.length > 1) {
+                            // group of mixed types — summarise
+                            const kinds = [...new Set(added.map(_kindLabel))];
+                            logEvent('element', added.length + ' elements created', kinds.join(', '));
+                        }
                     }
                 };
             })();
+
+            // ── Canvas + UI interaction hooks ─────────────────────────────
+            // Independent of usageOn — the event log has its own _enabled gate.
+            (function() {
+                if (typeof canvas === 'undefined' || !canvas) return;
+
+                function _kl(el) {
+                    if (!el) return 'element';
+                    const k = elKind(el);
+                    if (k === 'dot')       return el.fusable ? 'Fusion Vector' : (el.isVector ? 'Vector' : 'Primer');
+                    if (k === 'line')      return 'Datum Line';
+                    if (k === 'rect')      return 'Square';
+                    if (k === 'circle')    return 'Circle';
+                    if (k === 'triangle')  return 'Triangle';
+                    if (k === 'arrow')     return 'Arrow';
+                    if (k === 'text')      return 'Text';
+                    if (k === 'group')     return el.isMesh ? 'Mesh' : 'Grouped Asset';
+                    if (k === 'cartridge') return 'Data Cartridge';
+                    if (k === 'port')      return 'Port';
+                    if (k === 'image')     return 'Block Element';
+                    return k || 'element';
+                }
+
+                document.addEventListener('click', (ev) => {
+                    const lbl = usageLabelFor(ev.target);
+                    if (lbl) logEvent('element', 'Button: ' + lbl);
+                }, true);
+
+                let _logMdX = null, _logMdY = null, _logMdHit = null;
+                let _logWasPanning = false, _logWasDragging = false, _logWasResizing = false;
+
+                // CAPTURE — before engine, so we get the hit before any state change
+                canvas.addEventListener('mousedown', (ev) => {
+                    if (ev.button !== 0) return;
+                    _logMdX = ev.clientX; _logMdY = ev.clientY;
+                    const pos = screenToCanvas(ev.clientX, ev.clientY);
+                    _logMdHit = getImageAtPoint(pos.x, pos.y);
+                    if (_logMdHit) logEvent('element', 'Selected ' + _kl(_logMdHit), _logMdHit.name || '');
+                }, { capture: true, passive: true });
+
+                // CAPTURE mouseup — read isPanning/isDragging/isResizing BEFORE engine resets them
+                canvas.addEventListener('mouseup', (ev) => {
+                    if (ev.button !== 0) return;
+                    _logWasPanning  = typeof isPanning  !== 'undefined' && isPanning;
+                    _logWasDragging = typeof isDragging !== 'undefined' && isDragging;
+                    _logWasResizing = typeof isResizing !== 'undefined' && isResizing;
+                }, { capture: true, passive: true });
+
+                // BUBBLE mouseup — engine already reset flags, use our saved snapshot
+                canvas.addEventListener('mouseup', (ev) => {
+                    if (ev.button !== 0) return;
+                    const moved = _logMdX !== null ? Math.hypot(ev.clientX - _logMdX, ev.clientY - _logMdY) : 0;
+                    if (_logWasResizing && selectedImage) {
+                        logEvent('element', 'Resized ' + _kl(selectedImage), selectedImage.name || '');
+                    } else if (_logWasDragging && selectedImage) {
+                        logEvent('element', 'Moved ' + _kl(selectedImage), selectedImage.name || '');
+                    } else if (_logWasPanning && moved > 8) {
+                        logEvent('element', 'Panned canvas');
+                    } else if (!_logMdHit && moved <= 8) {
+                        const pos = screenToCanvas(ev.clientX, ev.clientY);
+                        logEvent('element', 'Canvas click', Math.round(pos.x) + ', ' + Math.round(pos.y));
+                    }
+                    _logMdX = null; _logMdY = null; _logMdHit = null;
+                    _logWasPanning = false; _logWasDragging = false; _logWasResizing = false;
+                }, { capture: false, passive: true });
+
+                // CAPTURE dblclick — snapshot images BEFORE engine creates element
+                let _logPreDblIds = null;
+                canvas.addEventListener('dblclick', () => {
+                    _logPreDblIds = new Set(images.map(i => i.id));
+                }, { capture: true, passive: true });
+
+                // BUBBLE dblclick — engine has pushed new element, compare
+                canvas.addEventListener('dblclick', (ev) => {
+                    if (!_logPreDblIds) return;
+                    const added = images.filter(i => !_logPreDblIds.has(i.id));
+                    if (added.length > 0) {
+                        added.forEach(el => logEvent('element', _kl(el) + ' created', el.name || ''));
+                    } else {
+                        const pos = screenToCanvas(ev.clientX, ev.clientY);
+                        const hit = getImageAtPoint(pos.x, pos.y);
+                        if (hit) logEvent('element', 'Opened dialogue — ' + _kl(hit), hit.name || '');
+                    }
+                    _logPreDblIds = null;
+                }, { capture: false, passive: true });
+
+                canvas.addEventListener('contextmenu', (ev) => {
+                    const pos = screenToCanvas(ev.clientX, ev.clientY);
+                    const hit = getImageAtPoint(pos.x, pos.y);
+                    logEvent('element', 'Right-click', hit ? (_kl(hit) + (hit.name ? ' "' + hit.name + '"' : '')) : 'canvas');
+                }, { capture: false, passive: true });
+
+                let _logWheelT = null;
+                canvas.addEventListener('wheel', () => {
+                    clearTimeout(_logWheelT);
+                    _logWheelT = setTimeout(() => logEvent('element', 'Zoom', Math.round(camera.zoom * 100) + '%'), 300);
+                }, { capture: false, passive: true });
+
+            })();
+
 
         // ════════════════════════════════════════════════════════════
     </script>
