@@ -12969,7 +12969,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 if (!p || p.style.display === 'none') return;
                 const s = 'SEL' + (selectedImage ? selectedImage.id : '') + ':' + selectedGroup.length + '|' + (typeof usageLog !== 'undefined' && usageLog ? 'USE' + usageLog.size : '') + '|' + (typeof magPins !== 'undefined' ? 'LENS' + magPins.length : '') + '|' + (typeof calEvents !== 'undefined' ? 'CAL' + calEvents.length + calEvents.filter(e=>e.done).length : '') + '|' + (typeof watermarks !== 'undefined' && watermarks ? 'WM' + watermarks.length : '') + '|' + (typeof docPanels !== 'undefined' ? 'DOC' + docPanels.length + docPanels.map(d=>d.pinned?1:0).join('') : '') + '|' + (typeof padPages !== 'undefined' ? 'PAD' + padPages.length + padPages.reduce((a,p)=>a+(p.html||'').length,0) : '') + '|' + (typeof chkOpen !== 'undefined' && chkOpen ? 'CHK' + (chkBoard ? chkBoard.join('') : '') : '') + '|' + (typeof mediaPlayers !== 'undefined' ? mediaPlayers.filter(m=>m.isBrowser).length + ':' + mediaPlayers.filter(m=>!m.isBrowser).length : 0) + '|' + images.length + '|' + connections.length + '|' + guides.length + '|' + (centerPoint ? 1 : 0) + '|' + (typeof canvasNotes !== 'undefined' ? canvasNotes.length + canvasNotes.map(n=>(n.name||'')+(n.priority||'')+(n.lastEdited||'')).join(',') : '') + '|' + images.filter(i=>i.fusionId).map(i=>i.fusionId).join(',') + '|' + images.map(i=>(i.socket?'S':'')+((i.socketLinks||[]).join('.'))+(i.socketId||'')).join(',') + '|' + (typeof alarms !== 'undefined' ? alarms.length + (alarmRinging?'R':'') : 0) + '|' + (typeof stamps !== 'undefined' ? stamps.length : 0) + '|' + (background ? (background.fileName || '') + background.opacity : '') +
                     '|' + connections.map(c => c.number + (c.simultaneous ? 'S' : '') + (c.hidden ? 'H' : '')).join(',') +
-                    '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',');
+                    '|' + images.map(i => (i.name || '') + (i.priority || '') + (i.lastEdited || '') + (i.hidden ? 1 : 0)).join(',') +
+                    '|LOG' + (typeof window.logState === 'function' ? window.logState().count : 0);
                 if (s !== sig) { sig = s; renderAssetBrowser(); }
             }, 500);
         })();
@@ -16929,24 +16930,22 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const e = document.createElement('div'); e.style.cssText = 'color:#aaa;padding:28px 16px;text-align:center;font-size:13px;'; e.innerHTML = '🗂<br><br>Nothing on the canvas yet.'; c.appendChild(e);
             }
 
-            // 📋 Event Log panel
-            if (typeof _logOpen !== 'undefined' || document.getElementById('logPanel')) {
-                const lp = document.getElementById('logPanel');
-                const logVisible = lp && lp.style.display !== 'none';
-                const logCount = typeof _log !== 'undefined' ? _log.length : 0;
-                const logEnabled = document.getElementById('logEnabled');
-                const recording = logEnabled ? logEnabled.checked : false;
-                const logBytes = logCount * 120; // rough estimate per entry
+            // 📋 Event Log panel — only show in AM when the panel is actually open
+            const lp = document.getElementById('logPanel');
+            const logVisible = lp && lp.style.display !== 'none';
+            if (logVisible && typeof window.logState === 'function') {
+                const ls = window.logState();
+                const logBytes = ls.count * 120;
                 totalBytes += logBytes;
-                section('Event Log', logCount + ' entries');
+                section('Event Log', ls.count + ' entries');
                 const P = [
-                    ['Recording', recording ? 'ON' : 'OFF'],
-                    ['Entries', logCount],
-                    ['Panel open', logVisible ? 'yes' : 'no'],
+                    ['Recording', ls.recording ? 'ON' : 'OFF'],
+                    ['Entries', ls.count],
+                    ['Total ops this session', ls.ops],
                     ['Memory (est.)', formatBytes(logBytes)]
                 ];
                 row(chip('📋', '#e8eaf6'), 'Event Log',
-                    (recording ? 'recording · ' : 'paused · ') + logCount + ' entries · ' + formatBytes(logBytes),
+                    (ls.recording ? 'recording · ' : 'paused · ') + ls.count + ' entries · ' + formatBytes(logBytes),
                     'Event Log', P,
                     () => { if (typeof toggleEventLog === 'function') toggleEventLog(); },
                     '#3949AB');
@@ -20633,6 +20632,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 if (_log.length >= MAX) _log.shift();
                 _log.push({ ts: Date.now(), cat: cat||'system', msg: msg||'', sub: sub||'' });
                 if (_logOpen) _render();
+
+            // Public read-only state for the AM — closures are not visible from outside
+            window.logState = function() {
+                return { count: _log.length, recording: _enabled, open: _logOpen, ops: _ops };
+            };
                 _updateMeta();
             };
 
