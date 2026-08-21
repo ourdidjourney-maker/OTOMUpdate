@@ -1303,7 +1303,7 @@
         <div style="display:flex; gap:5px; margin-top:8px; align-items:center; background:rgba(20,26,30,.92); padding:7px 9px; border-radius:22px; box-shadow:0 6px 18px rgba(0,0,0,.4);">
             <button onclick="swStartStop()" id="swBtn" style="margin:0; padding:5px 12px; font-size:11px; background:#00897B; border-radius:14px;">Start</button>
             <button onclick="swReset()" style="margin:0; padding:5px 10px; font-size:11px; background:#455A64; border-radius:14px;">Reset</button>
-            <button onclick="addStamp()" id="stampBtn" title="Timestamp this moment into the Asset Browser" style="margin:0; padding:5px 11px; font-size:11px; background:#7E57C2; border-radius:14px;">Stamp</button>
+            <button onclick="addStamp()" id="stampBtn" title="Timestamp this moment into the Asset Manager" style="margin:0; padding:5px 11px; font-size:11px; background:#7E57C2; border-radius:14px;">Stamp</button>
             <input type="text" id="stampNote" placeholder="note…" title="Optional note attached to the next stamp" style="width:70px; padding:4px 7px; font-size:11px; border:1px solid #37474F; border-radius:12px; background:#101619; color:#cfd8dc;">
             <span style="width:1px; height:18px; background:#37474F;"></span>
             <input type="time" id="alarmTime" title="Alarm time" style="padding:3px 5px; font-size:11px; border:1px solid #37474F; border-radius:12px; background:#101619; color:#cfd8dc;">
@@ -1543,7 +1543,7 @@
 
     <div id="assetPanel" style="display:none; position:fixed; top:120px; left:480px; width:340px; height:470px; min-width:260px; min-height:220px; background:white; border-radius:10px; box-shadow:0 6px 28px rgba(0,0,0,0.28); z-index:1500; flex-direction:column; overflow:hidden; resize:both;">
         <div id="assetPanelHeader" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#673AB7; color:white; cursor:move; user-select:none; border-radius:10px 10px 0 0;">
-            <h3 style="margin:0; font-size:15px;">🗂 Asset Browser</h3>
+            <h3 style="margin:0; font-size:15px;">🗂 Asset Manager</h3>
             <button onclick="closeAssetBrowser()" title="Close" style="background:rgba(255,255,255,0.2); padding:4px 10px; margin:0; font-size:14px;">✕</button>
         </div>
         <div id="assetPanelContent" style="flex:1 1 auto; overflow-y:auto; padding:8px 12px 14px; background:#fff;"></div>
@@ -15024,7 +15024,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 </ul>
 ` + hFig('An Asset Manager row. Hover the ⓘ for the full data card; the footer totals the engine and everything in it.',
 `<div style="max-width:360px; margin:0 auto; background:#fff; border-radius:9px; overflow:hidden; font-family:Arial;">
-  <div style="background:#673AB7; color:#fff; padding:8px 12px; font-weight:700; font-size:12px;">🗂 Asset Browser</div>
+  <div style="background:#673AB7; color:#fff; padding:8px 12px; font-weight:700; font-size:12px;">🗂 Asset Manager</div>
   <div style="padding:8px 10px;">
     <div style="display:flex; align-items:center; gap:8px; margin:2px 0 6px;">
       <span style="color:#7e57c2; font-size:10px;">▼</span>
@@ -20868,7 +20868,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const _oOpenAB = openAssetBrowser;
             window.openAssetBrowser = function() {
                 _oOpenAB.apply(this, arguments);
-                logEvent('system', 'Asset Browser opened');
+                logEvent('system', 'Asset Manager opened');
             };
 
             // Reconstruct / Regroup asset
