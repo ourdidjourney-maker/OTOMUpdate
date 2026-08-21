@@ -899,19 +899,19 @@
         <div id="pulseTab" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; box-sizing:border-box; padding:6px 14px; border:2px solid #263238; border-radius:20px; background:#11161b; box-shadow:0 6px 18px rgba(0,0,0,.34); white-space:nowrap; z-index:1700;">
             <span style="display:inline-flex; align-items:center; gap:11px;">
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseCpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
+                    <span id="pulseCpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">CPU</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseMem" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
+                    <span id="pulseMem" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">MEM</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
+                    <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">GPU</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseDom" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
+                    <span id="pulseDom" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">DOM</span>
                 </span>
                 <span id="pulseRate" style="font:10px 'Courier New',monospace; color:#FFFFFF; letter-spacing:.5px;"></span>
@@ -19633,15 +19633,22 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 _pulseFire(E.dom, _pulseDomMag > 0.7 ? '#f85149' : _pulseDomMag > 0.3 ? '#d29922' : '#00E5C0', 1);
             } else _pulseRest(E.dom);
 
-            // Rate readout — node count throttled to 2s (full DOM walk is expensive at 60fps)
+            // Rate readout — throttled to 500ms so the text width is stable and
+            // pulseTab doesn't resize every frame (which caused visible jitter).
+            // Node count is also throttled to 2s — full DOM walk is expensive at 60fps.
             if (E.rate) {
                 const pnow = performance.now();
-                if (pnow - _pulseNodeCountT > 2000) { _pulseNodeCount = document.getElementsByTagName('*').length; _pulseNodeCountT = pnow; }
-                const cap = (typeof frameCap !== 'undefined' && frameCap) ? ' ⏲' + frameCap : '';
-                const used = (PERF.lastDrawMs || 0) / (PERF.budget || 16.7) * 100;
-                E.rate.textContent = (PERF.drawFps || 0) + ' repaints/s @' + (PERF.refresh || 60) + 'Hz' + cap + ' · ' +
-                    (PERF.lastDrawMs || 0).toFixed(1) + '/' + (PERF.budget || 16.7).toFixed(1) + 'ms (' +
-                    used.toFixed(0) + '%) · ' + _pulseNodeCount + ' nodes';
+                if (pnow - _pulseNodeCountT > 500) {
+                    if (pnow - _pulseNodeCountT > 2000) {
+                        _pulseNodeCount = document.getElementsByTagName('*').length;
+                    }
+                    _pulseNodeCountT = pnow;
+                    const cap = (typeof frameCap !== 'undefined' && frameCap) ? ' ⏲' + frameCap : '';
+                    const used = (PERF.lastDrawMs || 0) / (PERF.budget || 16.7) * 100;
+                    E.rate.textContent = (PERF.drawFps || 0) + ' repaints/s @' + (PERF.refresh || 60) + 'Hz' + cap + ' · ' +
+                        (PERF.lastDrawMs || 0).toFixed(1) + '/' + (PERF.budget || 16.7).toFixed(1) + 'ms (' +
+                        used.toFixed(0) + '%) · ' + _pulseNodeCount + ' nodes';
+                }
             }
 
             _pulseRAF = requestAnimationFrame(pulseLoop);
