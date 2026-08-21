@@ -1948,7 +1948,7 @@
         let isDrawingCircle2 = false, newCircle = null;
         let isDrawingTri = false, newTri = null;
         let isDrawingArrow = false, newArrow = null;
-        let isDrawingLine = false, newLine = null;
+        let isDrawingLine = false, newLine = null, _lineChainEnd = null;
         let pendingTextPos = null;
         let background = null;         // { img, x, y, opacity, scale }
         let bgMoveMode = false, bgDragging = false;
@@ -7008,7 +7008,10 @@
             // Line tool: press-drag-release
             if (lineMode) {
                 isDrawingLine = true;
-                newLine = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+                // If a chain endpoint exists, start this segment from there (bend/continue)
+                const startX = _lineChainEnd ? _lineChainEnd.x : pos.x;
+                const startY = _lineChainEnd ? _lineChainEnd.y : pos.y;
+                newLine = { x1: startX, y1: startY, x2: startX, y2: startY };
                 return;
             }
             // Center anchor placement
@@ -7738,6 +7741,11 @@
                         color: document.getElementById('annoColor').value,
                         id: Date.now() + Math.random(), name: '', fullName: '', isDot: false, hidden: false, hiddenLevel: 0 };
                     images.push(el); selectedImage = el; saveState(); updateImageCount();
+                    // Store endpoint so next click continues the chain from here
+                    _lineChainEnd = { x: x2, y: y2 };
+                } else {
+                    // Too short — treat as a termination click, end the chain
+                    _lineChainEnd = null;
                 }
                 draw();
                 return;
@@ -9195,6 +9203,21 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 ctx.beginPath();
                 ctx.moveTo(newLine.x1, newLine.y1);
                 ctx.lineTo(newLine.x2, newLine.y2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Chain anchor dot — shows where the next line segment will start
+            if (lineMode && _lineChainEnd && !isDrawingLine) {
+                ctx.save();
+                const r = 5 / camera.zoom;
+                ctx.fillStyle = document.getElementById('annoColor').value;
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 1.5 / camera.zoom;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.arc(_lineChainEnd.x, _lineChainEnd.y, r, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.stroke();
                 ctx.restore();
             }
@@ -11876,6 +11899,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         function toggleLineMode() {
             lineMode = !lineMode;
+            if (!lineMode) _lineChainEnd = null;  // end any active chain
             if (lineMode && textMode) toggleTextMode();
             const b = document.getElementById('lineBtn');
             b.style.background = lineMode ? '#F44336' : '#795548';
