@@ -899,19 +899,19 @@
         <div id="pulseTab" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; box-sizing:border-box; padding:6px 14px; border:2px solid #263238; border-radius:20px; background:#11161b; box-shadow:0 6px 18px rgba(0,0,0,.34); white-space:nowrap; z-index:1700;">
             <span style="display:inline-flex; align-items:center; gap:11px;">
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseCpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span id="pulseCpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">CPU</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseMem" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span id="pulseMem" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">MEM</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span id="pulseGpu" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">GPU</span>
                 </span>
                 <span style="display:inline-flex; align-items:center; gap:5px;">
-                    <span id="pulseDom" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block; transition:background .09s, box-shadow .09s;"></span>
+                    <span id="pulseDom" style="width:9px; height:9px; border-radius:50%; background:#1b2a33; display:inline-block;"></span>
                     <span style="font:700 9px Arial; letter-spacing:1.3px; color:#FFFFFF;">DOM</span>
                 </span>
                 <span id="pulseRate" style="font:10px 'Courier New',monospace; color:#FFFFFF; letter-spacing:.5px;"></span>
@@ -4809,8 +4809,6 @@
             off(typeof simultaneousMode !== 'undefined' && simultaneousMode, toggleSimultaneousMode);
             off(typeof cartridgeMode !== 'undefined' && cartridgeMode, toggleCartridgeMode);
             off(typeof collectMode !== 'undefined' && collectMode, toggleCollectMode);
-            off(typeof branchMode !== 'undefined' && branchMode, toggleBranchMode);
-            off(typeof cartLinksMode !== 'undefined' && cartLinksMode, toggleCartLinks);
             off(typeof cartEditMode !== 'undefined' && cartEditMode, toggleCartEditMode);
             off(typeof portEditMode !== 'undefined' && portEditMode, togglePortEditMode);
             off(typeof socketMode !== 'undefined' && socketMode, toggleSocketMode);
@@ -15966,6 +15964,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const meshes = images.filter(i => elKind(i) === 'group' && i.isMesh);
             const groups = images.filter(i => elKind(i) === 'group' && !i.isMesh);
             const cartridges = images.filter(i => elKind(i) === 'cartridge');
+            const ports = images.filter(i => elKind(i) === 'port');
 
             // Per-section name disambiguators — append (1),(2),… only within each section
             const dImg   = disambigNames(imgs,        im => im.name || im.fileName || 'Unnamed Image');
@@ -15978,6 +15977,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const dTri   = disambigNames(triangles,   im => im.name || 'Triangle');
             const dArw   = disambigNames(arws,        im => im.name || 'Arrow');
             const dGrp   = disambigNames(groups,      im => im.assetName || im.name || 'Grouped Asset');
+            const dPort  = disambigNames(ports,       im => im.name || 'Port');
 
 
             let totalBytes = 0;
@@ -16189,6 +16189,30 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                         });
                         (curBody || c).appendChild(tr);
                     }
+                });
+            }
+
+            if (ports.length) {
+                section('Ports', ports.length);
+                ports.forEach(pt => {
+                    const label = dPort(pt);
+                    const linkedCart = pt._loadedCartId ? images.find(im => im.id === pt._loadedCartId) : null;
+                    const loaded = (pt.contents || []).map(id => images.find(im => im.id === id)).filter(Boolean);
+                    const allowLabels = (pt.allowed || []).map(k => (CART_CATEGORIES.find(c => c.key === k) || {}).label || k);
+                    const P = [
+                        ['Accepts', allowLabels.length ? allowLabels.join(', ') : '— none —'],
+                        ['Linked cartridge', linkedCart ? (linkedCart.name || 'Loaded Cartridge') : '— none —'],
+                        ['Elements via port', loaded.length],
+                        ['Read only', pt.readOnly ? 'yes' : 'no'],
+                        ['Position', Math.round(pt.x) + ', ' + Math.round(pt.y)],
+                        ['Memory', formatBytes(elementBytes(pt))],
+                        ['Designation', pt.numDesignation ? '#' + pt.numDesignation : '—']
+                    ];
+                    if (pt.notations) P.push(['Notations', pt.notations]);
+                    if (pt.agent) P.push(['La=', pt.agent]);
+                    row(chip('⎔', '#ede7f6'), label,
+                        (linkedCart ? linkedCart.name || 'Cartridge' : 'no cartridge') + ' · ' + loaded.length + ' elements · ' + formatBytes(elementBytes(pt)),
+                        label, P, () => selectEl(pt), pt.cartColor || '#5E35B1');
                 });
             }
 
