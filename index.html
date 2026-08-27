@@ -6524,7 +6524,7 @@
                     rotation: img.rotation,
                     isDot: img.isDot || false,
                     kind: img.kind || (img.isDot ? 'dot' : 'image'),
-                    color: img.color, thickness: img.thickness, dashStyle: img.dashStyle, perfectCircle: img.perfectCircle, triStyle: img.triStyle, meshLink: img.meshLink, _meshMeta: img._meshMeta, text: img.text, font: img.font, fontSize: img.fontSize,
+                    color: img.color, thickness: img.thickness, dashStyle: img.dashStyle, perfectCircle: img.perfectCircle, triStyle: img.triStyle, meshLink: img.meshLink, _meshMeta: img._meshMeta, text: img.text, font: img.font, fontSize: img.fontSize, fromFormula: img.fromFormula || false, title: img.title || '',
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
@@ -6634,7 +6634,7 @@
                         rotation: imgData.rotation,
                         isDot: imgData.isDot || false,
                         kind: imgData.kind || (imgData.isDot ? 'dot' : 'image'),
-                        color: imgData.color, thickness: imgData.thickness, dashStyle: imgData.dashStyle, perfectCircle: imgData.perfectCircle, triStyle: imgData.triStyle, meshLink: imgData.meshLink, _meshMeta: imgData._meshMeta, text: imgData.text, font: imgData.font, fontSize: imgData.fontSize,
+                        color: imgData.color, thickness: imgData.thickness, dashStyle: imgData.dashStyle, perfectCircle: imgData.perfectCircle, triStyle: imgData.triStyle, meshLink: imgData.meshLink, _meshMeta: imgData._meshMeta, text: imgData.text, font: imgData.font, fontSize: imgData.fontSize, fromFormula: imgData.fromFormula || false, title: imgData.title || '',
                         layered: imgData.layered || false,
                         hidden: imgData.hidden || false,
                         hiddenLevel: imgData.hiddenLevel || 0,
@@ -10312,7 +10312,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                     rotation: img.rotation,
                     isDot: img.isDot || false,
                     kind: img.kind || (img.isDot ? 'dot' : 'image'),
-                    color: img.color, thickness: img.thickness, dashStyle: img.dashStyle, perfectCircle: img.perfectCircle, triStyle: img.triStyle, meshLink: img.meshLink, _meshMeta: img._meshMeta, text: img.text, font: img.font, fontSize: img.fontSize,
+                    color: img.color, thickness: img.thickness, dashStyle: img.dashStyle, perfectCircle: img.perfectCircle, triStyle: img.triStyle, meshLink: img.meshLink, _meshMeta: img._meshMeta, text: img.text, font: img.font, fontSize: img.fontSize, fromFormula: img.fromFormula || false, title: img.title || '',
                     hidden: img.hidden || false,
                     hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, fusable: img.fusable || false, isVector: img.isVector, fusable: img.fusable,
                     imageData: (img.kind && img.kind !== 'image') ? null : (img.isDot ? null : (img.img ? img.img.src : null)),
@@ -10989,7 +10989,12 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 '<div id="lrFoot" style="display:none; margin-top:16px; padding-top:14px; border-top:1px solid #1f2a33; align-items:center; gap:12px;">' +
                   '<span id="lrSummary" style="flex:1; color:#78909C; font-size:11px; line-height:1.5;"></span>' +
                   '<button id="lrGo" style="margin:0; padding:9px 22px; font:700 13px Arial; background:linear-gradient(180deg,#26C6DA,#00897B); color:#04231d; border-radius:9px; cursor:pointer;">Continue</button>' +
+                '</div>' +
+                '<div id="lrNotes" style="display:none; margin-top:14px; padding-top:12px; border-top:1px solid #1f2a33;">' +
+                  '<div style="font:700 9px Arial; letter-spacing:1.6px; color:#455a64; margin-bottom:8px;">📋 SESSION NOTES</div>' +
+                  '<div id="lrNotesBody" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; scrollbar-color:#263238 transparent;"></div>' +
                 '</div>';
+            ov.appendChild(card); document.body.appendChild(ov);
             ov.appendChild(card); document.body.appendChild(ov);
             // hover card lives above the overlay so it is never clipped by the list
             const lrTip = document.createElement('div');
@@ -11026,6 +11031,102 @@ ctx.fillText(conn.number.toString(), midX, midY);
                         (bits.join(' · ') || 'Empty snapshot') +
                         '<br><span style="color:#37474F;">Hover any row for detail · Esc or Continue to return</span>';
                     foot.style.display = 'flex';
+
+                    // ── SESSION NOTES ──────────────────────────────────────
+                    // Show any notes from the loaded session so the user can
+                    // read them before dismissing the reveal screen.
+                    (function buildSessionNotes() {
+                        const notesPanel = card.querySelector('#lrNotes');
+                        const notesBody  = card.querySelector('#lrNotesBody');
+                        if (!notesPanel || !notesBody) return;
+
+                        const esc2 = (t) => String(t == null ? '' : t)
+                            .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+                        const noteEl = (label, col, content) => {
+                            const d = document.createElement('div');
+                            d.style.cssText = 'background:#0d1117; border:1px solid #1f2a33; border-left:3px solid ' + col + '; border-radius:6px; padding:7px 10px;';
+                            d.innerHTML = '<div style="font:700 10px Arial; color:' + col + '; letter-spacing:.5px; margin-bottom:3px;">' + esc2(label) + '</div>' +
+                                          '<div style="font:12px \'Courier New\',monospace; color:#90A4AE; white-space:pre-wrap; word-break:break-word; line-height:1.5;">' + esc2(content) + '</div>';
+                            return d;
+                        };
+
+                        let hasNotes = false;
+
+                        // Scratch Pad pages
+                        const pad = s.pad;
+                        if (pad && pad.pages && pad.pages.length) {
+                            pad.pages.forEach((pg, pi) => {
+                                const raw = pg.html || '';
+                                // Strip HTML tags for plain-text preview
+                                const txt = raw.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0, 400);
+                                if (txt) {
+                                    notesBody.appendChild(noteEl('✎ SCRATCH PAD — ' + (pg.name || ('Page ' + (pi+1))), '#FFB74D', txt + (txt.length >= 400 ? '…' : '')));
+                                    hasNotes = true;
+                                }
+                            });
+                        }
+
+                        // Calculator last note/expression
+                        const calc = s.calc;
+                        if (calc && calc.note && calc.note.trim()) {
+                            notesBody.appendChild(noteEl('🧮 CALCULATOR NOTE', '#26C6DA', calc.note.trim()));
+                            hasNotes = true;
+                        }
+                        if (calc && calc.history && calc.history.length) {
+                            const last = calc.history[0];
+                            if (last && last.expr) {
+                                notesBody.appendChild(noteEl('🧮 LAST CALCULATION', '#26C6DA', last.expr + '  =  ' + (last.result || '')));
+                                hasNotes = true;
+                            }
+                        }
+
+                        // Formula library
+                        const formulas = data.formulaLibrary || [];
+                        if (formulas.length) {
+                            const preview = formulas.slice(0, 5).map((f, i) =>
+                                (i+1) + '. ' + (f.title || '(untitled)') + (f.text ? ': ' + f.text.slice(0, 80) : '')
+                            ).join('\n') + (formulas.length > 5 ? '\n…and ' + (formulas.length - 5) + ' more' : '');
+                            notesBody.appendChild(noteEl('ƒ FORMULA LIBRARY (' + formulas.length + ')', '#CE93D8', preview));
+                            hasNotes = true;
+                        }
+
+                        // Canvas notations
+                        const cnotes = data.canvasNotes || [];
+                        if (cnotes.length) {
+                            const preview = cnotes.slice(0, 5).map(n => '• ' + (n.text || '(empty)').slice(0, 100)).join('\n');
+                            notesBody.appendChild(noteEl('💭 CANVAS NOTATIONS (' + cnotes.length + ')', '#4FC3F7', preview));
+                            hasNotes = true;
+                        }
+
+                        // Priority elements
+                        const nHigh = imgs.filter(e => e.priority === 'high').length;
+                        const nMed  = imgs.filter(e => e.priority === 'medium').length;
+                        const nLow  = imgs.filter(e => e.priority === 'low').length;
+                        const nPriTotal = nHigh + nMed + nLow;
+                        if (nPriTotal) {
+                            const parts = [];
+                            if (nHigh) parts.push(nHigh + ' high');
+                            if (nMed)  parts.push(nMed  + ' medium');
+                            if (nLow)  parts.push(nLow  + ' low');
+                            const priNames = imgs.filter(e => e.priority && e.name).slice(0, 6).map(e => e.name).join(', ');
+                            notesBody.appendChild(noteEl(
+                                '⚑ PRIORITY ELEMENTS — ' + nPriTotal + ' flagged',
+                                nHigh ? '#F44336' : nMed ? '#F06292' : '#4FC3F7',
+                                parts.join(' · ') + (priNames ? '\n' + priNames : '')
+                            ));
+                            hasNotes = true;
+                        }
+
+                        if (!hasNotes) {
+                            const d = document.createElement('div');
+                            d.style.cssText = 'text-align:center; padding:12px; color:#37474F; font:12px Arial; font-style:italic;';
+                            d.textContent = 'No notes exist for this session.';
+                            notesBody.appendChild(d);
+                        }
+
+                        notesPanel.style.display = 'block';
+                    })();
                     const go = card.querySelector('#lrGo');
                     const close = () => {
                         window.removeEventListener('keydown', esc);
@@ -11289,7 +11390,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 isDot: imgData.isDot || false,
                                 kind: imgData.kind || (imgData.isDot ? 'dot' : 'image'),
                                 color: imgData.color, thickness: imgData.thickness, dashStyle: imgData.dashStyle, perfectCircle: imgData.perfectCircle, triStyle: imgData.triStyle, meshLink: imgData.meshLink,
-                                _meshMeta: imgData._meshMeta, text: imgData.text, font: imgData.font, fontSize: imgData.fontSize,
+                                _meshMeta: imgData._meshMeta, text: imgData.text, font: imgData.font, fontSize: imgData.fontSize, fromFormula: imgData.fromFormula || false, title: imgData.title || '',
                                 layered: imgData.layered || false,
                         hidden: imgData.hidden || false,
                                 hiddenLevel: imgData.hiddenLevel || 0,
