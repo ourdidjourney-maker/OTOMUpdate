@@ -7283,9 +7283,15 @@
                 if (isPointInImage(pos.x, pos.y, image)) {
                     // Shift-click builds a multi-selection (toggle membership)
                     if (e.shiftKey && !isPointInResizeHandle(pos.x, pos.y, image)) {
+                        // If there's a selectedImage not yet in the group, anchor it first
+                        if (selectedImage && selectedGroup.indexOf(selectedImage) < 0) {
+                            selectedGroup.push(selectedImage);
+                        }
                         const gi = selectedGroup.indexOf(image);
                         if (gi >= 0) selectedGroup.splice(gi, 1); else selectedGroup.push(image);
-                        selectedImage = selectedGroup.length ? selectedGroup[selectedGroup.length - 1] : null;
+                        // Keep selectedImage as the original anchor — the first element picked,
+                        // not the most recently added one. Only update if group is now empty.
+                        if (!selectedGroup.length) selectedImage = null;
                         draw();
                         return;
                     }
