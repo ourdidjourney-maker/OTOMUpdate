@@ -8373,7 +8373,7 @@
                     if (cart.kind !== 'cartridge' || !cart.contents || !cart.contents.length) return;
                     const col = cart.cartColor || '#E53935';
                     cart.contents.forEach(id => {
-                        const el = images.find(im => im.id === id);
+                        const el = imageMap ? imageMap.get(id) : images.find(im => im.id === id);
                         if (!el) return;
                         const dx = cart.x - el.x, dy = cart.y - el.y;
                         const dist = Math.hypot(dx, dy);
@@ -8425,7 +8425,7 @@
                     ctx.lineWidth = 2 / camera.zoom;
                     ctx.setLineDash([]);
                     cart.contents.forEach(id => {
-                        const el = images.find(im => im.id === id);
+                        const el = imageMap ? imageMap.get(id) : images.find(im => im.id === id);
                         if (!el) return;
                         ctx.beginPath();
                         ctx.moveTo(cart.x, cart.y);
@@ -15960,7 +15960,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const h = document.createElement('div');
                 h.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 2px 6px;cursor:pointer;user-select:none;';
                 const key = 'sec_' + t.replace(/\s+/g, '_');
-                if (assetSectionState[key] === undefined) assetSectionState[key] = true;
+                if (assetSectionState[key] === undefined) assetSectionState[key] = false;
                 const open = assetSectionState[key];
                 h.innerHTML = '<span class="secArrow" style="color:#7e57c2;font-size:11px;width:12px;display:inline-block;transition:transform .15s;transform:rotate(' + (open ? '90' : '0') + 'deg);">▶</span>' +
                     '<span style="font-weight:700;color:#4527a0;font-size:12px;letter-spacing:.4px;text-transform:uppercase;">' + esc(t) + '</span>' +
@@ -15983,7 +15983,76 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const chip = (emoji, bg) => '<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:' + bg + ';font-size:16px;flex:0 0 auto;">' + emoji + '</span>';
             const thumb = (src) => '<img src="' + src + '" style="width:32px;height:32px;object-fit:cover;border-radius:8px;flex:0 0 auto;border:1px solid #ddd;">';
 
-            // Styled hover card
+            // ── Close All / Expand All button ────────────────────────────
+            const ctrlBar = document.createElement('div');
+            ctrlBar.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0 8px;';
+            const closeAllBtn = document.createElement('button');
+            closeAllBtn.textContent = '⊟ Close All';
+            closeAllBtn.style.cssText = 'margin:0;padding:3px 10px;font-size:11px;background:#ede7f6;color:#5e35b1;border:1px solid #d1c4e9;border-radius:5px;cursor:pointer;';
+            closeAllBtn.onclick = () => {
+                Object.keys(assetSectionState).forEach(k => { assetSectionState[k] = false; });
+                renderAssetBrowser();
+            };
+            const openAllBtn = document.createElement('button');
+            openAllBtn.textContent = '⊞ Expand All';
+            openAllBtn.style.cssText = 'margin:0;padding:3px 10px;font-size:11px;background:#ede7f6;color:#5e35b1;border:1px solid #d1c4e9;border-radius:5px;cursor:pointer;';
+            openAllBtn.onclick = () => {
+                Object.keys(assetSectionState).forEach(k => { assetSectionState[k] = true; });
+                renderAssetBrowser();
+            };
+            ctrlBar.appendChild(closeAllBtn);
+            ctrlBar.appendChild(openAllBtn);
+            c.appendChild(ctrlBar);
+
+            // ── DsY Counter ──────────────────────────────────────────────
+            const dsyGroups = images.filter(i => elKind(i) === 'group' && !i.isMesh);
+            if (dsyGroups.length) {
+                const totalParts = dsyGroups.reduce((sum, g) => sum + (g.parts ? g.parts.length : 0), 0);
+
+                // Wrapper
+                const dsyWrap = document.createElement('div');
+                dsyWrap.style.cssText = 'margin:2px 0 6px;background:#f3e5f5;border:1px solid #ce93d8;border-radius:8px;overflow:hidden;font-size:12px;';
+
+                // Header row — clickable to expand/collapse
+                const dsyHead = document.createElement('div');
+                dsyHead.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 11px;cursor:pointer;user-select:none;';
+                let dsyOpen = false; // collapsed by default
+                dsyHead.innerHTML =
+                    '<span style="font-weight:700;color:#6a1b9a;">DsY</span>' +
+                    '<span style="font:700 13px \'Courier New\',monospace;color:#4a148c;letter-spacing:1px;">' +
+                        dsyGroups.length + '|:' + totalParts +
+                    '</span>' +
+                    '<span style="color:#8e24aa;font-size:11px;">' + dsyGroups.length + ' grouped · ' + totalParts + ' parts</span>' +
+                    '<span id="dsyArrow" style="color:#6a1b9a;font-size:11px;margin-left:6px;">▶</span>';
+
+                // Detail list — hidden by default
+                const dsyList = document.createElement('div');
+                dsyList.style.cssText = 'display:none;border-top:1px solid #ce93d8;padding:6px 11px;display:none;flex-direction:column;gap:3px;max-height:200px;overflow-y:auto;';
+
+                dsyGroups.forEach((g, i) => {
+                    const n = g.parts ? g.parts.length : 0;
+                    const name = g.assetName || g.name || ('Grouped Asset ' + (i + 1));
+                    const desig = g.numDesignation ? ' #' + g.numDesignation : '';
+                    const row2 = document.createElement('div');
+                    row2.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:2px 0;border-bottom:1px solid #e1bee7;font-size:11px;';
+                    row2.innerHTML =
+                        '<span style="color:#4a148c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;" title="' + esc(name + desig) + '">' + esc(name) + '<span style="color:#9c27b0;font-size:10px;">' + esc(desig) + '</span></span>' +
+                        '<span style="font:700 11px \'Courier New\',monospace;color:#6a1b9a;white-space:nowrap;">1|(:' + n + ')</span>';
+                    dsyList.appendChild(row2);
+                });
+
+                dsyHead.addEventListener('click', () => {
+                    dsyOpen = !dsyOpen;
+                    dsyList.style.display = dsyOpen ? 'flex' : 'none';
+                    const arr = dsyHead.querySelector('#dsyArrow');
+                    if (arr) arr.style.transform = dsyOpen ? 'rotate(90deg)' : '';
+                    arr.style.transition = 'transform .15s';
+                });
+
+                dsyWrap.appendChild(dsyHead);
+                dsyWrap.appendChild(dsyList);
+                c.appendChild(dsyWrap);
+            }
             const tip = document.getElementById('assetTip');
             const positionTip = (x, y) => {
                 let lx = x + 16, ly = y + 16;
@@ -16130,7 +16199,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (images.length || connections.length || guides.length || centerPoint || background || (typeof canvasNotes !== 'undefined' && canvasNotes.length)) {
                 const tb = document.createElement('div');
                 tb.style.cssText = 'display:flex;align-items:center;justify-content:space-between;background:#ede7f6;border:1px solid #d1c4e9;border-radius:8px;padding:7px 11px;margin:2px 0 6px;font-size:12px;';
-                tb.innerHTML = '<span style="font-weight:700;color:#4527a0;">💾 Total footprint</span><span style="font-weight:700;color:#222;">' + formatBytes(totalBytes) + '</span>';
+                tb.innerHTML = '<span style="font-weight:700;color:#4527a0;">💾 Canvas footprint</span><span style="font-weight:700;color:#222;">' + formatBytes(totalBytes) + '</span>';
                 c.appendChild(tb);
             }
 
@@ -17089,7 +17158,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const line = (label, val, accent) => '<div style="display:flex;justify-content:space-between;margin:2px 0;' + (accent ? 'border-top:1px solid #e0d7f0;margin-top:4px;padding-top:4px;' : '') + '"><span style="color:' + (accent ? '#4527a0' : '#888') + ';font-weight:' + (accent ? '700' : '400') + ';">' + label + '</span><span style="font-weight:700;color:' + (accent ? '#4527a0' : '#222') + ';">' + formatBytes(val) + '</span></div>';
             document.getElementById('assetPanelFooter').innerHTML =
                 line('🧩 OTOM application', appBytes, false) +
-                line('📦 All assets', totalBytes, false) +
+                line('📦 All session data', totalBytes, false) +
                 line('Σ App + Assets', appBytes + totalBytes, true);
         }
 
