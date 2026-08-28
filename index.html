@@ -392,6 +392,31 @@
         body.dark #dataPanelContent, body.dark #vpanelContent {
             background: #161b22 !important; color: #c9d1d9 !important;
         }
+        /* Search bar — always purple-themed, just darker in dark mode */
+        body.dark #assetPanelSearch {
+            background: #2d1b69 !important;
+            border-bottom-color: #30363d !important;
+        }
+        /* Force white placeholder text in the AM search input */
+        #assetSearchInput::placeholder { color: rgba(255,255,255,0.55); }
+        body.dark #assetSearchInput::placeholder { color: rgba(255,255,255,0.4); }
+        /* AM rows and section headers in dark mode */
+        body.dark #assetPanelContent .amSection span { color: #c9d1d9 !important; }
+        body.dark #assetPanelContent [data-search] {
+            background: #1c2128 !important; border-color: #30363d !important; color: #c9d1d9 !important;
+        }
+        body.dark #assetPanelContent [data-search]:hover {
+            background: #2d1b69 !important; border-color: #7e57c2 !important;
+        }
+        /* DsY block dark mode */
+        body.dark #assetPanelContent div[style*="f3e5f5"],
+        body.dark #assetPanelContent div[style*="ede7f6"] {
+            background: #1c1033 !important; border-color: #4a2080 !important; color: #c9d1d9 !important;
+        }
+        /* Close All / Expand All buttons dark mode */
+        body.dark #assetPanelContent button[style*="ede7f6"] {
+            background: #2d1b69 !important; border-color: #7e57c2 !important; color: #ce93d8 !important;
+        }
         body.dark #controls .zoom-info, body.dark #controls span, body.dark #controls strong,
         body.dark #controls label, body.dark #nameModal label, body.dark #nameModal h3,
         body.dark #imageList h3, body.dark #dataPanel h3 { color: #c9d1d9 !important; }
@@ -1545,6 +1570,17 @@
         <div id="assetPanelHeader" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:#673AB7; color:white; cursor:move; user-select:none; border-radius:10px 10px 0 0;">
             <h3 style="margin:0; font-size:15px;">🗂 Asset Manager</h3>
             <button onclick="closeAssetBrowser()" title="Close" style="background:rgba(255,255,255,0.2); padding:4px 10px; margin:0; font-size:14px;">✕</button>
+        </div>
+        <div id="assetPanelSearch" style="padding:6px 10px; background:#5e35b1; border-bottom:1px solid rgba(255,255,255,0.15);">
+            <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.25);border-radius:7px;padding:4px 10px;">
+                <span style="color:rgba(255,255,255,0.6);font-size:13px;">🔍</span>
+                <input id="assetSearchInput" type="text" placeholder="Search name, #designation, notes…" spellcheck="false"
+                    style="flex:1;background:none;border:none;outline:none;color:#fff;font:12px Arial;min-width:0;"
+                    oninput="filterAssetRows(this.value)">
+                <button id="assetSearchClear" onclick="document.getElementById('assetSearchInput').value='';filterAssetRows('');" title="Clear"
+                    style="display:none;background:none;border:none;color:rgba(255,255,255,0.6);font-size:14px;padding:0;margin:0;cursor:pointer;line-height:1;">✕</button>
+            </div>
+            <div id="assetSearchCount" style="font:10px Arial;color:rgba(255,255,255,0.5);margin-top:3px;min-height:13px;"></div>
         </div>
         <div id="assetPanelContent" style="flex:1 1 auto; overflow-y:auto; padding:8px 12px 14px; background:#fff;"></div>
         <div id="assetPanelFooter" style="flex:0 0 auto; border-top:1px solid #e0d7f0; padding:8px 12px; background:#faf7ff; font-size:11px; color:#333; user-select:none;"></div>
@@ -13091,6 +13127,43 @@ ctx.fillText(conn.number.toString(), midX, midY);
         function openAssetBrowser() { document.getElementById('assetPanel').style.display = 'flex'; renderAssetBrowser(); }
         function closeAssetBrowser() { document.getElementById('assetPanel').style.display = 'none'; }
 
+        function filterAssetRows(query) {
+            const q = (query || '').trim().toLowerCase();
+            const clearBtn = document.getElementById('assetSearchClear');
+            const countEl = document.getElementById('assetSearchCount');
+            if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+
+            const content = document.getElementById('assetPanelContent');
+            if (!content) return;
+
+            if (!q) {
+                // No query — show everything
+                content.querySelectorAll('[data-search]').forEach(r => r.style.display = '');
+                content.querySelectorAll('.amSection').forEach(s => s.style.display = '');
+                if (countEl) countEl.textContent = '';
+                return;
+            }
+
+            // Hide/show individual rows
+            let shown = 0, total = 0;
+            content.querySelectorAll('[data-search]').forEach(r => {
+                total++;
+                const match = r.dataset.search && r.dataset.search.includes(q);
+                r.style.display = match ? '' : 'none';
+                if (match) shown++;
+            });
+
+            // Hide section headers that have no visible rows
+            content.querySelectorAll('.amSection').forEach(sec => {
+                const body = sec.nextElementSibling;
+                if (!body) return;
+                const hasVisible = body.querySelector('[data-search]:not([style*="display: none"]):not([style*="display:none"])');
+                sec.style.display = hasVisible ? '' : 'none';
+            });
+
+            if (countEl) countEl.textContent = shown + ' of ' + total + ' match' + (shown !== 1 ? 'es' : '');
+        }
+
         // Keep the browser in sync with the canvas automatically
         (function assetAutoRefresh() {
             let sig = '';
@@ -15959,6 +16032,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             const section = (t, n) => {
                 const h = document.createElement('div');
                 h.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 2px 6px;cursor:pointer;user-select:none;';
+                h.className = 'amSection';
                 const key = 'sec_' + t.replace(/\s+/g, '_');
                 if (assetSectionState[key] === undefined) assetSectionState[key] = false;
                 const open = assetSectionState[key];
@@ -16078,6 +16152,18 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
             const row = (iconHTML, label, subtitle, tipTitle, pairs, onClick, labelColor, forEl) => {
                 const r = document.createElement('div');
+                // Build search string from all searchable fields on the element
+                const searchTerms = [label, subtitle,
+                    forEl ? (forEl.numDesignation || '') : '',
+                    forEl ? (forEl.notations || '') : '',
+                    forEl ? (forEl.agent || '') : '',
+                    forEl ? (forEl.priority || '') : '',
+                    forEl ? (forEl.fullName || '') : '',
+                    forEl ? (forEl.text || '') : '',
+                    forEl ? (forEl.fileName || '') : '',
+                    forEl ? (forEl.assetName || '') : ''
+                ].join(' ').toLowerCase();
+                r.dataset.search = searchTerms;
                 // Is this the element currently selected on the canvas? A lasso selects
                 // several, so group members are marked too.
                 const sel = !!forEl && (forEl === selectedImage ||
@@ -16104,9 +16190,12 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             };
 
             // after the list is built, bring the selected row into view
+            // and re-apply any active search query
             setTimeout(() => {
                 const p = document.getElementById('assetPanel');
                 if (!p || p.style.display === 'none') return;
+                const searchInput = document.getElementById('assetSearchInput');
+                if (searchInput && searchInput.value.trim()) filterAssetRows(searchInput.value);
                 const sel = p.querySelector('[data-am-selected]');
                 if (sel && sel.scrollIntoView) {
                     try { sel.scrollIntoView({ block: 'nearest' }); } catch (e) {}
