@@ -7794,48 +7794,67 @@
             }
             if (isDuplicating && duplicateSource && dragStart.ghostX !== undefined) {
                 const pos = screenToCanvas(e.clientX, e.clientY);
+                const offsetX = pos.x - dragStart.x;
+                const offsetY = pos.y - dragStart.y;
+                const dx = offsetX - duplicateSource.x;
+                const dy = offsetY - duplicateSource.y;
 
-                const duplicate = {
-                    img: (duplicateSource.kind && duplicateSource.kind !== 'image') || duplicateSource.isDot ? null : duplicateSource.img,
-                    x: pos.x - dragStart.x,
-                    y: pos.y - dragStart.y,
-                    width: duplicateSource.width,
-                    height: duplicateSource.height,
-                    rotation: duplicateSource.rotation,
-                    id: Date.now() + Math.random(),
-                    name: duplicateSource.name ? duplicateSource.name + " Copy" : "",
-                    fullName: duplicateSource.fullName ? duplicateSource.fullName + " Copy" : "",
-                    isDot: duplicateSource.isDot || false,
-                    kind: duplicateSource.kind || (duplicateSource.isDot ? 'dot' : 'image'),
-                    color: duplicateSource.color, text: duplicateSource.text, font: duplicateSource.font, fontSize: duplicateSource.fontSize,
-                    thickness: duplicateSource.thickness,
-                    triStyle: duplicateSource.triStyle,
-                    dashStyle: duplicateSource.dashStyle,
-                    perfectCircle: duplicateSource.perfectCircle,
-                    outline: duplicateSource.outline,
-                    hidden: false, hiddenLevel: 0
-                };
-                // groups/meshes/welds carry parts + metadata — copy them so the duplicate renders
-                if (duplicateSource.kind === 'group' || Array.isArray(duplicateSource.parts)) {
-                    duplicate.parts = JSON.parse(JSON.stringify(duplicateSource.parts || []));
-                    duplicate.partConnections = JSON.parse(JSON.stringify(duplicateSource.partConnections || []));
-                    duplicate.isMesh = duplicateSource.isMesh || false;
-                    duplicate.welded = duplicateSource.welded || false;
-                    duplicate.assetName = duplicateSource.assetName || duplicate.name;
-                    duplicate.notations = duplicateSource.notations || '';
-                    duplicate.agent = duplicateSource.agent || '';
-                    duplicate.priority = duplicateSource.priority || '';
-                    duplicate.sourcePath = duplicateSource.sourcePath || '';
-                    if (duplicateSource.isMesh) {
-                        duplicate.meshCols = duplicateSource.meshCols; duplicate.meshRows = duplicateSource.meshRows;
-                        duplicate.meshGap = duplicateSource.meshGap; duplicate.baseWidth = duplicateSource.baseWidth;
-                        duplicate.meshDatumLines = duplicateSource.meshDatumLines; duplicate.meshSockets = duplicateSource.meshSockets;
-                    }
-                    try { duplicate.thumb = duplicateSource.thumb || ''; } catch (e) {}
+                // Build the full set to duplicate — lasso group, ad hoc group, or single element
+                let sources = [];
+                if (selectedGroup.length > 1) {
+                    sources = selectedGroup.slice();
+                } else if (duplicateSource.adhocGroup) {
+                    sources = images.filter(el => el.adhocGroup === duplicateSource.adhocGroup);
+                } else {
+                    sources = [duplicateSource];
                 }
 
-                images.push(duplicate);
-                selectedImage = duplicate;
+                const newGroupId = sources.length > 1 ? ('AH' + Date.now()) : null;
+                const clones = sources.map(src => {
+                    const clone = {
+                        img: (src.kind && src.kind !== 'image') || src.isDot ? null : src.img,
+                        x: src.x + dx,
+                        y: src.y + dy,
+                        width: src.width,
+                        height: src.height,
+                        rotation: src.rotation,
+                        id: Date.now() + Math.random(),
+                        name: src.name ? src.name + ' Copy' : '',
+                        fullName: src.fullName ? src.fullName + ' Copy' : '',
+                        isDot: src.isDot || false,
+                        kind: src.kind || (src.isDot ? 'dot' : 'image'),
+                        color: src.color, text: src.text, font: src.font, fontSize: src.fontSize,
+                        thickness: src.thickness,
+                        triStyle: src.triStyle,
+                        dashStyle: src.dashStyle,
+                        perfectCircle: src.perfectCircle,
+                        outline: src.outline,
+                        hidden: false, hiddenLevel: 0
+                    };
+                    if (newGroupId) clone.adhocGroup = newGroupId;
+                    if (src.kind === 'group' || Array.isArray(src.parts)) {
+                        clone.parts = JSON.parse(JSON.stringify(src.parts || []));
+                        clone.partConnections = JSON.parse(JSON.stringify(src.partConnections || []));
+                        clone.isMesh = src.isMesh || false;
+                        clone.welded = src.welded || false;
+                        clone.assetName = src.assetName || clone.name;
+                        clone.notations = src.notations || '';
+                        clone.agent = src.agent || '';
+                        clone.priority = src.priority || '';
+                        clone.sourcePath = src.sourcePath || '';
+                        if (src.isMesh) {
+                            clone.meshCols = src.meshCols; clone.meshRows = src.meshRows;
+                            clone.meshGap = src.meshGap; clone.baseWidth = src.baseWidth;
+                            clone.meshDatumLines = src.meshDatumLines; clone.meshSockets = src.meshSockets;
+                        }
+                        try { clone.thumb = src.thumb || ''; } catch (ex) {}
+                    }
+                    return clone;
+                });
+
+                clones.forEach(c => images.push(c));
+                selectedImage = clones[0];
+                selectedGroup = clones.length > 1 ? clones : [];
                 saveState();
                 updateImageCount();
                 draw();
@@ -10940,6 +10959,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             const nPinned = imgs.filter(e => e.pinned).length;
             const nNotes = imgs.filter(e => e.notations).length;
             const nPri = imgs.filter(e => e.priority).length;
+            const totalEls = imgs.length;
             if (nConn) {
                 const cn = data.connections || [];
                 const stepsN = [...new Set(cn.map(c => c.number))].length;
@@ -11025,8 +11045,6 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (data.background) steps.push({ label: 'Background image', n: 1, ico: '🌄', grp: 'LIBRARY' });
 
             wins.forEach(w => steps.push({ label: w, n: 1, ico: '🪟', win: true, grp: 'WINDOWS' }));
-
-            const totalEls = imgs.length;
 
             const ov = document.createElement('div');
             ov.style.cssText = 'position:fixed; inset:0; z-index:300000; display:flex; align-items:center; justify-content:center; background:rgba(8,11,16,0.86); backdrop-filter:blur(3px); opacity:0; transition:opacity .3s;';
