@@ -5332,7 +5332,7 @@
         // Measured against real shapes: a sloppy repeat of the same stroke scores ~0.03,
         // while genuinely different shapes sit at 0.35 and above. 0.28 separates them
         // cleanly without demanding a perfect redraw.
-        const UG_THRESHOLD = 0.28;
+        const UG_THRESHOLD = 0.20;
 
         // What a direction actually does right now. A user gesture whose shape reads as
         // this direction overrides the built-in, so the compass must say so.
@@ -5601,14 +5601,18 @@
                     saveState();
                     document.getElementById('confirmModalTitle').textContent = '✎ Your gestures';
                     okB.textContent = 'Record a new gesture'; okB.style.background = '#00838F';
-                    okB.onclick = () => { modal.style.display = 'none'; ugStartRecording(); };
+                    okB.onclick = () => { close(); ugStartRecording(); };
+                    caB.textContent = 'Close';
+                    caB.onclick = close;
                     ugRenderList();
                     draw();
                 };
                 caB.onclick = () => {
                     document.getElementById('confirmModalTitle').textContent = '✎ Your gestures';
                     okB.textContent = 'Record a new gesture'; okB.style.background = '#00838F';
-                    okB.onclick = () => { modal.style.display = 'none'; ugStartRecording(); };
+                    okB.onclick = () => { close(); ugStartRecording(); };
+                    caB.textContent = 'Close';
+                    caB.onclick = close;
                     ugRenderList();
                 };
             };
