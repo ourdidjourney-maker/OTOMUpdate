@@ -8110,6 +8110,15 @@
                     const hw = (selectedImage.width || 0) / 2 * camera.zoom;
                     openNameModal(selectedImage, sx + hw + 10, sy);
                 }
+            } else if ((e.key === 'g' || e.key === 'G') && e.shiftKey) {
+                // Shift+G — ad hoc group the current selection
+                const t = selectedGroup.length ? selectedGroup : (selectedImage ? [selectedImage] : []);
+                if (t.length > 1) {
+                    const gid = 'AH' + Date.now();
+                    t.forEach(x => { x.adhocGroup = gid; });
+                    saveState();
+                    draw();
+                }
             } else if ((e.key === 'n' || e.key === 'N') && selectedImage) {
                 const r1 = canvas.getBoundingClientRect();
                 openNameModal(selectedImage,
