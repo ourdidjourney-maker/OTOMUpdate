@@ -560,7 +560,7 @@
     </style>
 </head>
 <body>
-    <div id="helpPanel" style="display:none; position:fixed; top:70px; left:50%; transform:translateX(-50%); width:720px; max-width:94vw; height:74vh; min-width:420px; min-height:300px; z-index:99800; background:#0f1419; border:1px solid #26343d; border-radius:14px; box-shadow:0 26px 70px rgba(0,0,0,.62); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
+    <div id="helpPanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; top:70px; left:50%; transform:translateX(-50%); width:720px; max-width:94vw; height:74vh; min-width:420px; min-height:300px; z-index:99800; background:#0f1419; border:1px solid #26343d; border-radius:14px; box-shadow:0 26px 70px rgba(0,0,0,.62); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
         <div id="helpHead" style="display:flex; align-items:center; gap:8px; padding:11px 15px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; cursor:move; user-select:none; border-bottom:1px solid #26343d;">
             <span style="font:700 12px Arial; letter-spacing:2.4px; color:#26C6DA; flex:1;">OTOM — OPERATOR MANUAL</span>
             <input id="helpSearch" type="text" placeholder="search…" style="width:130px; padding:5px 9px; font-size:11px; background:#0b1015; color:#eceff1; border:1px solid #26343d; border-radius:6px; outline:none;">
@@ -574,7 +574,7 @@
             <div id="helpBody" style="flex:1 1 auto; overflow-y:auto; padding:20px 26px; color:#cfd8dc; font-size:13px; line-height:1.75;"></div>
         </div>
     </div>
-    <div id="pathPanel" style="display:none; position:fixed; right:22px; bottom:60px; width:420px; height:340px; min-width:260px; min-height:200px; resize:both; z-index:1756;
+    <div id="pathPanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; right:22px; bottom:60px; width:420px; height:340px; min-width:260px; min-height:200px; resize:both; z-index:1756;
          background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:12px;
          box-shadow:0 16px 44px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif;">
         <div id="pathHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; cursor:move; user-select:none; border-bottom:1px solid #26343d;">
@@ -590,7 +590,7 @@
         <canvas id="pathCanvas" style="display:block; flex:1 1 auto; min-height:0; background:#080b0f;"></canvas>
         <div id="pathFoot" style="padding:5px 11px; border-top:1px solid #1b2530; font:10px ui-monospace,Consolas,monospace; color:#FFFFFF;"></div>
     </div>
-    <div id="usePanel" style="display:none; position:fixed; left:22px; bottom:60px; width:250px; height:300px; min-width:190px; min-height:140px; max-height:70vh; resize:both; z-index:1755;
+    <div id="usePanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; left:22px; bottom:60px; width:250px; height:300px; min-width:190px; min-height:140px; max-height:70vh; resize:both; z-index:1755;
          background:linear-gradient(180deg,#12171d,#0b0f14); border:1px solid #26343d; border-radius:12px;
          box-shadow:0 16px 44px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif;">
         <div id="useHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; cursor:move; user-select:none; border-bottom:1px solid #26343d;">
@@ -632,7 +632,7 @@
         </div>
     </div>
     <!-- ── EVENT LOG PANEL ── free-floating, position:fixed, survives all UI mode changes ── -->
-    <div id="logPanel" style="display:none; position:fixed; top:130px; left:80px; width:520px; height:420px; min-width:320px; min-height:200px; box-sizing:border-box; border:1px solid #283593; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#0d0f2b,#080a1a); box-shadow:0 18px 46px rgba(0,0,0,.65); z-index:99600; flex-direction:column; font-family:'Courier New',Courier,monospace; resize:both;">
+    <div id="logPanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; top:130px; left:80px; width:520px; height:420px; min-width:320px; min-height:200px; box-sizing:border-box; border:1px solid #283593; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#0d0f2b,#080a1a); box-shadow:0 18px 46px rgba(0,0,0,.65); z-index:99600; flex-direction:column; font-family:'Courier New',Courier,monospace; resize:both;">
         <div id="logHeader" style="display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(26,35,126,.6);border-bottom:1px solid #283593;cursor:move;user-select:none;flex-shrink:0;">
             <span style="font:bold 12px Arial;color:#7986CB;letter-spacing:1px;">📋 EVENT LOG</span>
             <span id="logCount" style="font:10px Arial;color:#5C6BC0;margin-left:2px;"></span>
@@ -654,7 +654,7 @@
             <span id="logSession"></span><span style="flex:1"></span><span id="logMemNote" style="color:#EF9A9A;"></span>
         </div>
     </div>
-    <div id="chkPanel" style="display:none; position:fixed; top:120px; left:60px; width:392px; box-sizing:border-box; border:1px solid #3E2723; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#1a1310,#120c0a); box-shadow:0 18px 46px rgba(0,0,0,.55); z-index:99500; flex-direction:column; font-family:Arial,sans-serif;">
+    <div id="chkPanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; top:120px; left:60px; width:392px; box-sizing:border-box; border:1px solid #3E2723; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#1a1310,#120c0a); box-shadow:0 18px 46px rgba(0,0,0,.55); z-index:99500; flex-direction:column; font-family:Arial,sans-serif;">
             <div id="chkHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#4E342E,#3A241F); color:#D7CCC8; user-select:none; border-bottom:1px solid #3E2723;">
                 <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#FFCC80;">CHECKERS</span>
                 <button id="chkPinBtn" title="Pin to the canvas" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(255,204,128,.14); color:#FFCC80; border-radius:5px;">📌 Pin</button>
@@ -945,7 +945,7 @@
         <div id="healthTab" style="display:none; position:absolute; top:100%; left:0; margin-top:8px; width:200px; box-sizing:border-box; padding:6px 10px; border:2px solid #2E7D32; border-radius:9px; line-height:1.2; background:#fff; box-shadow:0 6px 16px rgba(0,0,0,.18); font:bold 11px Arial; white-space:nowrap; overflow:hidden;">
             <span id="healthDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#3fb950;margin-right:6px;vertical-align:middle;"></span><span id="healthTxt" style="color:#2E7D32;">Engine stable</span>
         </div>
-        <div id="assetDrawer" style="display:none; position:absolute; top:100%; right:0; margin-top:8px; width:38%; min-width:400px; height:40vh; border:2px solid #FF6F00; border-radius:10px; overflow:hidden; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,.2); flex-direction:column;">
+        <div id="assetDrawer" style="display:none; position:absolute; transform:translateZ(0); will-change:opacity; top:100%; right:0; margin-top:8px; width:38%; min-width:400px; height:40vh; border:2px solid #FF6F00; border-radius:10px; overflow:hidden; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,.2); flex-direction:column;">
             <div style="display:flex; align-items:center; gap:8px; padding:7px 10px; background:#FF6F00; color:#fff;">
                 <span style="font-weight:bold; font-size:13px; flex:1;">▤ ASSET DRAWER</span>
                 <button onclick="regroupToAsset()" title="Save the current selection over its source asset (or create a new one)" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(255,255,255,.25); border-radius:5px;">💾 Save Asset</button>
@@ -962,7 +962,7 @@
             <div id="assetDrawerBody" style="flex:1 1 auto; overflow-y:auto; padding:12px; display:flex; flex-wrap:wrap; gap:12px; align-content:flex-start; background:#fafafa;"></div>
         </div>
         <!-- 📖 NOTATIONS READER — hangs off the UI like the Asset Drawer -->
-        <div id="calcPanel" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:412px; border:1px solid #0d3a34; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#0b1614,#070f0e); box-shadow:0 18px 46px rgba(0,0,0,.55), inset 0 1px 0 rgba(127,255,212,.07); z-index:1560; flex-direction:column; font-family:Arial,sans-serif;">
+        <div id="calcPanel" style="display:none; position:absolute; transform:translateZ(0); will-change:opacity; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:412px; border:1px solid #0d3a34; border-radius:14px; overflow:hidden; background:linear-gradient(180deg,#0b1614,#070f0e); box-shadow:0 18px 46px rgba(0,0,0,.55), inset 0 1px 0 rgba(127,255,212,.07); z-index:1560; flex-direction:column; font-family:Arial,sans-serif;">
             <div id="calcHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#0e2b27,#0a201d); color:#B2DFDB; user-select:none; border-bottom:1px solid #0d3a34;">
                 <span style="width:7px; height:7px; border-radius:50%; background:#00E5A0; box-shadow:0 0 7px #00E5A0; flex-shrink:0;"></span>
                 <span style="font:700 11px/1 Arial; letter-spacing:2.4px; flex:1; color:#7FFFD4;">CALCULATOR</span>
@@ -1009,7 +1009,7 @@
                 </div>
             </div>
         </div>
-        <div id="calPanel" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:44%; min-width:430px; height:56vh; min-height:300px; z-index:1585; background:#12171d; border:1px solid #26343d; border-radius:12px; box-shadow:0 20px 54px rgba(0,0,0,.55); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
+        <div id="calPanel" style="display:none; position:absolute; transform:translateZ(0); will-change:opacity; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:44%; min-width:430px; height:56vh; min-height:300px; z-index:1585; background:#12171d; border:1px solid #26343d; border-radius:12px; box-shadow:0 20px 54px rgba(0,0,0,.55); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
             <div id="calHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#1b2530,#141c24); color:#eceff1; user-select:none; border-bottom:1px solid #26343d;">
                 <span style="font:700 11px Arial; letter-spacing:2.2px; color:#4FC3F7; flex:1;">CALENDAR</span>
                 <button id="calTodayBtn" style="margin:0; padding:3px 9px; font-size:11px; background:rgba(79,195,247,.14); color:#4FC3F7; border-radius:5px;">Today</button>
@@ -1038,7 +1038,7 @@
                 </div>
             </div>
         </div>
-        <div id="padPanel" style="display:none; position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:46%; min-width:440px; height:52vh; min-height:260px; z-index:1580; background:#2b2622; border:1px solid #4a4038; border-radius:12px; box-shadow:0 20px 54px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
+        <div id="padPanel" style="display:none; position:absolute; transform:translateZ(0); will-change:opacity; top:100%; left:50%; transform:translateX(-50%); margin-top:8px; width:46%; min-width:440px; height:52vh; min-height:260px; z-index:1580; background:#2b2622; border:1px solid #4a4038; border-radius:12px; box-shadow:0 20px 54px rgba(0,0,0,.5); overflow:hidden; flex-direction:column; font-family:Arial,sans-serif; resize:both;">
         <div id="padHead" style="display:flex; align-items:center; gap:6px; padding:8px 11px; background:linear-gradient(180deg,#3a332c,#2b2622); color:#e8dfd2; user-select:none; border-bottom:1px solid #4a4038;">
             <span style="font:700 11px/1 Arial; letter-spacing:2.4px; color:#d7c9b0; flex:1;">SCRATCH PAD</span>
             <span id="padSaved" style="font:10px Arial; color:#7d7264; letter-spacing:.5px;"></span>
@@ -1174,7 +1174,7 @@
         </div>
     </div>
 
-    <div id="primerDock" style="display:none; position:fixed; left:0; right:0; bottom:0; height:210px; z-index:1400; background:#fff; border-top:3px solid #1B5E20; box-shadow:0 -8px 26px rgba(0,0,0,.22); flex-direction:column;">
+    <div id="primerDock" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; left:0; right:0; bottom:0; height:210px; z-index:1400; background:#fff; border-top:3px solid #1B5E20; box-shadow:0 -8px 26px rgba(0,0,0,.22); flex-direction:column;">
         <div id="primerHead" style="display:flex; flex:0 0 auto; height:34px; box-sizing:border-box; align-items:center; gap:8px; padding:0 12px; background:#1B5E20; color:#fff; user-select:none;">
             <span style="font-weight:bold; font-size:13px; letter-spacing:1px;">▬ PRIMER BOARD</span>
             <span id="primerCount" style="font-size:11px; opacity:.75;">▲0 · ▼0</span>
@@ -1279,7 +1279,7 @@
         <canvas id="canvas"></canvas>
     </div>
 
-    <div id="perfPanel" style="display:none; position:fixed; top:80px; right:24px; width:430px; height:620px; min-width:340px; min-height:240px; z-index:1750; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.55); flex-direction:column; overflow:hidden; resize:both; font-family:ui-monospace,Consolas,monospace;">
+    <div id="perfPanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; top:80px; right:24px; width:430px; height:620px; min-width:340px; min-height:240px; z-index:1750; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.55); flex-direction:column; overflow:hidden; resize:both; font-family:ui-monospace,Consolas,monospace;">
         <div id="perfHeader" style="display:flex; align-items:center; gap:8px; padding:10px 12px; background:#161b22; border-bottom:1px solid #30363d; cursor:grab;">
             <span id="perfGrip" style="font-weight:bold; font-size:12px; color:#58a6ff; flex:1; pointer-events:none;">📊 PERFORMANCE MONITOR</span>
             <button onclick="flushCache()" title="Free memory" style="margin:0; padding:4px 10px; font-size:10px; background:#8957e5; border-radius:4px;">FLUSH</button>
@@ -1294,7 +1294,7 @@
         <div id="perfBody" style="flex:1 1 auto; overflow-y:auto; padding:8px 12px; font-size:11px; line-height:1.5;"></div>
     </div>
 
-    <div id="clockPanel" style="display:none; position:fixed; right:24px; bottom:24px; z-index:1700; user-select:none; flex-direction:column; align-items:center;">
+    <div id="clockPanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; right:24px; bottom:24px; z-index:1700; user-select:none; flex-direction:column; align-items:center;">
         <div id="clockDragBar" style="cursor:move; padding:0; margin:0 0 6px; text-align:center; color:#90a4ae; font:11px Arial; letter-spacing:2px;">⋮⋮⋮</div>
         <svg id="clockSvg" width="230" height="230" viewBox="0 0 200 200" style="display:block; filter:drop-shadow(0 12px 30px rgba(0,0,0,.45));">
             <defs>
@@ -1337,7 +1337,7 @@
         </div>
     </div>
 
-    <div id="vpanel" style="display:none; position:fixed; top:60px; left:20px; width:230px; height:74vh; min-width:170px; min-height:200px; background:white; border-radius:10px; box-shadow:0 6px 28px rgba(0,0,0,0.35); z-index:1600; flex-direction:column; overflow:hidden; resize:both;">
+    <div id="vpanel" style="display:none; position:fixed; transform:translateZ(0); will-change:opacity; top:60px; left:20px; width:230px; height:74vh; min-width:170px; min-height:200px; background:white; border-radius:10px; box-shadow:0 6px 28px rgba(0,0,0,0.35); z-index:1600; flex-direction:column; overflow:hidden; resize:both;">
         <div id="vpanelHeader" style="display:flex; align-items:center; gap:5px; padding:8px 10px; background:#37474F; color:white; cursor:move; user-select:none; border-radius:10px 10px 0 0;">
             <span style="font-weight:bold; font-size:13px; flex:1;">⋮ Toolbar</span>
             <button onclick="setVpanelOpacity(1)" style="padding:2px 5px; margin:0; font-size:10px; background:rgba(255,255,255,0.2);">100</button>
