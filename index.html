@@ -18094,6 +18094,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 name: 'Asset ' + (savedAssets.length + 1),
                 created: Date.now(),
                 thumb: thumb,
+                thumbGenerated: true,
                 elements: els, connections: conns
             });
             selectedGroup = [];
@@ -18289,10 +18290,10 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 // the ONLY change to this loop — `i` still indexes savedAssets, so
                 // Place / Export / Del keep working exactly as before.
                 if ((a.folder || '') !== assetFolderView) return;
-                // Regenerate thumb from elements if available — ensures fusion/socket
-                // rings and all visual properties always render correctly
-                if (Array.isArray(a.elements) && a.elements.length && drawerThumbs) {
-                    try { a.thumb = makeThumb(a.elements); } catch (e) {}
+                // Regenerate thumb only once per asset lifetime — not on every drawer open.
+                // thumbGenerated is cleared whenever the asset is modified (regroup/reconstruct/mesh).
+                if (!a.thumbGenerated && Array.isArray(a.elements) && a.elements.length && drawerThumbs) {
+                    try { a.thumb = makeThumb(a.elements); a.thumbGenerated = true; } catch (e) {}
                 }
                 // Build a full metadata summary for the hover tooltip
                 const kinds = {};
@@ -18512,7 +18513,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             });
             savedAssets[idx].connections = connections.filter(c => ids.has(c.from) && ids.has(c.to))
                 .map(c => JSON.parse(JSON.stringify(c)));
-            try { savedAssets[idx].thumb = makeThumb(selectedGroup); } catch (e) {}
+            try { savedAssets[idx].thumb = makeThumb(selectedGroup); savedAssets[idx].thumbGenerated = true; } catch (e) {}
             savedAssets[idx].updated = Date.now();
             regroupSourceName = '';
             if (!assetDrawerOpen) toggleAssetDrawer(); else renderAssetDrawer();
@@ -20135,7 +20136,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 gp.meshDatumLines = sel.filter(e => e.meshLink).length;
                 gp.meshSockets = sel.filter(e => !e.meshLink).length;
             }
-            try { gp.thumb = makeThumb(sel); } catch (e) {}
+            try { gp.thumb = makeThumb(sel); gp.thumbGenerated = true; } catch (e) {}
             images = images.filter(x => !ids.has(x.id));
             connections = connections.filter(c => !(ids.has(c.from) && ids.has(c.to)));
             images.push(gp);
@@ -20196,7 +20197,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 gp.name = orig; gp.assetName = orig;
                 const src = savedAssets.find(a => a.name === orig);
                 if (src && src.thumb) gp.thumb = src.thumb;
-                else { try { gp.thumb = makeThumb([gp]); } catch (e) {} }
+                else { try { gp.thumb = makeThumb([gp]); gp.thumbGenerated = true; } catch (e) {} }
                 deconIds = null; deconName = ''; deconSig = '';
                 if (assetDrawerOpen) renderAssetDrawer();
                 if (document.getElementById('assetPanel').style.display !== 'none') renderAssetBrowser();
@@ -20399,7 +20400,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 baseWidth: Math.max(20, R - L),
                 meshSockets: cols * rows, meshDatumLines: made.filter(e => e.meshLink).length
             };
-            try { mesh.thumb = makeThumb(ordered); } catch (e) {}
+            try { mesh.thumb = makeThumb(ordered); mesh.thumbGenerated = true; } catch (e) {}
             images.push(mesh);
             selectedImage = mesh; selectedGroup = [];
             saveState(); updateImageCount(); updateConnectionCount(); draw();
@@ -20638,7 +20639,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 weldedFrom: members.map(e => ({ name: e.name || elKind(e), num: e.numDesignation || '' }))
             };
             // makeThumb now recurses into groups, so pass the live members for a true preview
-            try { gp.thumb = makeThumb(members); } catch (e) {}
+            try { gp.thumb = makeThumb(members); gp.thumbGenerated = true; } catch (e) {}
 
             images = images.filter(x => !ids.has(x.id));
             connections = connections.filter(c => !(ids.has(c.from) && ids.has(c.to)));
