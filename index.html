@@ -795,6 +795,9 @@
         <button id="healthBtn" onclick="toggleHealth()" style="background: #2E7D32; font-size:11px; padding:6px 9px;" title="Engine health readout">♥ Health</button>
         <button id="helpBtn" onclick="toggleHelp()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="How to operate OTOM">? Help</button>
         <button id="tickerBtn" onclick="toggleTicker()" style="background: #37474F; font-size:11px; padding:6px 9px;" title="The Wire — a live ticker of everything on the canvas">▤ Wire</button>
+        <button id="broadcastBtn" onclick="toggleBroadcast()" style="background:#1a237e; font-size:11px; padding:6px 9px;" title="Broadcast this canvas to a Monitor tab">📡 Broadcast: OFF</button>
+        <button id="monitorBtn" onclick="toggleMonitor()" style="background:#1b5e20; font-size:11px; padding:6px 9px;" title="Monitor another OTOM tab's canvas">📺 Monitor: OFF</button>
+        <button id="sendDataBtn" onclick="bcSendSelectedData()" style="background:#4a148c; font-size:11px; padding:6px 9px; display:none;" title="Send selected element data to listening tabs">⟶ Send to Listeners</button>
         <select id="capSel" onchange="setFrameCap(this.value)" title="Frame cap. On a high-refresh screen this gives the engine a bigger time budget per frame — usually smoother on a slower machine, not slower." style="font-size:11px; padding:4px 5px; border-radius:5px;">
             <option value="0">⏲ Cap: OFF</option>
             <option value="30">30 fps (half of 60Hz)</option>
@@ -1588,7 +1591,21 @@
 
     <div id="assetTip" style="position:fixed; pointer-events:none; z-index:300005; display:none; max-width:330px; background:#fff; border:1px solid #d1c4e9; border-radius:10px; box-shadow:0 10px 34px rgba(60,20,120,0.22); padding:10px 12px; font:12px Arial; color:#333;"></div>
 
-    <script>
+    <div id="monitorPanel" style="display:none;position:fixed;bottom:40px;right:20px;width:380px;height:260px;background:#0a0e1a;border:1px solid #283593;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.7);z-index:9800;flex-direction:column;overflow:hidden;resize:both;">
+  <div id="monitorHeader" style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:#1a237e;cursor:move;user-select:none;flex-shrink:0;">
+    <span style="font:700 11px Arial;letter-spacing:1.5px;color:#e8eaf6;">📺 LIVE MONITOR</span>
+    <span id="monitorStatus" style="font:10px Arial;color:#7986cb;margin-left:4px;">waiting for broadcast…</span>
+    <button onclick="_bcMonZoom=Math.min(4,_bcMonZoom+0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom in">+</button>
+    <span id="monitorZoomLabel" style="font:10px Arial;color:#7986cb;">100%</span>
+    <button onclick="_bcMonZoom=Math.max(0.25,_bcMonZoom-0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom out">−</button>
+    <button onclick="_bcMonZoom=1;_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Reset zoom">⊙</button>
+    <button onclick="toggleMonitor()" style="margin-left:auto;margin:0;padding:3px 9px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:5px;">✕</button>
+  </div>
+  <canvas id="monitorCanvas" style="flex:1;width:100%;display:block;background:#ffffff;cursor:default;"></canvas>
+  <div style="padding:3px 10px;background:#0f1429;font:10px Arial;color:#3949ab;flex-shrink:0;" id="monitorInfo">No signal</div>
+</div>
+
+<script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const container = document.getElementById('canvasContainer');
@@ -21624,6 +21641,340 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 
             })();
 
+
+        // ════════════════════════════════════════════════════════════
+        // CROSS-TAB LIVE MONITOR — BroadcastChannel
+        // ════════════════════════════════════════════════════════════
+        var _bcChannel = null;
+        var _bcBroadcasting = false;
+        var _bcMonitoring = false;
+        var _bcLastSent = 0;
+        var _bcMonCanvas = null, _bcMonCtx = null;
+        var _bcDragOff = null;
+        var _bcInterval = null;
+        var _bcMonZoom = 1.0;  // monitor zoom level
+
+        function _bcGetChannel() {
+            if (!_bcChannel) _bcChannel = new BroadcastChannel('otom_live_monitor');
+            return _bcChannel;
+        }
+
+        // ── Host: Broadcast ──────────────────────────────────────────
+        function toggleBroadcast() {
+            _bcBroadcasting = !_bcBroadcasting;
+            const b = document.getElementById('broadcastBtn');
+            if (b) {
+                b.style.background = _bcBroadcasting ? '#3949AB' : '#1a237e';
+                b.textContent = _bcBroadcasting ? '📡 Broadcast: ON' : '📡 Broadcast: OFF';
+            }
+            if (_bcBroadcasting) {
+                _bcGetChannel();
+                _bcSend();
+                _bcInterval = setInterval(_bcSend, 1000);
+            } else {
+                clearInterval(_bcInterval); _bcInterval = null;
+            }
+        }
+
+        function _bcSend() {
+            if (!_bcBroadcasting) return;
+            const now = Date.now();
+            if (now - _bcLastSent < 100) return; // throttle 10fps max
+            _bcLastSent = now;
+            try {
+                const payload = {
+                    type: 'otom_canvas',
+                    ts: now,
+                    camera: { x: camera.x, y: camera.y, zoom: camera.zoom },
+                    canvasW: canvas.width,
+                    canvasH: canvas.height,
+                    // Send a screenshot of the current canvas as PNG dataURL
+                    frame: canvas.toDataURL('image/png', 0.8)
+                };
+                _bcGetChannel().postMessage(payload);
+            } catch (e) {}
+        }
+
+        // Hook into saveState so broadcast fires on every canvas change
+        (function() {
+            const _origSave = window.saveState;
+            window.saveState = function() {
+                _origSave.apply(this, arguments);
+                if (_bcBroadcasting) setTimeout(_bcSend, 50);
+            };
+        })();
+
+        // Also broadcast on camera move (pan/zoom) without a saveState
+        (function() {
+            const _origDraw = window.draw || function(){};
+            // We hook scheduleDraw instead since draw is called everywhere
+            var _bcDrawT = null;
+            const _origSD = window.scheduleDraw;
+            if (_origSD) {
+                window.scheduleDraw = function() {
+                    _origSD.apply(this, arguments);
+                    if (_bcBroadcasting) {
+                        clearTimeout(_bcDrawT);
+                        _bcDrawT = setTimeout(_bcSend, 80);
+                    }
+                };
+            }
+        })();
+
+        // ── Client: Monitor ──────────────────────────────────────────
+        function toggleMonitor() {
+            _bcMonitoring = !_bcMonitoring;
+            const b = document.getElementById('monitorBtn');
+            const p = document.getElementById('monitorPanel');
+            if (b) {
+                b.style.background = _bcMonitoring ? '#2e7d32' : '#1b5e20';
+                b.textContent = _bcMonitoring ? '📺 Monitor: ON' : '📺 Monitor: OFF';
+            }
+            if (p) p.style.display = _bcMonitoring ? 'flex' : 'none';
+            if (_bcMonitoring) {
+                _bcGetChannel().onmessage = _bcOnMessage;
+                _bcMonCanvas = document.getElementById('monitorCanvas');
+                if (_bcMonCanvas) {
+                    _bcMonCtx = _bcMonCanvas.getContext('2d');
+                    _bcResizeMon();
+                }
+                _bcInitDrag();
+                // Scroll wheel zoom on monitor canvas
+                _bcMonCanvas.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                    _bcMonZoom = Math.max(0.25, Math.min(4, _bcMonZoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+                    _bcRedrawMon();
+                }, { passive: false });
+            } else {
+                _bcGetChannel().onmessage = null;
+            }
+        }
+
+        function _bcOnMessage(e) {
+            if (!e.data || e.data.type !== 'otom_canvas') return;
+            const d = e.data;
+            _bcLastFrame = d;  // store for zoom redraws
+            const status = document.getElementById('monitorStatus');
+            const info = document.getElementById('monitorInfo');
+            if (status) status.textContent = 'live · ' + new Date(d.ts).toLocaleTimeString();
+            if (!_bcMonCanvas || !_bcMonCtx) return;
+            _bcResizeMon();
+            _bcDrawFrame(d);
+            if (info) info.textContent = '📡 signal from host · zoom ' + Math.round((d.camera.zoom || 1) * 100) + '%';
+        }
+
+        var _bcLastFrame = null;
+
+        function _bcRedrawMon() {
+            const lbl = document.getElementById('monitorZoomLabel');
+            if (lbl) lbl.textContent = Math.round(_bcMonZoom * 100) + '%';
+            if (_bcLastFrame) _bcDrawFrame(_bcLastFrame);
+        }
+
+        function _bcDrawFrame(d) {
+            if (!_bcMonCanvas || !_bcMonCtx) return;
+            const W = _bcMonCanvas.width, H = _bcMonCanvas.height;
+            const img = new Image();
+            img.onload = function() {
+                _bcMonCtx.clearRect(0, 0, W, H);
+                _bcMonCtx.fillStyle = '#ffffff';
+                _bcMonCtx.fillRect(0, 0, W, H);
+                const baseScaleX = W / (d.canvasW || img.width);
+                const baseScaleY = H / (d.canvasH || img.height);
+                const baseScale = Math.min(baseScaleX, baseScaleY);
+                const scale = baseScale * _bcMonZoom;
+                const ox = (W - img.width * scale) / 2;
+                const oy = (H - img.height * scale) / 2;
+                _bcMonCtx.drawImage(img, ox, oy, img.width * scale, img.height * scale);
+            };
+            img.src = d.frame;
+        }
+
+        function _bcResizeMon() {
+            if (!_bcMonCanvas) return;
+            const p = document.getElementById('monitorPanel');
+            if (!p) return;
+            const rect = p.getBoundingClientRect();
+            const h = Math.max(60, rect.height - 56);
+            if (_bcMonCanvas.width !== rect.width || _bcMonCanvas.height !== h) {
+                _bcMonCanvas.width = rect.width;
+                _bcMonCanvas.height = h;
+            }
+        }
+
+        // Drag the monitor panel by its header
+        function _bcInitDrag() {
+            const hdr = document.getElementById('monitorHeader');
+            const pan = document.getElementById('monitorPanel');
+            if (!hdr || !pan) return;
+            hdr.onmousedown = function(e) {
+                if (e.target.tagName === 'BUTTON') return;
+                const r = pan.getBoundingClientRect();
+                _bcDragOff = { x: e.clientX - r.left, y: e.clientY - r.top };
+                function onMove(ev) {
+                    pan.style.left = (ev.clientX - _bcDragOff.x) + 'px';
+                    pan.style.top  = (ev.clientY - _bcDragOff.y) + 'px';
+                    pan.style.right = 'auto'; pan.style.bottom = 'auto';
+                    _bcResizeMon();
+                }
+                function onUp() {
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                }
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            };
+        }
+
+        // ── Text data send/receive ────────────────────────────────────
+        function bcSendSelectedData() {
+            if (!selectedImage) { return; }
+            const el = selectedImage;
+            const payload = {
+                type: 'otom_data',
+                ts: Date.now(),
+                // Identity
+                name: el.name || '',
+                fullName: el.fullName || '',
+                text: el.text || '',
+                kind: el.kind || (el.isDot ? 'dot' : 'element'),
+                numDesignation: el.numDesignation || '',
+                // Metadata
+                notations: el.notations || '',
+                agent: el.agent || '',
+                priority: el.priority || '',
+                outline: el.outline || '',
+                sourcePath: el.sourcePath || '',
+                fileName: el.fileName || '',
+                fileType: el.fileType || '',
+                lastEdited: el.lastEdited || '',
+                birthStamp: el.birthStamp || null,
+                // Flags
+                fusable: el.fusable || false,
+                socket: el.socket || false,
+                isMesh: el.isMesh || false,
+                welded: el.welded || false,
+                hidden: el.hidden || false,
+                pinned: el.pinned || false,
+                readOnly: el.readOnly || false,
+                // Group/asset
+                adhocGroup: el.adhocGroup || '',
+                assetName: el.assetName || '',
+                fusionId: el.fusionId || '',
+                vFusionId: el.vFusionId || '',
+                partsCount: Array.isArray(el.parts) ? el.parts.length : 0,
+                // Geometry
+                x: Math.round(el.x), y: Math.round(el.y),
+                width: Math.round(el.width), height: Math.round(el.height),
+                rotation: el.rotation ? Math.round(el.rotation * 180 / Math.PI) + '°' : '0°',
+                // Cartridge
+                cartColor: el.cartColor || '',
+                allowed: Array.isArray(el.allowed) ? el.allowed.join(', ') : '',
+                contents: Array.isArray(el.contents) ? el.contents.length : 0
+            };
+            _bcGetChannel().postMessage(payload);
+            const b = document.getElementById('sendDataBtn');
+            if (b) { const orig = b.style.background; b.style.background = '#7b1fa2'; setTimeout(() => b.style.background = orig, 500); }
+        }
+
+        // Show/hide Send button when selection changes
+        function _bcUpdateSendBtn() {
+            const b = document.getElementById('sendDataBtn');
+            if (b) b.style.display = (_bcBroadcasting && selectedImage) ? 'inline-block' : 'none';
+        }
+
+        // Patch draw() to update send button visibility
+        (function() {
+            const _origD = window.draw;
+            if (typeof _origD === 'function') {
+                window.draw = function() { _origD.apply(this, arguments); _bcUpdateSendBtn(); };
+            }
+        })();
+
+        // Handle incoming text data on the monitor side
+        function _bcOnDataMessage(d) {
+            let panel = document.getElementById('bcIncoming');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = 'bcIncoming';
+                panel.style.cssText = 'position:fixed;bottom:40px;left:20px;width:340px;background:#1a0533;border:1px solid #7b1fa2;border-radius:10px;z-index:9900;font-family:monospace;box-shadow:0 8px 30px rgba(0,0,0,.6);overflow:hidden;';
+                panel.innerHTML = '<div style="background:#4a148c;padding:6px 12px;font:700 11px Arial;letter-spacing:1.5px;color:#e1bee7;display:flex;align-items:center;gap:8px;">⟶ INCOMING DATA <span id="bcInCount" style="background:rgba(255,255,255,.15);border-radius:10px;padding:1px 7px;font-size:10px;">0</span><button onclick="this.closest(\'#bcIncoming\').remove()" style="margin-left:auto;margin:0;padding:2px 8px;font-size:11px;background:rgba(255,255,255,.1);color:#e1bee7;border-radius:4px;">✕</button></div><div id="bcInList" style="max-height:320px;overflow-y:auto;padding:6px 0;"></div>';
+                document.body.appendChild(panel);
+            }
+            const list = document.getElementById('bcInList');
+            const count = document.getElementById('bcInCount');
+            if (!list) return;
+
+            const entry = document.createElement('div');
+            entry.style.cssText = 'padding:7px 12px;border-bottom:1px solid rgba(123,31,162,.3);';
+            const time = new Date(d.ts).toLocaleTimeString();
+
+            // Build rows — only show fields that have actual values
+            const rows = [];
+            const add = (label, val) => { if (val !== undefined && val !== '' && val !== false && val !== 0) rows.push([label, val]); };
+
+            // Identity
+            add('Name', d.name);
+            add('Data', d.fullName);
+            add('Text', d.text);
+            add('Kind', d.kind + (d.numDesignation ? ' #' + d.numDesignation : ''));
+            // Metadata
+            add('Notes', d.notations);
+            add('La=', d.agent);
+            add('Priority', d.priority);
+            add('Outline', d.outline);
+            add('Source', d.sourcePath);
+            add('File', d.fileName + (d.fileType ? ' (' + d.fileType + ')' : ''));
+            add('Last edit', d.lastEdited ? new Date(d.lastEdited).toLocaleString() : '');
+            // Flags
+            if (d.fusable)  rows.push(['Flag', '⛓ Fusion Vector']);
+            if (d.socket)   rows.push(['Flag', '◎ Socket']);
+            if (d.isMesh)   rows.push(['Flag', '⬡ Mesh']);
+            if (d.welded)   rows.push(['Flag', '⊕ Welded']);
+            if (d.hidden)   rows.push(['Flag', '◌ Hidden']);
+            if (d.pinned)   rows.push(['Flag', '📌 Pinned']);
+            if (d.readOnly) rows.push(['Flag', '🔒 Read Only']);
+            // Group/asset
+            add('Asset', d.assetName);
+            add('Parts', d.partsCount ? d.partsCount + ' parts' : '');
+            add('Ad Hoc', d.adhocGroup);
+            add('FusionID', d.fusionId);
+            // Geometry
+            add('Position', 'x:' + d.x + ' y:' + d.y);
+            add('Size', d.width + ' × ' + d.height);
+            add('Rotation', d.rotation !== '0°' ? d.rotation : '');
+            // Cartridge
+            add('Accepts', d.allowed);
+            add('Contents', d.contents ? d.contents + ' elements' : '');
+
+            entry.innerHTML = '<div style="font:700 10px Arial;color:#ce93d8;margin-bottom:5px;border-bottom:1px solid rgba(123,31,162,.2);padding-bottom:3px;">⟶ ' + time + '</div>' +
+                rows.map(([k,v]) =>
+                    '<div style="display:flex;gap:8px;font-size:10px;margin:2px 0;">' +
+                    '<span style="color:#9c27b0;min-width:58px;flex-shrink:0;">' + k + '</span>' +
+                    '<span style="color:#e1bee7;word-break:break-all;">' + String(v) + '</span></div>'
+                ).join('');
+
+            list.insertBefore(entry, list.firstChild);
+            while (list.children.length > 10) list.removeChild(list.lastChild);
+            if (count) count.textContent = list.children.length;
+        }
+
+        // Patch _bcOnMessage to also handle data packets
+        (function() {
+            const _origMsg = _bcOnMessage;
+            window._bcOnMessage = _bcOnMessage = function(e) {
+                if (e.data && e.data.type === 'otom_data') { _bcOnDataMessage(e.data); return; }
+                _origMsg(e);
+            };
+        })();
+
+        // Add flash animation
+        if (!document.getElementById('bcStyle')) {
+            const s = document.createElement('style');
+            s.id = 'bcStyle';
+            s.textContent = '@keyframes bcFlash{0%{background:rgba(123,31,162,.4)}100%{background:transparent}}';
+            document.head.appendChild(s);
+        }
 
         // ════════════════════════════════════════════════════════════
     </script>
