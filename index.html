@@ -1946,6 +1946,8 @@
         }
         // ---- Lasso selection / grouping / saved assets ----
         let lassoMode = false, isLassoing = false, lassoRect = null;
+        let _groupRotHandlePos = null;
+        let _groupRotState = null;  // holds group rotation data — separate from numeric rotateStart
         let selectedGroup = [];
         let savedAssets = [];
         let assetDrawerOpen = false;
@@ -4859,6 +4861,7 @@
             if (typeof lassoRect !== 'undefined') lassoRect = null;
             if (typeof pendingTextPos !== 'undefined') pendingTextPos = null;
             isDuplicating = false; duplicateSource = null;
+            _groupRotState = null;
             if (typeof isDrawingShape !== 'undefined') isDrawingShape = false;
             if (typeof drawStart !== 'undefined') drawStart = null;
             const ti = document.getElementById('textInput');
@@ -7302,6 +7305,28 @@
                 }
             }
 
+            // Group rotation handle hit-test — fires before the per-element loop
+            if (selectedGroup.length > 1 && _groupRotHandlePos && e.button === 0 && !connectMode) {
+                const ghx = _groupRotHandlePos.x, ghy = _groupRotHandlePos.y;
+                const ghr = 30 / camera.zoom;
+                if ((pos.x - ghx) * (pos.x - ghx) + (pos.y - ghy) * (pos.y - ghy) < ghr * ghr) {
+                    isRotating = true;
+                    const gcx = selectedGroup.reduce((s, m) => s + m.x, 0) / selectedGroup.length;
+                    const gcy = selectedGroup.reduce((s, m) => s + m.y, 0) / selectedGroup.length;
+                    rotateStart = Math.atan2(pos.y - gcy, pos.x - gcx);
+                    _groupRotState = {
+                        angle0: rotateStart,
+                        cx: gcx, cy: gcy,
+                        snaps: selectedGroup.map(m => ({
+                            el: m, rot0: m.rotation,
+                            ox: m.x - gcx, oy: m.y - gcy
+                        }))
+                    };
+                    draw();
+                    return;
+                }
+            }
+
             for (let i = images.length - 1; i >= 0; i--) {
                 const image = images[i];
 
@@ -7329,6 +7354,17 @@
                     selectedImage = image;
                     isRotating = true;
                     rotateStart = Math.atan2(pos.y - image.y, pos.x - image.x) - image.rotation;
+                    // Snapshot group members if any, so they rotate together with the anchor
+                    if (selectedGroup.length > 1) {
+                        _groupRotState = {
+                            angle0: null, // single-element mode uses delta from anchorRot0
+                            anchorRot0: image.rotation,
+                            snaps: selectedGroup.filter(m => m !== image).map(m => ({ el: m, rot0: m.rotation })),
+                            singleAnchor: true
+                        };
+                    } else {
+                        _groupRotState = null;
+                    }
                     draw();
                     return;
                 }
@@ -7524,17 +7560,40 @@
                 container.style.cursor = 'grabbing';
                 showGrabHint('Grabbed!', e.clientX, e.clientY);
                 scheduleDraw();
-            } else if (isRotating && selectedImage) {
-                const angle = Math.atan2(pos.y - selectedImage.y, pos.x - selectedImage.x);
-                let rot = angle - rotateStart;
-                // Constrained rotation: toolbar setting, or Shift for a quick 45° snap
-                const stepDeg = e.shiftKey ? 45 : ROT_SNAPS[rotSnapIdx];
-                if (stepDeg) {
-                    const st = stepDeg * Math.PI / 180;
-                    rot = Math.round(rot / st) * st;
+            } else if (isRotating && (_groupRotState || selectedImage)) {
+                if (_groupRotState) {
+                    // Group rotation around centroid
+                    const { cx, cy, snaps, angle0 } = _groupRotState;
+                    const angle = Math.atan2(pos.y - cy, pos.x - cx);
+                    let delta = angle - angle0;
+                    const stepDeg = e.shiftKey ? 45 : ROT_SNAPS[rotSnapIdx];
+                    if (stepDeg) {
+                        const st = stepDeg * Math.PI / 180;
+                        delta = Math.round(delta / st) * st;
+                    }
+                    snaps.forEach(s => {
+                        s.el.rotation = s.rot0 + delta;
+                        const cos = Math.cos(delta), sin = Math.sin(delta);
+                        s.el.x = cx + s.ox * cos - s.oy * sin;
+                        s.el.y = cy + s.ox * sin + s.oy * cos;
+                    });
+                    scheduleDraw();
+                } else if (selectedImage) {
+                    const angle = Math.atan2(pos.y - selectedImage.y, pos.x - selectedImage.x);
+                    let rot = angle - rotateStart;
+                    const stepDeg = e.shiftKey ? 45 : ROT_SNAPS[rotSnapIdx];
+                    if (stepDeg) {
+                        const st = stepDeg * Math.PI / 180;
+                        rot = Math.round(rot / st) * st;
+                    }
+                    selectedImage.rotation = rot;
+                    // Rotate group members by same delta
+                    if (_groupRotState && _groupRotState.singleAnchor && _groupRotState.snaps) {
+                        const delta = rot - (_groupRotState.anchorRot0 || 0);
+                        _groupRotState.snaps.forEach(s => { s.el.rotation = s.rot0 + delta; });
+                    }
+                    scheduleDraw();
                 }
-                selectedImage.rotation = rot;
-                scheduleDraw();
             } else if (isResizing && selectedImage && !cartReadOnly(selectedImage)) {
                 // Scale by how far the cursor is from the element's CENTRE, relative to
                 // where it was when the drag began. The old version measured from the
@@ -7841,7 +7900,7 @@
                     sources = [duplicateSource];
                 }
 
-                const newGroupId = sources.length > 1 ? ('AH' + Date.now()) : null;
+                const newGroupId = null;
                 const clones = sources.map(src => {
                     const clone = {
                         img: (src.kind && src.kind !== 'image') || src.isDot ? null : src.img,
@@ -7935,7 +7994,9 @@
             duplicateSource = null;
             isDraggingCircle = false;
             draggedConnection = null;
+            if (isRotating && _groupRotState) { saveState(); }
             isRotating = false;
+            _groupRotState = null;
             isResizing = false;
             isPanning = false;
             container.classList.remove('grabbing');
@@ -10115,6 +10176,29 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 ctx.setLineDash([]);
                 ctx.fillStyle = '#FF6F00'; ctx.font = `bold ${13 / z}px Arial`; ctx.textAlign = 'left';
                 ctx.fillText('◈ GROUP (' + selectedGroup.length + ')', L - 14 / z, T - 20 / z);
+
+                // Rotation handle above the group bounding box
+                const gCX = (L + R) / 2;
+                const gCY = T - 40 / z;
+                _groupRotHandlePos = { x: gCX, y: gCY };
+                ctx.strokeStyle = '#FF6F00'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = 2 / z;
+                ctx.beginPath(); ctx.arc(gCX, gCY, 12 / z, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                // Curved arrow icon
+                ctx.beginPath(); ctx.arc(gCX, gCY, 7 / z, -Math.PI * 0.7, Math.PI * 0.7); ctx.stroke();
+                const arrowSize = 4 / z;
+                ctx.beginPath();
+                ctx.moveTo(gCX + 7 / z * Math.cos(Math.PI * 0.7), gCY + 7 / z * Math.sin(Math.PI * 0.7));
+                ctx.lineTo(gCX + (7 / z - arrowSize) * Math.cos(Math.PI * 0.7) - arrowSize * Math.sin(Math.PI * 0.7),
+                           gCY + (7 / z - arrowSize) * Math.sin(Math.PI * 0.7) + arrowSize * Math.cos(Math.PI * 0.7));
+                ctx.lineTo(gCX + (7 / z - arrowSize) * Math.cos(Math.PI * 0.7) + arrowSize * Math.sin(Math.PI * 0.7),
+                           gCY + (7 / z - arrowSize) * Math.sin(Math.PI * 0.7) - arrowSize * Math.cos(Math.PI * 0.7));
+                ctx.closePath(); ctx.fillStyle = '#FF6F00'; ctx.fill();
+                // Stem line from handle to group box
+                ctx.strokeStyle = '#FF6F00'; ctx.lineWidth = 1 / z;
+                ctx.setLineDash([3 / z, 3 / z]);
+                ctx.beginPath(); ctx.moveTo(gCX, gCY + 12 / z); ctx.lineTo(gCX, T - 14 / z); ctx.stroke();
+                ctx.setLineDash([]);
+
                 ctx.restore();
             }
             if (isLassoing && lassoRect) {
