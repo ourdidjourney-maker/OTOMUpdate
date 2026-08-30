@@ -6628,7 +6628,19 @@
         // gives the chain somewhere to return to.
         function seedHistory() {
             if (historyStack.length) return;
-            historyStack.push({ images: [], connections: [], connectionCounter: 1 });
+            // Seed with current canvas state — NOT an empty state.
+            // An empty seed meant the first undo after loading a model
+            // would restore to blank canvas (the empty seed at index 0).
+            const seed = {
+                images: images.map(img => {
+                    const s = { id: img.id, name: img.name, fullName: img.fullName, x: img.x, y: img.y, width: img.width, height: img.height, rotation: img.rotation, isDot: img.isDot || false, kind: img.kind || (img.isDot ? 'dot' : 'image'), layered: img.layered || false, hidden: img.hidden || false, hiddenLevel: img.hiddenLevel || 0, pinned: img.pinned || false, fusable: img.fusable || false, isVector: img.isVector, color: img.color, thickness: img.thickness, dashStyle: img.dashStyle, perfectCircle: img.perfectCircle, triStyle: img.triStyle, text: img.text, font: img.font, fontSize: img.fontSize, fromFormula: img.fromFormula || false, title: img.title || '', sourcePath: img.sourcePath, fileName: img.fileName, fileType: img.fileType, memSize: img.memSize, numDesignation: img.numDesignation, adhocGroup: img.adhocGroup, notations: img.notations, agent: img.agent, priority: img.priority, outline: img.outline, isMesh: img.isMesh, welded: img.welded, assetName: img.assetName, parts: img.parts ? img.parts.map(p2 => { const q = {}; for (const k in p2) { if (k === 'img') continue; q[k] = p2[k]; } return q; }) : undefined, partConnections: img.partConnections, socket: img.socket, socketLinks: img.socketLinks, fusionId: img.fusionId, vFusionId: img.vFusionId, _loadedCartId: img._loadedCartId || null, _portId: img._portId || null };
+                    if (!img.isDot && (!img.kind || img.kind === 'image')) s.imageData = img.img ? img.img.src : null;
+                    return s;
+                }),
+                connections: JSON.parse(JSON.stringify(connections)),
+                connectionCounter: connectionCounter
+            };
+            historyStack.push(seed);
             historyIndex = 0;
         }
 
