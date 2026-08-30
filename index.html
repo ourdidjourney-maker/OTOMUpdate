@@ -4858,6 +4858,7 @@
             // in-progress gestures
             if (typeof lassoRect !== 'undefined') lassoRect = null;
             if (typeof pendingTextPos !== 'undefined') pendingTextPos = null;
+            isDuplicating = false; duplicateSource = null;
             if (typeof isDrawingShape !== 'undefined') isDrawingShape = false;
             if (typeof drawStart !== 'undefined') drawStart = null;
             const ti = document.getElementById('textInput');
@@ -7357,6 +7358,21 @@
                         isDuplicating = true;
                         duplicateSource = image;
                         dragStart = { x: pos.x - image.x, y: pos.y - image.y };
+                        // Snapshot original world positions of all group members
+                        // so the ghost can draw them correctly even as the originals move
+                        let _dupSources = [];
+                        if (selectedGroup.length > 1) {
+                            _dupSources = selectedGroup.slice();
+                        } else if (image.adhocGroup) {
+                            _dupSources = images.filter(el => el.adhocGroup === image.adhocGroup);
+                        } else {
+                            _dupSources = [image];
+                        }
+                        dragStart.dupSnapshots = _dupSources.map(s => ({
+                            el: s,
+                            ox: s.x - image.x,
+                            oy: s.y - image.y
+                        }));
                     } else {
                         isDragging = true;
                         // remember where it began, so the release can log how far the
@@ -10279,30 +10295,21 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
             // Draw ghost image while duplicating
             if (isDuplicating && duplicateSource && dragStart.ghostX !== undefined) {
-                ctx.save();
-                ctx.globalAlpha = 0.5;
-                ctx.translate(dragStart.ghostX, dragStart.ghostY);
-                ctx.rotate(duplicateSource.rotation);
-
-                drawShape(duplicateSource);
-
-                ctx.strokeStyle = '#2196F3';
-                ctx.lineWidth = 2 / camera.zoom;
-                ctx.setLineDash([10 / camera.zoom, 5 / camera.zoom]);
-                ctx.strokeRect(-duplicateSource.width / 2, -duplicateSource.height / 2,
-                               duplicateSource.width, duplicateSource.height);
-                ctx.setLineDash([]);
-
-                ctx.restore();
-
-                ctx.save();
-                ctx.globalAlpha = 0.7;
-                ctx.translate(duplicateSource.x, duplicateSource.y);
-                ctx.rotate(duplicateSource.rotation);
-
-                drawShape(duplicateSource);
-
-                ctx.restore();
+                const snaps = dragStart.dupSnapshots;
+                if (snaps && snaps.length) {
+                    const gx = dragStart.ghostX;
+                    const gy = dragStart.ghostY;
+                    ctx.save();
+                    ctx.globalAlpha = 0.5;
+                    snaps.forEach(s => {
+                        ctx.save();
+                        ctx.translate(gx + s.ox, gy + s.oy);
+                        ctx.rotate(s.el.rotation || 0);
+                        drawShape(s.el);
+                        ctx.restore();
+                    });
+                    ctx.restore();
+                }
             }
 
             // the lens samples the finished frame, so it must be the last thing drawn
@@ -17982,7 +17989,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                         width: e.width || (k === 'dot' ? 40 : 40),
                         height: e.height || (k === 'dot' ? 40 : (k === 'line' ? 2 : 40)),
                         thickness: e.thickness, color: e.color, text: e.text,
-                        font: e.font, fontSize: e.fontSize, img: e.img, dashStyle: e.dashStyle, triStyle: e.triStyle
+                        font: e.font, fontSize: e.fontSize, img: e.img, dashStyle: e.dashStyle, triStyle: e.triStyle,
+                        fusable: e.fusable || false, socket: e.socket || false, isVector: e.isVector || false
                     });
                 }
             };
@@ -18014,7 +18022,24 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 g.save(); g.translate(e.x, e.y); g.rotate(e.rotation || 0);
                 const k = e.kind;
                 try {
-                    if (k === 'dot') { g.fillStyle = '#000'; g.beginPath(); g.arc(0, 0, e.width / 2, 0, Math.PI * 2); g.fill(); }
+                    if (k === 'dot') {
+                        const r = e.width / 2;
+                        g.fillStyle = e.color || '#000';
+                        g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+                        if (e.fusable) {
+                            // Fusion vector — teal dashed ring
+                            g.strokeStyle = '#00897B'; g.lineWidth = Math.max(1, r * 0.18);
+                            g.setLineDash([r * 0.5, r * 0.25]);
+                            g.beginPath(); g.arc(0, 0, r + Math.max(2, r * 0.35), 0, Math.PI * 2); g.stroke();
+                            g.setLineDash([]);
+                        } else if (e.socket) {
+                            // Socket vector — grey dashed ring
+                            g.strokeStyle = '#78909C'; g.lineWidth = Math.max(1, r * 0.18);
+                            g.setLineDash([r * 0.4, r * 0.2]);
+                            g.beginPath(); g.arc(0, 0, r + Math.max(2, r * 0.35), 0, Math.PI * 2); g.stroke();
+                            g.setLineDash([]);
+                        }
+                    }
                     else if (k === 'line') { g.strokeStyle = e.color || '#111'; g.lineWidth = Math.max(1, e.thickness || 3); g.beginPath(); g.moveTo(-e.width / 2, 0); g.lineTo(e.width / 2, 0); g.stroke(); }
                     else if (k === 'rect') { g.strokeStyle = e.color || '#111'; g.lineWidth = Math.max(1, e.thickness || 3); g.strokeRect(-e.width / 2, -e.height / 2, e.width, e.height); }
                     else if (k === 'circle') { g.strokeStyle = e.color || '#000'; g.lineWidth = Math.max(1, e.thickness || 3); if (e.dashStyle === 'dotted') g.setLineDash([Math.max(1,(e.thickness||3)*0.6),4]); else if (e.dashStyle === 'dashed') g.setLineDash([7,5]); else g.setLineDash([]); g.beginPath(); g.ellipse(0, 0, e.width / 2, e.height / 2, 0, 0, Math.PI * 2); g.stroke(); g.setLineDash([]); }
@@ -18264,6 +18289,11 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 // the ONLY change to this loop — `i` still indexes savedAssets, so
                 // Place / Export / Del keep working exactly as before.
                 if ((a.folder || '') !== assetFolderView) return;
+                // Regenerate thumb from elements if available — ensures fusion/socket
+                // rings and all visual properties always render correctly
+                if (Array.isArray(a.elements) && a.elements.length && drawerThumbs) {
+                    try { a.thumb = makeThumb(a.elements); } catch (e) {}
+                }
                 // Build a full metadata summary for the hover tooltip
                 const kinds = {};
                 let notes = 0, agents = 0, paths = 0, bytes = 0, fvec = 0;
