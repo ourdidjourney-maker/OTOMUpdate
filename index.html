@@ -1598,10 +1598,10 @@
     <button onclick="_bcMonZoom=Math.min(4,_bcMonZoom+0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom in">+</button>
     <span id="monitorZoomLabel" style="font:10px Arial;color:#7986cb;">100%</span>
     <button onclick="_bcMonZoom=Math.max(0.25,_bcMonZoom-0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom out">−</button>
-    <button onclick="_bcMonZoom=1;_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Reset zoom">⊙</button>
+    <button onclick="_bcMonZoom=1;_bcMonPanX=0;_bcMonPanY=0;_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Reset zoom">⊙</button>
     <button onclick="toggleMonitor()" style="margin-left:auto;margin:0;padding:3px 9px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:5px;">✕</button>
   </div>
-  <canvas id="monitorCanvas" style="flex:1;width:100%;display:block;background:#ffffff;cursor:default;"></canvas>
+  <canvas id="monitorCanvas" style="flex:1;width:100%;display:block;background:#ffffff;cursor:grab;"></canvas>
   <div style="padding:3px 10px;background:#0f1429;font:10px Arial;color:#3949ab;flex-shrink:0;" id="monitorInfo">No signal</div>
 </div>
 
@@ -21652,7 +21652,9 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
         var _bcMonCanvas = null, _bcMonCtx = null;
         var _bcDragOff = null;
         var _bcInterval = null;
-        var _bcMonZoom = 1.0;  // monitor zoom level
+        var _bcMonZoom = 1.0;
+        var _bcMonPanX = 0, _bcMonPanY = 0;
+        var _bcMonDragging = false, _bcMonDragStart = null;
 
         function _bcGetChannel() {
             if (!_bcChannel) _bcChannel = new BroadcastChannel('otom_live_monitor');
@@ -21739,12 +21741,28 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     _bcResizeMon();
                 }
                 _bcInitDrag();
-                // Scroll wheel zoom on monitor canvas
+                // Scroll wheel zoom
                 _bcMonCanvas.addEventListener('wheel', function(e) {
                     e.preventDefault();
                     _bcMonZoom = Math.max(0.25, Math.min(4, _bcMonZoom + (e.deltaY < 0 ? 0.1 : -0.1)));
                     _bcRedrawMon();
                 }, { passive: false });
+
+                // Mouse drag pan
+                _bcMonCanvas.addEventListener('mousedown', function(e) {
+                    _bcMonDragging = true;
+                    _bcMonDragStart = { x: e.clientX - _bcMonPanX, y: e.clientY - _bcMonPanY };
+                    _bcMonCanvas.style.cursor = 'grabbing';
+                });
+                window.addEventListener('mousemove', function(e) {
+                    if (!_bcMonDragging || !_bcMonDragStart) return;
+                    _bcMonPanX = e.clientX - _bcMonDragStart.x;
+                    _bcMonPanY = e.clientY - _bcMonDragStart.y;
+                    _bcRedrawMon();
+                });
+                window.addEventListener('mouseup', function() {
+                    if (_bcMonDragging) { _bcMonDragging = false; if (_bcMonCanvas) _bcMonCanvas.style.cursor = 'grab'; }
+                });
             } else {
                 _bcGetChannel().onmessage = null;
             }
@@ -21783,8 +21801,8 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 const baseScaleY = H / (d.canvasH || img.height);
                 const baseScale = Math.min(baseScaleX, baseScaleY);
                 const scale = baseScale * _bcMonZoom;
-                const ox = (W - img.width * scale) / 2;
-                const oy = (H - img.height * scale) / 2;
+                const ox = (W - img.width * scale) / 2 + _bcMonPanX;
+                const oy = (H - img.height * scale) / 2 + _bcMonPanY;
                 _bcMonCtx.drawImage(img, ox, oy, img.width * scale, img.height * scale);
             };
             img.src = d.frame;
