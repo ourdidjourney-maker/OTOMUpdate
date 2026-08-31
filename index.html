@@ -6743,7 +6743,8 @@
                         updateImageList();
                         draw();
                     }
-                } else {
+                } else if (imgData.imageData) {
+                    // Block image with actual data — load asynchronously
                     const img = new Image();
                     img.onload = () => {
                         images.push({
@@ -6772,6 +6773,23 @@
                         }
                     };
                     img.src = imgData.imageData;
+                } else {
+                    // kind=image but no imageData (e.g. placeholder) — push synchronously
+                    images.push({
+                        img: null, id: imgData.id, name: imgData.name, fullName: imgData.fullName,
+                        x: imgData.x, y: imgData.y, width: imgData.width, height: imgData.height,
+                        rotation: imgData.rotation, isDot: false, kind: 'image',
+                        layered: imgData.layered || false, hidden: imgData.hidden || false,
+                        hiddenLevel: imgData.hiddenLevel || 0,
+                        sourcePath: imgData.sourcePath, fileName: imgData.fileName, fileType: imgData.fileType,
+                        memSize: imgData.memSize, numDesignation: imgData.numDesignation,
+                        adhocGroup: imgData.adhocGroup, notations: imgData.notations,
+                        agent: imgData.agent, priority: imgData.priority, outline: imgData.outline
+                    });
+                    loadedCount++;
+                    if (loadedCount === state.images.length) {
+                        updateImageCount(); updateConnectionCount(); updateImageList(); draw();
+                    }
                 }
             });
         }
@@ -11628,6 +11646,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                 updateConnectionCount();
                                 updateImageList();
                                 updateDataString();
+                                // Seed history NOW — all elements are loaded, this is the baseline
+                                historyStack = []; historyIndex = -1;
                                 draw();
                                 if (_isSnapshot) { runLoadReveal(engineData, () => { restoreSession(engineData); updateImageList && updateImageList(); refreshParserIfOpen && refreshParserIfOpen(); if (document.getElementById('assetPanel') && document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser(); draw(); }); }
                                 else { draw(); }
@@ -11660,6 +11680,8 @@ ctx.fillText(conn.number.toString(), midX, midY);
                                     updateConnectionCount();
                                     updateImageList();
                                     updateDataString();
+                                    // Seed history NOW — all elements loaded, this is the baseline
+                                    historyStack = []; historyIndex = -1;
                                     draw();
                                     if (_isSnapshot) { runLoadReveal(engineData, () => { restoreSession(engineData); updateImageList && updateImageList(); refreshParserIfOpen && refreshParserIfOpen(); if (document.getElementById('assetPanel') && document.getElementById('assetPanel').style.display !== 'none' && typeof renderAssetBrowser === 'function') renderAssetBrowser(); draw(); }); }
                                     else { draw(); }
