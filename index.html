@@ -798,6 +798,7 @@
         <button id="broadcastBtn" onclick="toggleBroadcast()" style="background:#1a237e; font-size:11px; padding:6px 9px;" title="Broadcast this canvas to a Monitor tab">📡 Broadcast: OFF</button>
         <button id="monitorBtn" onclick="toggleMonitor()" style="background:#1b5e20; font-size:11px; padding:6px 9px;" title="Monitor another OTOM tab's canvas">📺 Monitor: OFF</button>
         <button id="sendDataBtn" onclick="bcSendSelectedData()" style="background:#4a148c; font-size:11px; padding:6px 9px; display:none;" title="Send selected element data to listening tabs">⟶ Send to Listeners</button>
+        <button id="sendCanvasBtn" onclick="bcSendCanvas()" style="background:#1a237e; font-size:11px; padding:6px 9px; display:none;" title="Send entire canvas to listening tabs">⟶ Send Canvas</button>
         <select id="capSel" onchange="setFrameCap(this.value)" title="Frame cap. On a high-refresh screen this gives the engine a bigger time budget per frame — usually smoother on a slower machine, not slower." style="font-size:11px; padding:4px 5px; border-radius:5px;">
             <option value="0">⏲ Cap: OFF</option>
             <option value="30">30 fps (half of 60Hz)</option>
@@ -21676,6 +21677,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             } else {
                 clearInterval(_bcInterval); _bcInterval = null;
             }
+            _bcUpdateSendBtn();
         }
 
         function _bcSend() {
@@ -21895,10 +21897,64 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (b) { const orig = b.style.background; b.style.background = '#7b1fa2'; setTimeout(() => b.style.background = orig, 500); }
         }
 
+        // Send entire canvas to listeners
+        function bcSendCanvas() {
+            const elCount = images.length;
+            const connCount = connections.length;
+            showConfirm({
+                title: '📡 Send Canvas to Listeners',
+                body: 'Send the entire canvas (' + elCount + ' elements, ' + connCount + ' logic lines) to all listening tabs?\n\nThe receiving tab will be asked to confirm before anything changes.',
+                okText: 'Send Canvas',
+                danger: false,
+                onConfirm: function() {
+                    // Serialize the full canvas state — same format as saveState
+                    const state = {
+                        images: images.map(img => {
+                            const s = {};
+                            for (const k in img) {
+                                if (k === 'img') continue;
+                                s[k] = img[k];
+                            }
+                            // Encode image data for block elements
+                            if (!img.isDot && (!img.kind || img.kind === 'image') && img.img) {
+                                try { s.imageData = img.img.src; } catch(e) {}
+                            }
+                            // Encode part images
+                            if (Array.isArray(img.parts)) {
+                                s.parts = img.parts.map(p => {
+                                    const q = {};
+                                    for (const k in p) { if (k === 'img') continue; q[k] = p[k]; }
+                                    if (p.img) { try { q.imageData = p.img.src; } catch(e) {} }
+                                    return q;
+                                });
+                            }
+                            return s;
+                        }),
+                        connections: JSON.parse(JSON.stringify(connections)),
+                        connectionCounter: connectionCounter,
+                        camera: { x: camera.x, y: camera.y, zoom: camera.zoom }
+                    };
+                    const payload = {
+                        type: 'otom_model',
+                        ts: Date.now(),
+                        elCount: elCount,
+                        connCount: connCount,
+                        state: state
+                    };
+                    _bcGetChannel().postMessage(payload);
+                    // Flash button to confirm
+                    const b = document.getElementById('sendCanvasBtn');
+                    if (b) { const orig = b.style.background; b.style.background = '#3949AB'; setTimeout(() => b.style.background = orig, 600); }
+                }
+            });
+        }
+
         // Show/hide Send button when selection changes
         function _bcUpdateSendBtn() {
             const b = document.getElementById('sendDataBtn');
-            if (b) b.style.display = (_bcBroadcasting && selectedImage) ? 'inline-block' : 'none';
+            const bc = document.getElementById('sendCanvasBtn');
+            if (b)  b.style.display  = (_bcBroadcasting && selectedImage) ? 'inline-block' : 'none';
+            if (bc) bc.style.display = _bcBroadcasting ? 'inline-block' : 'none';
         }
 
         // Patch draw() to update send button visibility
@@ -21977,14 +22033,40 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             if (count) count.textContent = list.children.length;
         }
 
-        // Patch _bcOnMessage to also handle data packets
+        // Patch _bcOnMessage to also handle data and model packets
         (function() {
             const _origMsg = _bcOnMessage;
             window._bcOnMessage = _bcOnMessage = function(e) {
-                if (e.data && e.data.type === 'otom_data') { _bcOnDataMessage(e.data); return; }
+                if (e.data && e.data.type === 'otom_data')  { _bcOnDataMessage(e.data); return; }
+                if (e.data && e.data.type === 'otom_model') { _bcOnModelMessage(e.data); return; }
                 _origMsg(e);
             };
         })();
+
+        function _bcOnModelMessage(d) {
+            const time = new Date(d.ts).toLocaleTimeString();
+            showConfirm({
+                title: '📡 Incoming Canvas from Host',
+                body: 'A host tab wants to send their canvas to you:\n\n' +
+                      d.elCount + ' elements · ' + d.connCount + ' logic lines\nSent at ' + time + '\n\n' +
+                      'This will replace your current canvas. Accept?',
+                okText: 'Accept Canvas',
+                danger: false,
+                onConfirm: function() {
+                    if (typeof restoreState === 'function') {
+                        restoreState(d.state);
+                        // Restore camera too
+                        if (d.state.camera) {
+                            camera.x = d.state.camera.x;
+                            camera.y = d.state.camera.y;
+                            camera.zoom = d.state.camera.zoom;
+                        }
+                        if (typeof saveState === 'function') saveState();
+                        if (typeof draw === 'function') draw();
+                    }
+                }
+            });
+        }
 
         // Add flash animation
         if (!document.getElementById('bcStyle')) {
