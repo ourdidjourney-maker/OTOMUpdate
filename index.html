@@ -7238,7 +7238,10 @@
                     if (!near) continue;
                     // Shift-click hides / unhides. Deleting is right-click or
                     // double-click, so nothing is lost by rebinding shift here.
-                    if (e.shiftKey) { g.hidden = !g.hidden; if (typeof updateRulerHiddenCount === 'function') updateRulerHiddenCount(); saveState(); draw(); return; }
+                    if (e.shiftKey) {
+                        if (g.locked) return; // locked rulers cannot be hidden
+                        g.hidden = !g.hidden; if (typeof updateRulerHiddenCount === 'function') updateRulerHiddenCount(); saveState(); draw(); return;
+                    }
                     if (g.locked) continue;          // anchored: not grabbable
                     draggingGuide = g; return;
                 }
@@ -8104,7 +8107,7 @@
                 const hit = g.axis === 'h' ? Math.abs((e.clientY - _gdr.top) - (g.pos * camera.zoom + camera.y)) < 12
                                            : Math.abs((e.clientX - _gdr.left) - (g.pos * camera.zoom + camera.x)) < 12;
                 if (hit) {
-                    if (g.locked) { g.locked = false; saveState(); draw(); return; }   // unlock first
+                    if (g.locked) { draw(); return; }   // locked — ignore completely
                     guides.splice(i, 1); saveState(); draw(); return;
                 }
             }
@@ -12199,11 +12202,18 @@ ctx.fillText(conn.number.toString(), midX, midY);
 
         function clearGuides() {
             if (!guides.length) return;
-            const doIt = () => { guides = []; saveState(); draw(); };
+            const toDelete = guides.filter(g => !g.locked);
+            const locked = guides.filter(g => g.locked);
+            if (!toDelete.length) {
+                if (typeof showConfirm === 'function') showConfirm({ title: '🔒 All Rulers Locked', body: 'All rulers are locked. Unlock them first (click the 🔒 Rulers: Locked button).', okText: 'OK', danger: false, hideCancel: true });
+                return;
+            }
+            const doIt = () => { guides = locked; saveState(); draw(); };
+            const msg = locked.length
+                ? 'Remove ' + toDelete.length + ' unlocked ruler' + (toDelete.length > 1 ? 's' : '') + '? ' + locked.length + ' locked ruler' + (locked.length > 1 ? 's' : '') + ' will be kept.'
+                : 'Remove all ' + guides.length + ' ruler' + (guides.length > 1 ? 's' : '') + ' from the canvas? Undo (Ctrl+Z) still works.';
             if (typeof showConfirm === 'function') {
-                showConfirm({ title: '🗑 Delete rulers',
-                    body: 'Remove all ' + guides.length + ' ruler' + (guides.length > 1 ? 's' : '') + ' from the canvas? Undo (Ctrl+Z) still works.',
-                    okText: 'Delete', danger: true, onConfirm: doIt });
+                showConfirm({ title: '🗑 Delete rulers', body: msg, okText: 'Delete', danger: true, onConfirm: doIt });
             } else doIt();
         }
 
@@ -18800,7 +18810,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     : Math.abs(mx - (g.pos * camera.zoom + camera.x)) < 12;
                 if (!hit) continue;
                 e.preventDefault();
-                if (g.locked) { g.locked = false; saveState(); draw(); return; }
+                if (g.locked) { draw(); return; }   // locked — ignore completely
                 guides.splice(i, 1); saveState(); draw();
                 return;
             }
