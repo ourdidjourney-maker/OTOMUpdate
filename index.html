@@ -21770,10 +21770,13 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
             }
         }
 
+        var _bcLastFrame = null;
+
         function _bcOnMessage(e) {
             if (!e.data || e.data.type !== 'otom_canvas') return;
             const d = e.data;
-            _bcLastFrame = d;  // store for zoom redraws
+            _bcLastFrame = null; // release previous frame PNG string before storing new one
+            _bcLastFrame = d;
             const status = document.getElementById('monitorStatus');
             const info = document.getElementById('monitorInfo');
             if (status) status.textContent = 'live · ' + new Date(d.ts).toLocaleTimeString();
