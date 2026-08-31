@@ -1595,7 +1595,7 @@
   <div id="monitorHeader" style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:#1a237e;cursor:move;user-select:none;flex-shrink:0;">
     <span style="font:700 11px Arial;letter-spacing:1.5px;color:#e8eaf6;">📺 LIVE MONITOR</span>
     <span id="monitorStatus" style="font:10px Arial;color:#7986cb;margin-left:4px;">waiting for broadcast…</span>
-    <button onclick="_bcMonZoom=Math.min(4,_bcMonZoom+0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom in">+</button>
+    <button onclick="_bcMonZoom=Math.min(8,_bcMonZoom+0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom in">+</button>
     <span id="monitorZoomLabel" style="font:10px Arial;color:#7986cb;">100%</span>
     <button onclick="_bcMonZoom=Math.max(0.25,_bcMonZoom-0.25);_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:11px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Zoom out">−</button>
     <button onclick="_bcMonZoom=1;_bcMonPanX=0;_bcMonPanY=0;_bcRedrawMon();" style="margin:0;padding:2px 7px;font-size:10px;background:rgba(255,255,255,.1);color:#e8eaf6;border-radius:4px;" title="Reset zoom">⊙</button>
@@ -21744,7 +21744,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                 // Scroll wheel zoom
                 _bcMonCanvas.addEventListener('wheel', function(e) {
                     e.preventDefault();
-                    _bcMonZoom = Math.max(0.25, Math.min(4, _bcMonZoom + (e.deltaY < 0 ? 0.1 : -0.1)));
+                    _bcMonZoom = Math.max(0.25, Math.min(8, _bcMonZoom + (e.deltaY < 0 ? 0.1 : -0.1)));
                     _bcRedrawMon();
                 }, { passive: false });
 
