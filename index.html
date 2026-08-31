@@ -1463,6 +1463,15 @@
 
         <div id="meshStats" style="display:none; margin:0 0 12px; padding:8px 10px; background:#f3e5f5; border:1px solid #ce93d8; border-radius:6px; font-size:11px; color:#4A148C; line-height:1.6;"></div>
 
+        <!-- Shape colour picker — shown for line, rect, circle, triangle, arrow, text -->
+        <div id="shapeColorBlock" style="display:none; margin:0 0 12px; padding:10px 12px; background:#e8f5e9; border:1px solid #A5D6A7; border-radius:7px;">
+            <label style="display:flex; align-items:center; gap:9px; font-size:12px; font-weight:600; color:#2E7D32;">
+                Element colour:
+                <input type="color" id="shapeColorPicker" value="#000000" style="width:36px; height:26px; padding:1px 2px; border:1px solid #A5D6A7; border-radius:5px; cursor:pointer; background:none;">
+                <button id="shapeColorReset" style="margin:0; padding:2px 8px; font-size:11px; background:rgba(46,125,50,.12); color:#2E7D32; border:1px solid #A5D6A7; border-radius:5px; cursor:pointer;">Reset to default</button>
+            </label>
+        </div>
+
         <!-- Text elements: the words themselves are the element, so they get their own
              field. Hidden for every other kind. -->
         <div id="textContentBlock" style="display:none; margin:0 0 12px; padding:10px 12px; background:#e8f5e9; border:1px solid #A5D6A7; border-radius:7px;">
@@ -2782,6 +2791,19 @@
             renderOutlinePicker();
             syncFusionPanel(image);
 
+            // Shape colour picker — visible for drawn shapes, hidden for vectors (they have their own)
+            const shapeKind = elKind(image);
+            const shapeColorBlock = document.getElementById('shapeColorBlock');
+            const shapeColorPicker = document.getElementById('shapeColorPicker');
+            const shapeColorReset = document.getElementById('shapeColorReset');
+            const isShapeKind = shapeKind === 'line' || shapeKind === 'rect' || shapeKind === 'circle' ||
+                                 shapeKind === 'triangle' || shapeKind === 'arrow' || shapeKind === 'text';
+            if (shapeColorBlock) shapeColorBlock.style.display = isShapeKind ? 'block' : 'none';
+            if (shapeColorPicker && isShapeKind) shapeColorPicker.value = image.color || '#000000';
+            if (shapeColorReset && isShapeKind) {
+                shapeColorReset.onclick = () => { if (shapeColorPicker) shapeColorPicker.value = '#000000'; };
+            }
+
             const ms = document.getElementById('meshStats');
             if (ms) {
                 if (image && image.isMesh) {
@@ -2933,6 +2955,15 @@
                     const sk = document.getElementById('vectorSocket');
                     imageToName.socket = !!(sk && sk.checked);
                     if (!imageToName.socket) { imageToName.socketLinks = []; }
+                }
+                // Shape colour — for drawn shapes (line/rect/circle/triangle/arrow/text)
+                {
+                    const sk2 = elKind(imageToName);
+                    if (sk2 === 'line' || sk2 === 'rect' || sk2 === 'circle' ||
+                        sk2 === 'triangle' || sk2 === 'arrow' || sk2 === 'text') {
+                        const scp = document.getElementById('shapeColorPicker');
+                        if (scp) imageToName.color = scp.value;
+                    }
                 }
                 imageToName.lastEdited = Date.now();
                 saveState();
@@ -16837,30 +16868,34 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
                     formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
                     label, dataPairs(im), () => selectEl(im), im.color || PRIORITY_COLORS[im.priority], im); });
             }
-            if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => { const label = dLn(im); row(chip('➖', '#e1f5fe'), label, formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
-            if (txts.length) { section('Text', txts.length); txts.forEach(im => { const label = dTxt(im); row(chip('🅣', '#f3e5f5'), label, (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
-            if (rects.length) { section('Squares', rects.length); rects.forEach(im => { const label = dRect(im); row(chip('▭', '#fff8e1'), label, Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
+            if (lns.length) { section('Datum Lines', lns.length); lns.forEach(im => { const label = dLn(im); const clr = im.color || '#37474F'; const clrNote = (im.color && im.color !== '#000000') ? ' · color: ' + im.color : ''; row(chip('➖', '#e1f5fe'), label, formatBytes(elementBytes(im)) + clrNote + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), clr, im); }); }
+            if (txts.length) { section('Text', txts.length); txts.forEach(im => { const label = dTxt(im); const clr = im.color || '#000000'; const clrNote = (im.color && im.color !== '#000000') ? ' · color: ' + im.color : ''; row(chip('🅣', '#f3e5f5'), label, (im.font || 'text') + ' · ' + formatBytes(elementBytes(im)) + clrNote + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), clr, im); }); }
+            if (rects.length) { section('Squares', rects.length); rects.forEach(im => { const label = dRect(im); const clr = im.color || '#37474F'; const clrNote = (im.color && im.color !== '#000000') ? ' · color: ' + im.color : ''; row(chip('▭', '#fff8e1'), label, Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + formatBytes(elementBytes(im)) + clrNote + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), clr, im); }); }
             if (circles.length) { section('Circles', circles.length); circles.forEach(im => {
                 const perfect = im.perfectCircle || Math.abs(im.width - im.height) < 0.5;
                 const shape = perfect ? ('⬤ perfect · r' + Math.round(im.width / 2)) : ('ellipse ' + Math.round(im.width) + '×' + Math.round(im.height));
+                const clr = im.color || '#37474F';
+                const clrNote = (im.color && im.color !== '#000000') ? ' · color: ' + im.color : '';
                 const P = dataPairs(im);
                 P.unshift(['Shape', perfect ? 'Perfect circle (radius ' + Math.round(im.width / 2) + ')' : 'Ellipse ' + Math.round(im.width) + ' × ' + Math.round(im.height)]);
                 P.push(['Outline style', im.dashStyle === 'dotted' ? 'Dotted' : im.dashStyle === 'dashed' ? 'Dashed' : 'Solid']);
                 const label = dCirc(im);
                 row(chip('◯', '#f3e5f5'), label,
-                    shape + ' · ' + (im.dashStyle === 'dotted' ? 'dotted' : im.dashStyle === 'dashed' ? 'dashed' : 'solid') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    label, P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
+                    shape + ' · ' + (im.dashStyle === 'dotted' ? 'dotted' : im.dashStyle === 'dashed' ? 'dashed' : 'solid') + ' · ' + formatBytes(elementBytes(im)) + clrNote + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
+                    label, P, () => selectEl(im), clr, im);
             }); }
             if (triangles.length) { section('Triangles', triangles.length); triangles.forEach(im => {
                 const filled = im.triStyle === 'filled';
+                const clr = im.color || '#37474F';
+                const clrNote = (im.color && im.color !== '#000000') ? ' · color: ' + im.color : '';
                 const P = dataPairs(im);
                 P.unshift(['Style', filled ? 'Filled' : 'Outline']);
                 const label = dTri(im);
                 row(chip('△', '#efebe9'), label,
-                    Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + (filled ? 'filled' : 'outline') + ' · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
-                    label, P, () => selectEl(im), PRIORITY_COLORS[im.priority], im);
+                    Math.round(im.width) + '×' + Math.round(im.height) + ' · ' + (filled ? 'filled' : 'outline') + ' · ' + formatBytes(elementBytes(im)) + clrNote + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''),
+                    label, P, () => selectEl(im), clr, im);
             }); }
-            if (arws.length) { section('Arrows', arws.length); arws.forEach(im => { const label = dArw(im); row(chip('➤', '#fff3e0'), label, Math.round(im.width) + 'px · ' + formatBytes(elementBytes(im)) + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), PRIORITY_COLORS[im.priority], im); }); }
+            if (arws.length) { section('Arrows', arws.length); arws.forEach(im => { const label = dArw(im); const clr = im.color || '#37474F'; const clrNote = (im.color && im.color !== '#000000') ? ' · color: ' + im.color : ''; row(chip('➤', '#fff3e0'), label, Math.round(im.width) + 'px · ' + formatBytes(elementBytes(im)) + clrNote + (im.pinned ? ' · 📌 pinned' : '') + (im.hidden ? ' · hidden' : ''), label, dataPairs(im), () => selectEl(im), clr, im); }); }
             // Canvas notations are real elements — list them with their own metadata
             if (typeof canvasNotes !== 'undefined' && canvasNotes.length) {
                 section('Canvas Notations', canvasNotes.length);
