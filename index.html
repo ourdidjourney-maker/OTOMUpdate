@@ -740,7 +740,7 @@
         <button title="Switch the cursor-to-ruler arrows between 4-way and diagonal 8-way" id="rulerDiagBtn" onclick="toggleRulerDiagonal()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Ruler Arrows: 4-way</button>
         <button title="Arrowed dimension bars between parallel rulers" id="rulerDimsBtn" onclick="toggleRulerDims()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Ruler Dims: OFF</button>
         <span class="gsep" data-grp="MEASURE"></span>
-<button title="Dimension line from each element to its nearest neighbour" id="elemDimElemBtn" onclick="toggleElemDimElem()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Elem↔Elem: OFF</button>
+<button title="Dimension lines between every element and every other element" id="elemDimElemBtn" onclick="toggleElemDimElem()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Elem↔Elem: OFF</button>
         <button title="Dimension lines from each element to its nearest rulers" id="elemDimRulerBtn" onclick="toggleElemDimRuler()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Elem↔Ruler: OFF</button>
         <button title="Measure dimensions from element edges or from their centres" id="dimEdgeBtn" onclick="toggleDimEdge()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Dim: Center</button>
         <button title="Click the canvas to drop a red measurement anchor" id="centerModeBtn" onclick="toggleCenterMode()" style="background: #455A64; font-size: 11px; padding: 6px 8px;">Center Mode: OFF</button>
@@ -9459,7 +9459,7 @@ ctx.fillText(conn.number.toString(), midX, midY);
             if (elemDimElem || elemDimRuler || (centerDims && centerPoint) || centerPoint) {
                 const z = camera.zoom;
                 ctx.font = `bold ${11 / z}px Arial`;
-                const vis = images.filter(im => inView(im, 100));
+                const vis = images.filter(im => !im.hidden);
                 const vg = guides.filter(g => g.axis === 'v' && !g.hidden).map(g => g.pos);
                 const hg = guides.filter(g => g.axis === 'h' && !g.hidden).map(g => g.pos);
 
@@ -9483,39 +9483,24 @@ ctx.fillText(conn.number.toString(), midX, midY);
                 }
 
                 if (elemDimElem && vis.length >= 2) {
-                    // Spatial grid nearest-neighbour: search own cell + ring, widening only if empty
-                    const CELL = 400;
-                    const grid = new Map();
-                    vis.forEach((im, i) => {
-                        const k = Math.floor(im.x / CELL) + ':' + Math.floor(im.y / CELL);
-                        let b = grid.get(k); if (!b) { b = []; grid.set(k, b); }
-                        b.push(i);
-                    });
-                    const drawn = new Set();
-                    vis.forEach((im, i) => {
-                        const gx = Math.floor(im.x / CELL), gy = Math.floor(im.y / CELL);
-                        let best = -1, bd = Infinity;
-                        for (let ring = 1; ring <= 4 && best < 0; ring++) {
-                            for (let cx = gx - ring; cx <= gx + ring; cx++) {
-                                for (let cy = gy - ring; cy <= gy + ring; cy++) {
-                                    const b = grid.get(cx + ':' + cy); if (!b) continue;
-                                    for (const j of b) {
-                                        if (j === i) continue;
-                                        const d = Math.hypot(vis[j].x - im.x, vis[j].y - im.y);
-                                        if (d < bd) { bd = d; best = j; }
-                                    }
+                    for (let i = 0; i < vis.length; i++) {
+                        for (let j = i + 1; j < vis.length; j++) {
+                            const im = vis[i], o = vis[j];
+                            const dx = o.x - im.x, dy = o.y - im.y;
+                            const L = Math.hypot(dx, dy) || 1;
+                            if (dimEdge) {
+                                const ux = dx / L, uy = dy / L;
+                                const ea = extentAlong(im, dx, dy), eb = extentAlong(o, dx, dy);
+                                if (L > ea + eb + 2) {
+                                    drawDim(im.x + ux * ea, im.y + uy * ea, o.x - ux * eb, o.y - uy * eb, Math.round((L - ea - eb) * z) + 'px', '#4CAF50');
+                                } else {
+                                    drawDim(im.x, im.y, o.x, o.y, '0px', '#4CAF50');
                                 }
+                            } else {
+                                drawDim(im.x, im.y, o.x, o.y, Math.round(L * z) + 'px', '#4CAF50');
                             }
                         }
-                        if (best >= 0) {
-                            const key = i < best ? i + '-' + best : best + '-' + i;
-                            if (!drawn.has(key)) {
-                                drawn.add(key); const o = vis[best];
-                                if (dimEdge) { const dx = o.x - im.x, dy = o.y - im.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, ea = extentAlong(im, dx, dy), eb = extentAlong(o, dx, dy); drawDim(im.x + ux * ea, im.y + uy * ea, o.x - ux * eb, o.y - uy * eb, Math.round(Math.max(0, L - ea - eb) * z) + 'px', '#4CAF50'); }
-                                else drawDim(im.x, im.y, o.x, o.y, Math.round(bd * z) + 'px', '#4CAF50');
-                            }
-                        }
-                    });
+                    }
                 }
 
                 // Everything measured to the user-placed center anchor
@@ -15173,7 +15158,7 @@ hDef('port','Port','Loads someone else\'s cartridge and filters it — only the 
 </svg>`) + `
 <h3>Dimensioning</h3>
 <ul>
-<li><b>Elem↔Elem</b> — each element to its nearest neighbour. <b>Elem↔Ruler</b> — to the nearest guides.</li>
+<li><b>Elem↔Elem</b> — dimension lines between every element and every other element. <b>Elem↔Ruler</b> — to the nearest guides.</li>
 <li><b>Dim: Center/Edge</b> — measure from centres or edges.</li>
 <li><b>Center Mode</b> drops a red anchor; <b>Center Dims</b> measures everything to it.</li>
 <li><b>Compass</b> shows each element's bearing to the world origin.</li>
