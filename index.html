@@ -810,6 +810,7 @@
         <button onclick="capBenchmark()" title="Measure whether the cap actually helps on this machine" style="background:#455A64; font-size:11px; padding:6px 8px;">⏲ Test</button>
         <select id="lcSel" onchange="setLiveCanvas(this.value)" title="Live Canvas: after this long, the engine offers to hide controls you never touched." style="font-size:11px; padding:4px 5px; border-radius:5px;">
             <option value="0">⧗ Live Canvas: OFF</option>
+            <option value="2">review every 2m (test)</option>
             <option value="15">review every 15m</option>
             <option value="30">review every 30m</option>
             <option value="60">review every hour</option>
@@ -6360,7 +6361,28 @@
             el.textContent = '⧗ ' + lcTouched.size + ' used · ' + mins + '/' + lcMinutes + 'm';
             el.style.color = '#00838F';
         }
-        setInterval(lcStatus, 15000);
+        setInterval(lcStatus, 2000);
+
+        // Direct click listener on the toolbar — catches every button press
+        // independently of usageRecord. Attached after DOM is ready.
+        (function() {
+            function attachLcListener() {
+                const bar = document.getElementById('controls');
+                if (!bar) return;
+                bar.addEventListener('click', function(e) {
+                    if (!lcMinutes) return;
+                    const btn = e.target.closest('button, select, input');
+                    if (!btn) return;
+                    const label = (btn.textContent || btn.getAttribute('title') || btn.id || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+                    if (label) lcNote(label);
+                }, true);
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', attachLcListener);
+            } else {
+                attachLcListener();
+            }
+        })();
 
         // Everything currently on the bar, with the same keys the manager uses.
         function lcInventory() {
