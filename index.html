@@ -1487,6 +1487,11 @@
                        style="width:74px; padding:5px 7px; border:1px solid #A5D6A7; border-radius:5px; font-size:13px;">
                 <span style="font-size:11px; color:#66BB6A;">px — the box re-measures itself when you save</span>
             </div>
+            <div style="display:flex; align-items:center; gap:9px; margin-top:9px; padding-top:8px; border-top:1px solid #A5D6A7;">
+                <span style="font-size:12px; color:#2E7D32; font-weight:600;">Colour</span>
+                <input type="color" id="textColorPicker" value="#000000" style="width:36px; height:26px; padding:1px 2px; border:1px solid #A5D6A7; border-radius:5px; cursor:pointer; background:none;">
+                <button id="textColorReset" style="margin:0; padding:2px 8px; font-size:11px; background:rgba(46,125,50,.12); color:#2E7D32; border:1px solid #A5D6A7; border-radius:5px; cursor:pointer;">Reset</button>
+            </div>
         </div>
 
         <label style="display: block; margin-top: 10px; margin-bottom: 5px; font-weight: bold; font-size: 13px; color: #555;">
@@ -2778,6 +2783,10 @@
                 if (isText) {
                     document.getElementById('textContentInput').value = image.text || '';
                     document.getElementById('textSizeInput').value = Math.round(image.fontSize || image.height || 28);
+                    const tcp = document.getElementById('textColorPicker');
+                    const tcr = document.getElementById('textColorReset');
+                    if (tcp) tcp.value = image.color || '#000000';
+                    if (tcr) tcr.onclick = () => { if (tcp) tcp.value = '#000000'; };
                 }
             }
             document.getElementById('pathInput').value = image.sourcePath || image.filePath || '';
@@ -2798,7 +2807,7 @@
             const shapeColorPicker = document.getElementById('shapeColorPicker');
             const shapeColorReset = document.getElementById('shapeColorReset');
             const isShapeKind = shapeKind === 'line' || shapeKind === 'rect' || shapeKind === 'circle' ||
-                                 shapeKind === 'triangle' || shapeKind === 'arrow' || shapeKind === 'text';
+                                 shapeKind === 'triangle' || shapeKind === 'arrow';
             if (shapeColorBlock) shapeColorBlock.style.display = isShapeKind ? 'block' : 'none';
             if (shapeColorPicker && isShapeKind) shapeColorPicker.value = image.color || '#000000';
             if (shapeColorReset && isShapeKind) {
@@ -2957,13 +2966,18 @@
                     imageToName.socket = !!(sk && sk.checked);
                     if (!imageToName.socket) { imageToName.socketLinks = []; }
                 }
-                // Shape colour — for drawn shapes (line/rect/circle/triangle/arrow/text)
+                // Shape colour — for drawn shapes (line/rect/circle/triangle/arrow)
                 {
                     const sk2 = elKind(imageToName);
                     if (sk2 === 'line' || sk2 === 'rect' || sk2 === 'circle' ||
-                        sk2 === 'triangle' || sk2 === 'arrow' || sk2 === 'text') {
+                        sk2 === 'triangle' || sk2 === 'arrow') {
                         const scp = document.getElementById('shapeColorPicker');
                         if (scp) imageToName.color = scp.value;
+                    }
+                    // Text has its own colour picker inside the text block
+                    if (sk2 === 'text') {
+                        const tcp = document.getElementById('textColorPicker');
+                        if (tcp) imageToName.color = tcp.value;
                     }
                 }
                 imageToName.lastEdited = Date.now();
